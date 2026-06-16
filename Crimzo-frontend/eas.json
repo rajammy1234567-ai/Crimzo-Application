@@ -27,7 +27,7 @@
       "autoIncrement": true,
       "credentialsSource": "local",
       "env": {
-        "EXPO_PUBLIC_BACKEND_URL": "https://your-backend-url.com", # UPDATE THIS AFTER DEPLOYING BACKEND
+        "EXPO_PUBLIC_BACKEND_URL": "https://crimzo-application-backend.onrender.com"
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "776581850135-3vku9v480fmfe4ur922eg8f1p9bv52vg.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "776581850135-tc55ga2unc3736p9o5s9au4g7t2cuai6.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "776581850135-8u47utp9e714rdflot9mnde3j0bf9k8i.apps.googleusercontent.com"

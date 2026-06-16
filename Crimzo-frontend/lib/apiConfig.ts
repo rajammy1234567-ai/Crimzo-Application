@@ -7,6 +7,10 @@ const DEV_LAN_HOST = '192.168.1.7';
 
 const envUrl = process.env.EXPO_PUBLIC_BACKEND_URL?.replace(/\/$/, '');
 
+function isDeployedBackend(url?: string): boolean {
+  return !!url && url.startsWith('https://');
+}
+
 function addUnique(list: string[], url: string) {
   const normalized = url.replace(/\/$/, '');
   if (!list.includes(normalized)) list.push(normalized);
@@ -15,6 +19,12 @@ function addUnique(list: string[], url: string) {
 /** Ordered list of backend URLs to try (first = preferred). */
 export function getApiUrlCandidates(): string[] {
   const candidates: string[] = [];
+
+  // Deployed backend — same URL on emulator, device, and web
+  if (envUrl && isDeployedBackend(envUrl)) {
+    addUnique(candidates, envUrl);
+    return candidates;
+  }
 
   if (Platform.OS === 'web') {
     if (envUrl) addUnique(candidates, envUrl);
