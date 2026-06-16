@@ -1,0 +1,92 @@
+{
+  "expo": {
+    "name": "Crimzo",
+    "slug": "crimzo",
+    "version": "4.0.1",
+    "orientation": "portrait",
+    "icon": "./assets/images/crimzo_logo1.png",
+    "scheme": "crimzo",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.livestreamhub",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Broadcast live video to viewers",
+        "NSMicrophoneUsageDescription": "Share audio in your streams",
+        "NSPhotoLibraryUsageDescription": "Upload reels from gallery",
+        "NSLocationWhenInUseUsageDescription": "Show nearby live streams and people"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/crimzo_logo1.png",
+        "backgroundColor": "#000000"
+      },
+      "package": "com.livestreamhub",
+      "versionCode": 20,
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_MEDIA_VIDEO",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO"
+      ],
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/crimzo_logo1.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Broadcast live video to viewers"
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Upload reels from gallery"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/crimzo_logo1.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#000000"
+        }
+      ],
+      "expo-video",
+      "./plugins/withRemoveForegroundService",
+      "./plugins/withAgoraExclude"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c1996454-f592-4a4a-a200-f0d05f734f46"
+      }
+    },
+    "owner": "jtbrothersproject"
+  }
+}

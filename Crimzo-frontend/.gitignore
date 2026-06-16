@@ -1,0 +1,67 @@
+node_modules
+.expo
+.metro-cache
+
+.env
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native builds
+/android
+/ios
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# Debug logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
+
+# macOS
+.DS_Store
+*.pem
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+.env*.local
+
+# TypeScript
+*.tsbuildinfo
+
+# Testing
+coverage/
+
+# Misc
+*.tmp
+*.bak
+app-example

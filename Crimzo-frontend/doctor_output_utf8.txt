@@ -1,0 +1,23 @@
+﻿env: load .env
+env: export EXPO_PUBLIC_BACKEND_URL EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
+Running 17 checks on your project...
+16/17 checks passed. 1 checks failed. Possible issues detected:
+Use the --verbose flag to see more details about passed checks.
+
+Γ£û Check for app config fields that may not be synced in a non-CNG project
+This project contains native project folders but also has native configuration properties in app.json, indicating it is configured to use Prebuild. When the android/ios folders are present, EAS Build will not sync the following properties: orientation, icon, scheme, userInterfaceStyle, ios, android, plugins, androidStatusBar. 
+
+
+node.exe : 1 check failed, indicating 
+possible issues with the project.
+At C:\Program Files\nodejs\npx.ps1:29 
+char:3
++   & $NODE_EXE $NPX_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpec 
+   ified: (1 check failed,...th the   
+  project.:String) [], RemoteExcept   
+ ion
+    + FullyQualifiedErrorId : NativeC 
+   ommandError
+ 
