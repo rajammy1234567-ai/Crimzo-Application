@@ -19,11 +19,12 @@ export type FollowUser = {
   bio?: string;
   is_online?: boolean;
   is_following?: boolean;
+  is_requested?: boolean;
 };
 
 type Props = {
   visible: boolean;
-  type: 'followers' | 'following';
+  type: 'followers' | 'following' | 'friends';
   data: FollowUser[];
   loading: boolean;
   currentUserId?: string | number | null;
@@ -51,7 +52,7 @@ export default function FollowListModal({
               <Ionicons name="arrow-back" size={24} color="#FFF" />
             </TouchableOpacity>
             <Text style={s.headerTitle}>
-              {type === 'followers' ? 'Followers' : 'Following'}
+              {type === 'followers' ? 'Followers' : type === 'friends' ? 'Friends' : 'Following'}
             </Text>
             <View style={{ width: 24 }} />
           </View>
@@ -64,7 +65,7 @@ export default function FollowListModal({
             <View style={s.center}>
               <Ionicons name="people-outline" size={60} color="#333" />
               <Text style={s.emptyText}>
-                No {type === 'followers' ? 'followers' : 'following'} yet
+                No {type === 'followers' ? 'followers' : type === 'friends' ? 'friends' : 'following'} yet
               </Text>
             </View>
           ) : (
@@ -101,16 +102,23 @@ export default function FollowListModal({
                         ) : null}
                       </View>
                     </View>
-                    {!isSelf && (
+                    {!isSelf && type !== 'friends' && (
                       <TouchableOpacity
-                        style={[s.followBtn, item.is_following && s.followingBtn]}
+                        style={[
+                          s.followBtn,
+                          (item.is_following || item.is_requested) && s.followingBtn,
+                        ]}
                         onPress={(e) => {
                           e.stopPropagation?.();
                           onToggleFollow(String(item.id), index);
                         }}
                       >
-                        <Text style={[s.followBtnText, item.is_following && s.followingText]}>
-                          {item.is_following ? 'Following' : 'Follow'}
+                        <Text style={[s.followBtnText, (item.is_following || item.is_requested) && s.followingText]}>
+                          {item.is_following
+                            ? 'Following'
+                            : item.is_requested
+                              ? 'Requested'
+                              : 'Follow'}
                         </Text>
                       </TouchableOpacity>
                     )}

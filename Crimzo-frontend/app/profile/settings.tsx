@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,44 +9,195 @@ import {
   StatusBar,
   Linking,
   Switch,
+  Modal,
+  Platform,
+  Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { PRIVACY_URL, TERMS_URL } from '../../lib/apiClient';
+import { PRIVACY_URL, TERMS_URL, apiFetch, apiGet } from '../../lib/apiClient';
+import {
+  loadAppSettings,
+  saveAppSettings,
+  type AppSettings,
+  DEFAULT_SETTINGS,
+} from '../../lib/appSettings';
 
-const SETTINGS_KEY = 'app_settings';
+const APP_VERSION = '4.0.1';
+const SUPPORT_EMAIL = 'support@crimzo.app';
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.livestreamhub';
 
-type AppSettings = {
-  notificationsEnabled: boolean;
-  language: string;
+const DEVELOPERS = [
+  { name: 'Divyanshu Chauhan', role: 'Lead Developer' },
+  { name: 'Sunaina Sharma', role: 'Frontend Developer' },
+  { name: 'Abhinav Anand', role: 'Backend Developer' },
+];
+
+const ABOUT_FEATURES = [
+  'Live streaming and PK battles',
+  'Reels and 24-hour stories',
+  'Direct messaging and video calls',
+  'Virtual gifts, wallet and rewards',
+  'Follow requests and notifications',
+];
+
+const ABOUT_SECTIONS: { title: string; body: string }[] = [
+  {
+    title: 'Our Mission',
+    body:
+      'Crimzo brings creators and communities together in one place — to go live, share moments, and build real connections without friction.',
+  },
+  {
+    title: 'What We Offer',
+    body:
+      'From short-form reels and ephemeral stories to one-on-one chats and live rooms, Crimzo is built for everyday creators who want a simple, reliable social experience.',
+  },
+  {
+    title: 'Built for Creators',
+    body:
+      'Monetise through virtual gifts, manage your wallet securely, grow your audience with follow-based feeds, and stay in touch with fans through messages and calls — all within the app.',
+  },
+];
+
+type LegalType = 'privacy' | 'terms' | null;
+
+const LEGAL_CONTENT: Record<'privacy' | 'terms', { title: string; sections: { heading: string; body: string }[] }> = {
+  privacy: {
+    title: 'Privacy Policy',
+    sections: [
+      {
+        heading: 'What we collect',
+        body: 'Account info (email, username, avatar), content you post (reels, stories, messages), and usage data to keep Crimzo running smoothly.',
+      },
+      {
+        heading: 'How we use it',
+        body: 'To power social features, live streams, wallet payments, and push notifications you enable in Settings.',
+      },
+      {
+        heading: 'Third parties',
+        body: 'Media is hosted on Cloudinary; payments use Razorpay. We never sell your personal data.',
+      },
+      {
+        heading: 'Contact',
+        body: `Questions? Email us at ${SUPPORT_EMAIL}. You can request account or data deletion anytime.`,
+      },
+    ],
+  },
+  terms: {
+    title: 'Terms of Service',
+    sections: [
+      {
+        heading: 'Community rules',
+        body: 'Be respectful. No illegal, abusive, or spam content. You must be 13+ to use Crimzo.',
+      },
+      {
+        heading: 'Virtual currency',
+        body: 'Diamonds and beans are in-app items with no real-world cash value unless stated otherwise by law.',
+      },
+      {
+        heading: 'Your content',
+        body: 'You own what you create. By posting, you allow Crimzo to display it within the app.',
+      },
+      {
+        heading: 'Account',
+        body: 'We may suspend accounts that break these rules. Contact support to close your account.',
+      },
+    ],
+  },
 };
 
-const DEFAULT_SETTINGS: AppSettings = {
-  notificationsEnabled: true,
-  language: 'Automatic',
-};
+function formatCacheSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function estimateCacheSize(): Promise<number> {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const pairs = await AsyncStorage.multiGet(keys.filter((k) => k !== 'auth_token' && k !== 'cached_user'));
+    return pairs.reduce((sum, [, v]) => sum + (v?.length || 0), 0);
+  } catch {
+    return 0;
+  }
+}
 
 export default function SettingsScreen() {
-  const { logout } = useAuth();
+  const { logout, token, user, updateUser } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [cacheCleared, setCacheCleared] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [cacheSize, setCacheSize] = useState('—');
+  const [aboutVisible, setAboutVisible] = useState(false);
+  const [legalType, setLegalType] = useState<LegalType>(null);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    AsyncStorage.getItem(SETTINGS_KEY).then((raw) => {
-      if (raw) {
-        try { setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(raw) }); } catch { /* ignore */ }
-      }
-    });
+  const refreshCacheSize = useCallback(async () => {
+    const bytes = await estimateCacheSize();
+    setCacheSize(formatCacheSize(bytes));
   }, []);
 
-  const saveSettings = async (next: AppSettings) => {
+  useEffect(() => {
+    (async () => {
+      const local = await loadAppSettings();
+      setSettings(local);
+      await refreshCacheSize();
+      if (token) {
+        try {
+          const res = await apiGet<{
+            success?: boolean;
+            profile?: {
+              language?: string;
+              push_notifications_enabled?: boolean;
+            };
+          }>('/api/user/profile/full', token);
+          if (res.success && res.profile) {
+            const lang = res.profile.language === 'Hindi' ? 'Hindi'
+              : res.profile.language === 'English' ? 'English'
+                : local.language;
+            const merged = {
+              notificationsEnabled: res.profile.push_notifications_enabled !== false,
+              language: lang,
+            };
+            setSettings(merged);
+            await saveAppSettings(merged);
+          }
+        } catch {
+          // use local settings
+        }
+      }
+    })();
+  }, [token, refreshCacheSize]);
+
+  const persistSettings = async (next: AppSettings) => {
     setSettings(next);
-    await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+    await saveAppSettings(next);
+    if (!token) return;
+    setSaving(true);
+    try {
+      const lang = next.language === 'Automatic' ? 'English' : next.language;
+      await apiFetch('/api/user/profile', {
+        method: 'PUT',
+        token,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          language: lang,
+          push_notifications_enabled: next.notificationsEnabled,
+        }),
+      });
+      updateUser({
+        ...user,
+        language: lang,
+        push_notifications_enabled: next.notificationsEnabled,
+      } as any);
+    } catch {
+      // local save still applies
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleLogout = () => {
@@ -64,39 +215,77 @@ export default function SettingsScreen() {
   };
 
   const handleClearCache = () => {
-    Alert.alert('Clear Cache', 'Clear app cache to free up space?', [
+    Alert.alert('Clear Cache', 'Clear temporary app data? Your login will stay saved.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Clear',
         onPress: async () => {
-          await AsyncStorage.removeItem('viewed_story_users');
-          setCacheCleared(true);
+          const keys = await AsyncStorage.getAllKeys();
+          const toRemove = keys.filter(
+            (k) => !['auth_token', 'cached_user', 'app_settings'].includes(k),
+          );
+          if (toRemove.length) await AsyncStorage.multiRemove(toRemove);
+          await refreshCacheSize();
           Alert.alert('Done', 'Cache cleared successfully.');
         },
       },
     ]);
   };
 
-  const openURL = async (url: string) => {
-    const supported = await Linking.canOpenURL(url);
-    if (supported) Linking.openURL(url);
-    else Alert.alert('Error', 'Unable to open link.');
+  const openURL = async (url: string, fallback: LegalType) => {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+        return;
+      }
+    } catch {
+      // fall through
+    }
+    setLegalType(fallback);
   };
 
   const pickLanguage = () => {
-    Alert.alert('App Language', 'Select language', [
-      { text: 'Automatic', onPress: () => saveSettings({ ...settings, language: 'Automatic' }) },
-      { text: 'English', onPress: () => saveSettings({ ...settings, language: 'English' }) },
-      { text: 'Hindi', onPress: () => saveSettings({ ...settings, language: 'Hindi' }) },
+    Alert.alert('App Language', 'Select your preferred language', [
+      { text: 'Automatic', onPress: () => persistSettings({ ...settings, language: 'Automatic' }) },
+      { text: 'English', onPress: () => persistSettings({ ...settings, language: 'English' }) },
+      { text: 'Hindi', onPress: () => persistSettings({ ...settings, language: 'Hindi' }) },
       { text: 'Cancel', style: 'cancel' },
     ]);
+  };
+
+  const handleRate = async () => {
+    try {
+      const url = Platform.OS === 'android'
+        ? `market://details?id=com.livestreamhub`
+        : PLAY_STORE_URL;
+      const can = await Linking.canOpenURL(url);
+      if (can) {
+        await Linking.openURL(url);
+        return;
+      }
+    } catch {
+      // fallback
+    }
+    try {
+      await Share.share({
+        message: `I'm loving Crimzo! Join me — live streams, reels & more. ${PLAY_STORE_URL}`,
+      });
+    } catch {
+      Alert.alert('Rate Crimzo', 'Thank you! Find us on the Play Store as "Crimzo".');
+    }
+  };
+
+  const contactSupport = () => {
+    Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=Crimzo%20Support`).catch(() => {
+      Alert.alert('Customer Service', `Email us at ${SUPPORT_EMAIL}`);
+    });
   };
 
   const sections: {
     title: string;
     items: {
       icon: string;
-      iconColor: string;
       label: string;
       value?: string;
       valueColor?: string;
@@ -104,25 +293,36 @@ export default function SettingsScreen() {
       toggleValue?: boolean;
       onToggle?: (v: boolean) => void;
       onPress?: () => void;
+      hideChevron?: boolean;
     }[];
   }[] = [
     {
       title: 'Account',
       items: [
         {
-          icon: 'notifications-outline', iconColor: '#FF2D55',
-          label: 'Push Notifications', toggle: true,
-          toggleValue: settings.notificationsEnabled,
-          onToggle: (v) => saveSettings({ ...settings, notificationsEnabled: v }),
+          icon: 'person-outline',
+          label: 'Edit Profile',
+          onPress: () => router.push('/profile/edit' as any),
         },
         {
-          icon: 'language-outline', iconColor: '#9333EA',
+          icon: 'mail-unread-outline',
+          label: 'Notification Inbox',
+          onPress: () => router.push('/profile/notifications' as any),
+        },
+        {
+          icon: 'notifications-outline',
+          label: 'Push Notifications', toggle: true, hideChevron: true,
+          toggleValue: settings.notificationsEnabled,
+          onToggle: (v) => persistSettings({ ...settings, notificationsEnabled: v }),
+        },
+        {
+          icon: 'language-outline',
           label: 'App Language', value: settings.language,
           onPress: pickLanguage,
         },
         {
-          icon: 'ban-outline', iconColor: '#FF3B30',
-          label: 'Blacklist',
+          icon: 'ban-outline',
+          label: 'Blocked Users',
           onPress: () => router.push('/profile/blacklist' as any),
         },
       ],
@@ -131,14 +331,14 @@ export default function SettingsScreen() {
       title: 'Legal',
       items: [
         {
-          icon: 'shield-checkmark-outline', iconColor: '#34C759',
+          icon: 'shield-checkmark-outline',
           label: 'Privacy Policy',
-          onPress: () => openURL(PRIVACY_URL),
+          onPress: () => openURL(PRIVACY_URL, 'privacy'),
         },
         {
-          icon: 'document-text-outline', iconColor: '#007AFF',
+          icon: 'document-text-outline',
           label: 'User Agreement',
-          onPress: () => openURL(TERMS_URL),
+          onPress: () => openURL(TERMS_URL, 'terms'),
         },
       ],
     },
@@ -146,31 +346,30 @@ export default function SettingsScreen() {
       title: 'App',
       items: [
         {
-          icon: 'information-circle-outline', iconColor: '#FF9500',
-          label: 'About Us',
-          onPress: () => Alert.alert('About Crimzo', 'Crimzo v4.0.1\n\nConnect, Stream, Share.\n\nSupport: support@crimzo.app'),
+          icon: 'information-circle-outline',
+          label: 'About',
+          onPress: () => setAboutVisible(true),
         },
         {
-          icon: 'star-outline', iconColor: '#FFD700',
+          icon: 'star-outline',
           label: 'Rate Crimzo',
-          onPress: () => Alert.alert('Rate Us', 'Please rate us on the Play Store. Thank you!'),
+          onPress: handleRate,
         },
         {
-          icon: 'trash-outline', iconColor: '#FF3B30',
-          label: 'Clear Cache', value: cacheCleared ? '0 MB' : '99.4 MB',
+          icon: 'trash-outline',
+          label: 'Clear Cache', value: cacheSize,
           onPress: handleClearCache,
         },
         {
-          icon: 'phone-portrait-outline', iconColor: '#9333EA',
-          label: 'Version', value: '4.0.1', valueColor: '#9333EA',
-          onPress: () => Alert.alert('Version', 'Crimzo v4.0.1 — latest version'),
+          icon: 'phone-portrait-outline',
+          label: 'Version', value: APP_VERSION,
+          hideChevron: true,
         },
         {
-          icon: 'headset-outline', iconColor: '#007AFF',
+          icon: 'headset-outline',
           label: 'Customer Service',
-          onPress: () => Linking.openURL('mailto:support@crimzo.app').catch(() => {
-            Alert.alert('Customer Service', 'Email: support@crimzo.app');
-          }),
+          value: SUPPORT_EMAIL,
+          onPress: contactSupport,
         },
       ],
     },
@@ -187,44 +386,59 @@ export default function SettingsScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView
+        style={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
+        {saving && (
+          <Text style={styles.syncHint}>Saving preferences…</Text>
+        )}
+
         {sections.map((section, si) => (
           <View key={si} style={styles.section}>
             <Text style={styles.sectionTitle}>{section.title}</Text>
             <View style={styles.menuContainer}>
               {section.items.map((item, ii) => {
-                const Row = item.toggle ? View : TouchableOpacity;
+                const isToggle = !!item.toggle;
+                const Row = isToggle ? View : TouchableOpacity;
                 return (
-                <Row
-                  key={ii}
-                  style={[styles.menuItem, ii < section.items.length - 1 && styles.menuItemBorder]}
-                  {...(item.toggle ? {} : { onPress: item.onPress, activeOpacity: 0.6 })}
-                >
-                  <View style={[styles.iconBox, { backgroundColor: item.iconColor + '15' }]}>
-                    <Ionicons name={item.icon as any} size={18} color={item.iconColor} />
-                  </View>
-                  <Text style={styles.menuLabel}>{item.label}</Text>
-                  <View style={styles.menuRight}>
-                    {item.toggle ? (
-                      <Switch
-                        value={item.toggleValue}
-                        onValueChange={item.onToggle}
-                        trackColor={{ false: '#DDD', true: '#FF2D55' }}
-                        thumbColor="#FFF"
-                      />
-                    ) : (
-                      <>
-                        {item.value !== undefined && (
-                          <Text style={[styles.menuValue, item.valueColor ? { color: item.valueColor } : {}]}>
-                            {item.value}
-                          </Text>
-                        )}
-                        <Ionicons name="chevron-forward" size={18} color="#C0C0C0" />
-                      </>
-                    )}
-                  </View>
-                </Row>
-              );})}
+                  <Row
+                    key={ii}
+                    style={[styles.menuItem, ii < section.items.length - 1 && styles.menuItemBorder]}
+                    {...(isToggle ? {} : { onPress: item.onPress, activeOpacity: 0.6 })}
+                  >
+                    <View style={styles.iconBox}>
+                      <Ionicons name={item.icon as any} size={20} color="#3C3C43" />
+                    </View>
+                    <Text style={styles.menuLabel}>{item.label}</Text>
+                    <View style={styles.menuRight}>
+                      {isToggle ? (
+                        <Switch
+                          value={item.toggleValue}
+                          onValueChange={item.onToggle}
+                          trackColor={{ false: '#E5E5EA', true: '#34C759' }}
+                          thumbColor="#FFF"
+                        />
+                      ) : (
+                        <>
+                          {item.value !== undefined && (
+                            <Text
+                              style={[styles.menuValue, item.valueColor ? { color: item.valueColor } : {}]}
+                              numberOfLines={1}
+                            >
+                              {item.value}
+                            </Text>
+                          )}
+                          {!item.hideChevron && (
+                            <Ionicons name="chevron-forward" size={18} color="#C0C0C0" />
+                          )}
+                        </>
+                      )}
+                    </View>
+                  </Row>
+                );
+              })}
             </View>
           </View>
         ))}
@@ -236,6 +450,116 @@ export default function SettingsScreen() {
 
         <Text style={styles.footerText}>Crimzo © 2026. All rights reserved.</Text>
       </ScrollView>
+
+      {/* ── About ── */}
+      <Modal visible={aboutVisible} animationType="slide" onRequestClose={() => setAboutVisible(false)}>
+        <View style={[styles.aboutContainer, { paddingTop: insets.top }]}>
+          <View style={styles.aboutHeader}>
+            <TouchableOpacity onPress={() => setAboutVisible(false)} style={styles.backBtn}>
+              <Ionicons name="close" size={24} color="#1A1A1A" />
+            </TouchableOpacity>
+            <Text style={styles.aboutHeaderTitle}>About</Text>
+            <View style={{ width: 40 }} />
+          </View>
+
+          <ScrollView
+            style={styles.aboutScroll}
+            contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.aboutAppTitle}>Crimzo</Text>
+            <Text style={styles.aboutTagline}>Connect. Create. Go Live.</Text>
+            <Text style={styles.aboutVersionLine}>Version {APP_VERSION}</Text>
+
+            <Text style={styles.aboutIntro}>
+              Crimzo is a next-generation social platform designed for live entertainment,
+              short video, and meaningful interaction between creators and their audience.
+            </Text>
+
+            {ABOUT_SECTIONS.map((section) => (
+              <View key={section.title} style={styles.aboutTextBlock}>
+                <Text style={styles.aboutBlockTitle}>{section.title}</Text>
+                <Text style={styles.aboutBlockBody}>{section.body}</Text>
+              </View>
+            ))}
+
+            <Text style={styles.aboutGroupLabel}>Platform Highlights</Text>
+            <View style={styles.aboutGroupCard}>
+              {ABOUT_FEATURES.map((feature, i) => (
+                <View
+                  key={feature}
+                  style={[styles.featureRow, i < ABOUT_FEATURES.length - 1 && styles.devRowBorder]}
+                >
+                  <Text style={styles.featureBullet}>•</Text>
+                  <Text style={styles.featureText}>{feature}</Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.aboutTextBlock}>
+              <Text style={styles.aboutBlockTitle}>Our Commitment</Text>
+              <Text style={styles.aboutBlockBody}>
+                We are committed to a safe, respectful community. Your privacy matters to us,
+                and we continue to improve performance, security, and creator tools with every
+                update. For feedback or issues, our support team is always reachable.
+              </Text>
+            </View>
+
+            <Text style={styles.aboutGroupLabel}>Development Team</Text>
+            <View style={styles.aboutGroupCard}>
+              {DEVELOPERS.map((dev, i) => (
+                <View
+                  key={dev.name}
+                  style={[styles.devRow, i < DEVELOPERS.length - 1 && styles.devRowBorder]}
+                >
+                  <Text style={styles.devName}>{dev.name}</Text>
+                  <Text style={styles.devRole}>{dev.role}</Text>
+                </View>
+              ))}
+            </View>
+
+            <Text style={styles.aboutGroupLabel}>Support</Text>
+            <TouchableOpacity style={styles.aboutGroupCard} onPress={contactSupport} activeOpacity={0.7}>
+              <View style={styles.supportRow}>
+                <Text style={styles.supportLabel}>Email</Text>
+                <Text style={styles.supportValue}>{SUPPORT_EMAIL}</Text>
+              </View>
+            </TouchableOpacity>
+
+            <Text style={styles.aboutMadeIn}>Designed and developed in India</Text>
+            <Text style={styles.aboutCopyright}>© 2026 Crimzo Technologies. All rights reserved.</Text>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* ── Legal fallback modal ── */}
+      <Modal visible={!!legalType} animationType="slide" onRequestClose={() => setLegalType(null)}>
+        <View style={[styles.legalContainer, { paddingTop: insets.top }]}>
+          <View style={styles.legalHeader}>
+            <TouchableOpacity onPress={() => setLegalType(null)} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={24} color="#1A1A1A" />
+            </TouchableOpacity>
+            <Text style={styles.legalTitle}>
+              {legalType ? LEGAL_CONTENT[legalType].title : ''}
+            </Text>
+            <View style={{ width: 40 }} />
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+            {legalType && LEGAL_CONTENT[legalType].sections.map((s) => (
+              <View key={s.heading} style={styles.legalBlock}>
+                <Text style={styles.legalHeading}>{s.heading}</Text>
+                <Text style={styles.legalBody}>{s.body}</Text>
+              </View>
+            ))}
+            <TouchableOpacity
+              style={styles.legalWebBtn}
+              onPress={() => legalType && Linking.openURL(legalType === 'privacy' ? PRIVACY_URL : TERMS_URL)}
+            >
+              <Text style={styles.legalWebText}>Open full document in browser</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -250,6 +574,7 @@ const styles = StyleSheet.create({
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { color: '#1A1A1A', fontSize: 17, fontWeight: '700' },
   scroll: { flex: 1 },
+  syncHint: { textAlign: 'center', color: '#999', fontSize: 12, marginTop: 8 },
   section: { marginTop: 20 },
   sectionTitle: {
     fontSize: 12, fontWeight: '700', color: '#888',
@@ -265,16 +590,107 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 14, gap: 12,
   },
   menuItemBorder: { borderBottomWidth: 0.5, borderBottomColor: '#F0F0F0' },
-  iconBox: { width: 34, height: 34, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  iconBox: {
+    width: 28, height: 28, alignItems: 'center', justifyContent: 'center',
+  },
   menuLabel: { color: '#1A1A1A', fontSize: 15, fontWeight: '500', flex: 1 },
-  menuRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  menuValue: { color: '#999', fontSize: 14, fontWeight: '500' },
+  menuRight: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '45%' },
+  menuValue: { color: '#999', fontSize: 13, fontWeight: '500', flexShrink: 1 },
   logoutBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     backgroundColor: '#FFF', marginHorizontal: 16, marginTop: 24,
     paddingVertical: 16, borderRadius: 14,
-    borderWidth: 1, borderColor: 'rgba(255,59,48,0.2)',
   },
-  logoutText: { color: '#FF3B30', fontSize: 16, fontWeight: '600' },
+  logoutText: { color: '#FF3B30', fontSize: 16, fontWeight: '500' },
   footerText: { textAlign: 'center', color: '#C0C0C0', fontSize: 12, marginTop: 20 },
+
+  aboutContainer: { flex: 1, backgroundColor: '#F2F2F7' },
+  aboutHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingBottom: 12, backgroundColor: '#FFF',
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#C6C6C8',
+  },
+  aboutHeaderTitle: { color: '#1A1A1A', fontSize: 17, fontWeight: '600' },
+  aboutScroll: { flex: 1 },
+  aboutAppTitle: {
+    color: '#1A1A1A', fontSize: 22, fontWeight: '600',
+    marginTop: 28, marginHorizontal: 20,
+  },
+  aboutTagline: {
+    color: '#8E8E93', fontSize: 15, fontWeight: '400',
+    marginTop: 4, marginHorizontal: 20, letterSpacing: 0.2,
+  },
+  aboutVersionLine: {
+    color: '#AEAEB2', fontSize: 13, marginTop: 8, marginHorizontal: 20, marginBottom: 16,
+  },
+  aboutIntro: {
+    color: '#3C3C43', fontSize: 15, lineHeight: 23,
+    marginHorizontal: 20, marginBottom: 8,
+  },
+  aboutTextBlock: {
+    marginHorizontal: 20, marginTop: 20,
+  },
+  aboutBlockTitle: {
+    color: '#1A1A1A', fontSize: 15, fontWeight: '600', marginBottom: 6,
+  },
+  aboutBlockBody: {
+    color: '#48484A', fontSize: 15, lineHeight: 22,
+  },
+  featureRow: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    paddingHorizontal: 16, paddingVertical: 12, gap: 10,
+  },
+  featureBullet: {
+    color: '#8E8E93', fontSize: 15, lineHeight: 22, marginTop: 1,
+  },
+  featureText: {
+    flex: 1, color: '#3C3C43', fontSize: 15, lineHeight: 22,
+  },
+  aboutGroupLabel: {
+    fontSize: 13, fontWeight: '400', color: '#8E8E93',
+    marginLeft: 20, marginBottom: 8, textTransform: 'uppercase',
+  },
+  aboutGroupCard: {
+    backgroundColor: '#FFF', marginHorizontal: 16, borderRadius: 12,
+    marginBottom: 24, overflow: 'hidden',
+  },
+  devRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 14,
+  },
+  devRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E5EA',
+  },
+  devName: { color: '#1A1A1A', fontSize: 16, fontWeight: '400' },
+  devRole: { color: '#8E8E93', fontSize: 15 },
+  supportRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 14,
+  },
+  supportLabel: { color: '#1A1A1A', fontSize: 16 },
+  supportValue: { color: '#007AFF', fontSize: 15 },
+  aboutMadeIn: {
+    textAlign: 'center', color: '#AEAEB2', fontSize: 12,
+    marginHorizontal: 20, marginTop: 16,
+  },
+  aboutCopyright: {
+    textAlign: 'center', color: '#8E8E93', fontSize: 13,
+    marginHorizontal: 20, marginTop: 6,
+  },
+
+  legalContainer: { flex: 1, backgroundColor: '#FFF' },
+  legalHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingBottom: 12,
+    borderBottomWidth: 0.5, borderBottomColor: '#E0E0E0',
+  },
+  legalTitle: { color: '#1A1A1A', fontSize: 17, fontWeight: '700' },
+  legalBlock: { marginBottom: 20 },
+  legalHeading: { color: '#1A1A1A', fontSize: 16, fontWeight: '700', marginBottom: 6 },
+  legalBody: { color: '#666', fontSize: 14, lineHeight: 21 },
+  legalWebBtn: {
+    marginTop: 8, paddingVertical: 14, alignItems: 'center',
+    backgroundColor: '#F5F5F5', borderRadius: 12,
+  },
+  legalWebText: { color: '#007AFF', fontSize: 14, fontWeight: '500' },
 });

@@ -4,10 +4,17 @@ import io, { Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import { API_URL } from '../lib/apiClient';
 import { publish } from '../lib/realtimeSync';
+import { loadAppSettings, onAppSettingsChange, type AppSettings } from '../lib/appSettings';
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const { user, token, updateUser, logout } = useAuth();
   const socketRef = useRef<Socket | null>(null);
+  const appSettingsRef = useRef<AppSettings>({ notificationsEnabled: true, language: 'Automatic' });
+
+  useEffect(() => {
+    loadAppSettings().then((s) => { appSettingsRef.current = s; });
+    return onAppSettingsChange((s) => { appSettingsRef.current = s; });
+  }, []);
 
   useEffect(() => {
     if (!token || !user?.id || !API_URL) {
@@ -61,6 +68,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       type?: string;
     }) => {
       publish('notifications_updated', data);
+      if (!appSettingsRef.current.notificationsEnabled) return;
       if (data?.type === 'follow_request') {
         Alert.alert(
           data.title || 'New notification',

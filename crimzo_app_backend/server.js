@@ -41,13 +41,16 @@ app.use("/api/reels", require("./routes/reelRoutes"));
 app.use("/api/messages", require("./routes/messageRoutes"));
 app.use("/api/notifications", require("./routes/notificationRoutes"));
 app.use("/api/payments", require("./routes/paymentRoutes"));
+app.use("/api/tasks", require("./routes/taskRoutes"));
 app.use("/api/admin", require("./routes/adminRoutes"));
 
 // Online count lives under /api/users (not /api/user)
 app.get("/api/users/online-count", authenticateToken, user.getOnlineCount);
 
+app.use("/", require("./routes/legalRoutes"));
+
 // Root route
-app.get("/", (req, res) => {
+app.get("/api", (req, res) => {
   res.json({ status: "ok", message: "Crimzo Backend API is live 🚀" });
 });
 

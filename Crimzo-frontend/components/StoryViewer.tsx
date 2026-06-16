@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Video, ResizeMode } from 'expo-av';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { normalizeStoryUserId } from '../lib/storyUtils';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const STORY_DURATION = 5000; // 5 seconds per photo story
@@ -30,7 +31,7 @@ interface Story {
 }
 
 interface StoryGroup {
-    user_id: number;
+    user_id: string | number | { _id?: string; id?: string };
     username: string;
     avatar: string | null;
     stories: Story[];
@@ -40,10 +41,10 @@ interface Props {
     visible: boolean;
     storyGroups: StoryGroup[];
     initialGroupIndex: number;
-    currentUserId: number;
+    currentUserId: string;
     onClose: () => void;
     onDeleteStory?: (storyId: number) => void;
-    onGroupChange?: (userId: number) => void;
+    onGroupChange?: (userId: string) => void;
 }
 
 function getTimeAgo(dateStr: string): string {
@@ -77,7 +78,7 @@ export default function StoryViewer({ visible, storyGroups, initialGroupIndex, c
 
     const currentGroup = storyGroups[groupIndex];
     const currentStory = currentGroup?.stories?.[storyIndex];
-    const isOwn = String(currentGroup?.user_id) === String(currentUserId);
+    const isOwn = normalizeStoryUserId(currentGroup?.user_id) === currentUserId;
 
     // Reset when opening or changing initial group
     useEffect(() => {
@@ -88,12 +89,12 @@ export default function StoryViewer({ visible, storyGroups, initialGroupIndex, c
         }
     }, [visible, initialGroupIndex]);
 
-    // Notify parent when group changes (for viewed tracking)
+    // Mark only the currently visible user's story ring as viewed
     useEffect(() => {
-        if (visible && currentGroup && onGroupChange) {
-            onGroupChange(currentGroup.user_id);
-        }
-    }, [visible, groupIndex]);
+        if (!visible || !currentGroup || !onGroupChange) return;
+        const ownerId = normalizeStoryUserId(currentGroup.user_id);
+        if (ownerId) onGroupChange(ownerId);
+    }, [visible, groupIndex, currentGroup?.user_id, onGroupChange]);
 
     // Animate progress bar
     useEffect(() => {

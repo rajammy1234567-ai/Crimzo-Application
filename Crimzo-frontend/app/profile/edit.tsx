@@ -20,7 +20,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import * as ImagePicker from 'expo-image-picker';
 
-import { apiFetch, apiUpload } from '../../lib/apiClient';
+import { apiFetch, apiGet, apiUpload } from '../../lib/apiClient';
 
 export default function EditProfileScreen() {
   const { user, token, updateUser } = useAuth();
@@ -48,9 +48,48 @@ export default function EditProfileScreen() {
   const [editValue, setEditValue] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
+  useEffect(() => {
+    const load = async () => {
+      if (!token) return;
+      try {
+        const data = await apiGet<{
+          success?: boolean;
+          profile?: {
+            username?: string;
+            bio?: string;
+            country?: string;
+            avatar?: string;
+            gender?: string;
+            age?: string;
+            language?: string;
+            second_language?: string;
+            tags?: string;
+            show_location?: boolean;
+          };
+        }>('/api/user/profile/full', token);
+        if (data.success && data.profile) {
+          const p = data.profile;
+          setNickname(p.username || nickname);
+          setSelfIntro(p.bio || '');
+          setRegion(p.country || 'India');
+          setAvatar(p.avatar || '');
+          setGender(p.gender || 'Male');
+          setAge(p.age || '');
+          setLanguage(p.language || 'English');
+          setSecondLanguage(p.second_language || '');
+          setTags(p.tags || '');
+          setLocation(p.show_location ? 'Visible' : 'Hidden');
+        }
+      } catch (e) {
+        console.error('Load profile edit error:', e);
+      }
+    };
+    load();
+  }, [token]);
+
   const copyToClipboard = () => {
-    Clipboard.setString(String(user?.id || ''));
-    Alert.alert('Copied', 'ID copied to clipboard!');
+    Clipboard.setString(String(user?.crimzo_id || user?.id || ''));
+    Alert.alert('Copied', 'Crimzo ID copied to clipboard!');
   };
 
   const pickAvatar = async () => {
@@ -84,15 +123,14 @@ export default function EditProfileScreen() {
         name: 'avatar.jpg',
       } as any);
 
-      const data = await apiUpload<{ success?: boolean; story?: { media_url?: string } }>(
-        '/api/stories/upload',
+      const data = await apiUpload<{ success?: boolean; avatar?: string }>(
+        '/api/user/avatar',
         formData,
         token,
       );
-      if (data.success && data.story?.media_url) {
-        setAvatar(data.story.media_url);
-        // Update user profile with new avatar
-        await updateProfileField('avatar', data.story.media_url);
+      if (data.success && data.avatar) {
+        setAvatar(data.avatar);
+        updateUser({ ...user, avatar: data.avatar });
       } else {
         setAvatar(tempAvatarUri);
       }
@@ -105,21 +143,32 @@ export default function EditProfileScreen() {
 
   const updateProfileField = async (field: string, value: string) => {
     try {
-      const data = await apiFetch<{ success?: boolean; error?: string }>(
+      const body = field === 'show_location'
+        ? { show_location: value === 'true' }
+        : { [field]: value };
+      const data = await apiFetch<{ success?: boolean; error?: string; profile?: Record<string, unknown> }>(
         '/api/user/profile',
         {
           method: 'PUT',
           token,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ [field]: value }),
+          body: JSON.stringify(body),
         },
       );
       if (data.success) {
-        // Real-time update contexts
-        updateUser({ ...user, [field]: value });
+        if (field === 'show_location') {
+          updateUser({ ...user, show_location: value === 'true' } as any);
+        } else {
+          updateUser({ ...user, [field]: value } as any);
+        }
         if (field === 'username') setNickname(value);
         if (field === 'country') setRegion(value);
         if (field === 'bio') setSelfIntro(value);
+        if (field === 'age') setAge(value);
+        if (field === 'language') setLanguage(value);
+        if (field === 'second_language') setSecondLanguage(value);
+        if (field === 'tags') setTags(value);
+        if (field === 'gender') setGender(value);
       } else {
         Alert.alert('Error', data.error || 'Failed to update profile');
       }
@@ -156,32 +205,37 @@ export default function EditProfileScreen() {
         break;
       case 'gender':
         Alert.alert('Select Gender', '', [
-          { text: 'Male', onPress: () => setGender('Male') },
-          { text: 'Female', onPress: () => setGender('Female') },
+          { text: 'Male', onPress: async () => { setGender('Male'); await updateProfileField('gender', 'Male'); } },
+          { text: 'Female', onPress: async () => { setGender('Female'); await updateProfileField('gender', 'Female'); } },
+          { text: 'Other', onPress: async () => { setGender('Other'); await updateProfileField('gender', 'Other'); } },
           { text: 'Cancel', style: 'cancel' },
         ]);
         break;
       case 'age':
-        Alert.alert('Edit Age', 'Age editing coming soon.');
+        openEditModal('Age', 'age', age);
         break;
       case 'location':
         Alert.alert('Location Display', '', [
-          { text: 'Show', onPress: () => setLocation('Visible') },
-          { text: 'Hidden', onPress: () => setLocation('Hidden') },
+          { text: 'Show', onPress: async () => { setLocation('Visible'); await updateProfileField('show_location', 'true'); } },
+          { text: 'Hidden', onPress: async () => { setLocation('Hidden'); await updateProfileField('show_location', 'false'); } },
           { text: 'Cancel', style: 'cancel' },
         ]);
         break;
       case 'language':
-        Alert.alert('Select Language', 'Language selection coming soon.');
+        Alert.alert('Select Language', '', [
+          { text: 'English', onPress: async () => { setLanguage('English'); await updateProfileField('language', 'English'); } },
+          { text: 'Hindi', onPress: async () => { setLanguage('Hindi'); await updateProfileField('language', 'Hindi'); } },
+          { text: 'Cancel', style: 'cancel' },
+        ]);
         break;
       case 'secondLanguage':
-        Alert.alert('Select Second Language', 'Second language selection coming soon.');
+        openEditModal('Second Language', 'second_language', secondLanguage);
         break;
       case 'tags':
-        Alert.alert('Edit Tags', 'Tags editing coming soon.');
+        openEditModal('Tags', 'tags', tags);
         break;
       case 'cosmetics':
-        Alert.alert('Cosmetics', 'Cosmetics feature coming soon.');
+        router.push('/profile/stickers' as any);
         break;
       default:
         break;
@@ -202,9 +256,9 @@ export default function EditProfileScreen() {
   ];
 
   const linkedAccounts = [
-    { label: 'Google', value: user?.email ? 'Linked' : '', hasArrow: true },
-    { label: 'Phone', value: '', hasArrow: true },
-    { label: 'Gmail', value: '', hasArrow: true },
+    { label: 'Email', value: user?.email ? 'Linked' : 'Not linked', route: null as string | null },
+    { label: 'Phone', value: 'Add in Wallet', route: '/profile/wallet' },
+    { label: 'Settings', value: 'Privacy & more', route: '/profile/settings' },
   ];
 
   return (
@@ -277,11 +331,13 @@ export default function EditProfileScreen() {
               key={index}
               style={[styles.menuItem, index < linkedAccounts.length - 1 && styles.menuItemBorder]}
               activeOpacity={0.6}
+              onPress={() => item.route && router.push(item.route as any)}
+              disabled={!item.route}
             >
               <Text style={styles.fieldLabel}>{item.label}</Text>
               <View style={styles.fieldRight}>
                 <Text style={styles.fieldValue}>{item.value}</Text>
-                {item.hasArrow && <Ionicons name="chevron-forward" size={20} color="#C9C9C9" />}
+                {item.route ? <Ionicons name="chevron-forward" size={20} color="#C9C9C9" /> : null}
               </View>
             </TouchableOpacity>
           ))}

@@ -18,6 +18,7 @@ import {
 } from '../../components/home';
 import { subscribe } from '../../lib/realtimeSync';
 import { useNotifications } from '../../lib/useNotifications';
+import { normalizeStoryUserId } from '../../lib/storyUtils';
 
 export default function HomeScreen() {
   const { user, token, isGuest } = useAuth();
@@ -80,15 +81,23 @@ export default function HomeScreen() {
     try {
       const stored = await AsyncStorage.getItem('viewed_story_users');
       if (stored) {
-        const parsed = JSON.parse(stored) as (string | number)[];
-        setViewedUserIds(new Set(parsed.map((id) => String(id))));
+        const parsed = JSON.parse(stored) as unknown[];
+        const cleaned = parsed
+          .map((id) => normalizeStoryUserId(id))
+          .filter((id): id is string => !!id);
+        setViewedUserIds(new Set(cleaned));
+        if (cleaned.length !== parsed.length) {
+          AsyncStorage.setItem('viewed_story_users', JSON.stringify(cleaned));
+        }
       }
     } catch (e) { }
   };
 
-  const markStoryViewed = useCallback((userId: string | number) => {
-    const key = String(userId);
+  const markStoryViewed = useCallback((userId: unknown) => {
+    const key = normalizeStoryUserId(userId);
+    if (!key) return;
     setViewedUserIds((prev) => {
+      if (prev.has(key)) return prev;
       const next = new Set(prev);
       next.add(key);
       AsyncStorage.setItem('viewed_story_users', JSON.stringify([...next]));
@@ -114,7 +123,9 @@ export default function HomeScreen() {
       const groups = res.storyGroups || [];
       setStoryGroups(groups);
       setViewedUserIds((prev) => {
-        const active = new Set(groups.map((g) => String(g.user_id)));
+        const active = new Set(
+          groups.map((g) => normalizeStoryUserId(g.user_id)).filter((id): id is string => !!id),
+        );
         const next = new Set([...prev].filter((id) => active.has(id)));
         if (next.size !== prev.size) {
           AsyncStorage.setItem('viewed_story_users', JSON.stringify([...next]));
@@ -236,14 +247,11 @@ export default function HomeScreen() {
   const openStoryViewer = (index: number) => {
     setStoryViewerIndex(index);
     setShowStoryViewer(true);
-    // Mark this user's stories as viewed
-    const group = storyGroups[index];
-    if (group) {
-      markStoryViewed(group.user_id);
-    }
   };
 
-  const hasOwnStory = storyGroups.length > 0 && storyGroups[0]?.user_id === user?.id;
+  const currentUserKey = normalizeStoryUserId(user?.id);
+  const hasOwnStory = storyGroups.length > 0
+    && normalizeStoryUserId(storyGroups[0]?.user_id) === currentUserKey;
 
   const dismissUploadOverlay = useCallback(() => {
     setUploadingStory(false);
@@ -261,7 +269,7 @@ export default function HomeScreen() {
 
       <StoriesRow
         storyGroups={storyGroups}
-        currentUserId={Number(user?.id || 0)}
+        currentUserId={currentUserKey || ''}
         currentUserAvatar={user?.avatar || null}
         hasOwnStory={hasOwnStory}
         onAddStory={handleAddStory}
@@ -298,13 +306,14 @@ export default function HomeScreen() {
       )}
 
       <StoryViewer
+        key={showStoryViewer ? `story-viewer-${storyViewerIndex}` : 'story-viewer-closed'}
         visible={showStoryViewer}
         storyGroups={storyGroups}
         initialGroupIndex={storyViewerIndex}
-        currentUserId={Number(user?.id || 0)}
+        currentUserId={currentUserKey || ''}
         onClose={() => setShowStoryViewer(false)}
         onDeleteStory={handleDeleteStory}
-        onGroupChange={(userId) => markStoryViewed(userId)}
+        onGroupChange={markStoryViewed}
       />
 
       <UploadOverlay

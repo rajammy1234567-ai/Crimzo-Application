@@ -116,6 +116,19 @@ exports.uploadStory = async (req, res) => {
   }
 };
 
+function storyOwnerId(userField) {
+  if (userField == null) return null;
+  if (typeof userField === 'string') return userField;
+  if (typeof userField === 'object') {
+    if (userField._id != null) return String(userField._id);
+    if (userField.id != null) return String(userField.id);
+    if (userField.username != null && userField._id == null) return null;
+  }
+  const key = String(userField);
+  if (key === '[object Object]' || key === 'undefined' || key === 'null') return null;
+  return key;
+}
+
 // Get all active stories grouped by user
 exports.getAllStories = async (req, res) => {
   try {
@@ -128,18 +141,20 @@ exports.getAllStories = async (req, res) => {
 
     const grouped = {};
     for (const s of stories) {
-      const uid = s.user_id?._id || s.user_id;
-      const key = String(uid);
-      if (!grouped[key]) {
-        grouped[key] = {
-          user_id: s.user_id?.id || uid,
-          username: s.user_id?.username,
-          avatar: s.user_id?.avatar,
+      const ownerId = storyOwnerId(s.user_id);
+      if (!ownerId) continue;
+
+      if (!grouped[ownerId]) {
+        const populated = typeof s.user_id === 'object' && s.user_id ? s.user_id : null;
+        grouped[ownerId] = {
+          user_id: ownerId,
+          username: populated?.username,
+          avatar: populated?.avatar,
           stories: []
         };
       }
-      grouped[key].stories.push({
-        id: s.id,
+      grouped[ownerId].stories.push({
+        id: s._id ? String(s._id) : s.id,
         media_url: s.media_url,
         media_type: s.media_type,
         caption: s.caption,
@@ -158,9 +173,9 @@ exports.getAllStories = async (req, res) => {
 
     const result = [];
     if (grouped[userKey]) result.push(grouped[userKey]);
-    for (const key of Object.keys(grouped)) {
-      if (key !== userKey && followingIds.has(key)) {
-        result.push(grouped[key]);
+    for (const ownerId of Object.keys(grouped)) {
+      if (ownerId !== userKey && followingIds.has(ownerId)) {
+        result.push(grouped[ownerId]);
       }
     }
 

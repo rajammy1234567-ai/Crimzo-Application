@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,66 +14,102 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
+import { useFocusEffect } from 'expo-router';
+import { apiGet, apiPost } from '../../lib/apiClient';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface Task {
-  id: number;
+  key: string;
   title: string;
   reward: number;
   maxCount: number;
   currentCount: number;
 }
 
-const NEWBIE_TASKS: Task[] = [
-  { id: 1, title: 'Enter your nickname', reward: 50, maxCount: 1, currentCount: 0 },
-  { id: 2, title: 'Upload Avatar', reward: 50, maxCount: 1, currentCount: 0 },
-  { id: 3, title: 'Bind phone number', reward: 100, maxCount: 1, currentCount: 0 },
-];
-
-const DAILY_TASKS: Task[] = [
-  { id: 1, title: 'Send a message in 1 Live room(s)', reward: 10, maxCount: 5, currentCount: 0 },
-  { id: 2, title: 'Like 2 moment(s) of others', reward: 10, maxCount: 5, currentCount: 0 },
-  { id: 3, title: 'Random Match for 1 time(s)', reward: 25, maxCount: 2, currentCount: 0 },
-  { id: 4, title: 'Watch Live in Live room for 2 min(s)', reward: 10, maxCount: 5, currentCount: 0 },
-  { id: 5, title: 'Send gift(s) in message', reward: 50, maxCount: 1, currentCount: 0 },
-  { id: 6, title: 'Win 1 time(s) in Top Wheel in Party room (win>spend)', reward: 25, maxCount: 2, currentCount: 0 },
-];
-
-const MONTHLY_TASKS: Task[] = [
-  { id: 1, title: 'Be followed by 1 girl(s) ≥ level 5', reward: 100, maxCount: 5, currentCount: 0 },
-  { id: 2, title: 'Top up for 1 time(s)', reward: 200, maxCount: 5, currentCount: 0 },
-  { id: 3, title: 'Invite 1 new user(s) successfully', reward: 200, maxCount: 5, currentCount: 0 },
-  { id: 4, title: 'Send 17 Lucky Win', reward: 200, maxCount: 5, currentCount: 0 },
-];
+const TASK_ROUTES: Record<string, string> = {
+  newbie_nickname: '/profile/edit',
+  newbie_avatar: '/profile/edit',
+  newbie_phone: '/profile/wallet',
+  daily_live_message: '/(tabs)/home',
+  daily_like_moment: '/(tabs)/reels',
+  daily_random_match: '/search',
+  daily_watch_live: '/(tabs)/home',
+  daily_gift_message: '/profile/messages',
+  daily_top_wheel: '/(tabs)/home',
+  monthly_follow: '/(tabs)/profile',
+  monthly_topup: '/profile/wallet',
+  monthly_invite: '/(tabs)/profile',
+  monthly_lucky_win: '/profile/messages',
+};
 
 export default function TasksScreen() {
-  const { user } = useAuth();
+  const { user, token, updateUser } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'tasks' | 'rewards'>('tasks');
-  const [countdown, setCountdown] = useState({ days: 29, hours: 6, minutes: 15, seconds: 38 });
-  const [dailyCountdown, setDailyCountdown] = useState({ hours: 6, minutes: 15, seconds: 38 });
-  const [pendingReward, setPendingReward] = useState(50);
+  const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+  const [dailyCountdown, setDailyCountdown] = useState({ hours: 0, minutes: 0, seconds: 0 });
+  const [pendingReward, setPendingReward] = useState(0);
   const [checkedIn, setCheckedIn] = useState(false);
+  const [newbieTasks, setNewbieTasks] = useState<Task[]>([]);
+  const [dailyTasks, setDailyTasks] = useState<Task[]>([]);
+  const [monthlyTasks, setMonthlyTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Countdown timer effect
+  const updateCountdowns = () => {
+    const now = new Date();
+    const endOfDay = new Date(now);
+    endOfDay.setHours(24, 0, 0, 0);
+    const dayDiff = endOfDay.getTime() - now.getTime();
+    const dayH = Math.floor(dayDiff / 3600000);
+    const dayM = Math.floor((dayDiff % 3600000) / 60000);
+    const dayS = Math.floor((dayDiff % 60000) / 1000);
+    setDailyCountdown({ hours: dayH, minutes: dayM, seconds: dayS });
+
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const monthDiff = endOfMonth.getTime() - now.getTime();
+    const days = Math.floor(monthDiff / 86400000);
+    const monthH = Math.floor((monthDiff % 86400000) / 3600000);
+    const monthM = Math.floor((monthDiff % 3600000) / 60000);
+    const monthS = Math.floor((monthDiff % 60000) / 1000);
+    setCountdown({ days, hours: monthH, minutes: monthM, seconds: monthS });
+  };
+
+  const fetchTasks = useCallback(async () => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const data = await apiGet<{
+        success?: boolean;
+        pendingReward?: number;
+        checkedInToday?: boolean;
+        sections?: { newbie?: Task[]; daily?: Task[]; monthly?: Task[] };
+      }>('/api/tasks', token);
+      if (data.success) {
+        setPendingReward(data.pendingReward || 0);
+        setCheckedIn(!!data.checkedInToday);
+        setNewbieTasks(data.sections?.newbie || []);
+        setDailyTasks(data.sections?.daily || []);
+        setMonthlyTasks(data.sections?.monthly || []);
+      }
+    } catch (e) {
+      console.error('Fetch tasks error:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchTasks();
+      updateCountdowns();
+    }, [fetchTasks]),
+  );
+
   useEffect(() => {
-    const timer = setInterval(() => {
-      setDailyCountdown(prev => {
-        let { hours, minutes, seconds } = prev;
-        if (seconds > 0) {
-          seconds--;
-        } else if (minutes > 0) {
-          minutes--;
-          seconds = 59;
-        } else if (hours > 0) {
-          hours--;
-          minutes = 59;
-          seconds = 59;
-        }
-        return { hours, minutes, seconds };
-      });
-    }, 1000);
+    const timer = setInterval(updateCountdowns, 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -81,22 +117,55 @@ export default function TasksScreen() {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
-  const handleCheckIn = () => {
-    if (!checkedIn) {
-      setCheckedIn(true);
-      Alert.alert('Check In', 'You earned 50 coins!');
+  const handleCheckIn = async () => {
+    if (!token || checkedIn) return;
+    try {
+      const res = await apiPost<{ success?: boolean; added?: number; pendingReward?: number }>(
+        '/api/tasks/checkin',
+        {},
+        token,
+      );
+      if (res.success) {
+        setCheckedIn(true);
+        setPendingReward(res.pendingReward || pendingReward + 50);
+        Alert.alert('Check In', `You earned ${res.added || 50} beans!`);
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Check-in failed');
     }
   };
 
-  const handleGetReward = () => {
-    if (pendingReward > 0) {
-      Alert.alert('Reward Claimed!', `You received ${pendingReward} coins!`);
-      setPendingReward(0);
+  const handleGetReward = async () => {
+    if (!token || pendingReward <= 0) return;
+    try {
+      const res = await apiPost<{ success?: boolean; claimed?: number; beans?: number }>(
+        '/api/tasks/claim',
+        {},
+        token,
+      );
+      if (res.success) {
+        Alert.alert('Reward Claimed!', `You received ${res.claimed || pendingReward} beans!`);
+        setPendingReward(0);
+        if (res.beans != null) updateUser({ ...user, beans: res.beans } as any);
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Could not claim reward');
     }
   };
 
-  const handleTaskGo = (task: Task) => {
-    Alert.alert('Task', `Complete: ${task.title}\nReward: ${task.reward} × ${task.maxCount}`);
+  const handleTaskGo = async (task: Task) => {
+    const route = TASK_ROUTES[task.key];
+    if (route) router.push(route as any);
+
+    if (task.key.startsWith('daily_') || task.key.startsWith('monthly_')) {
+      try {
+        await apiPost('/api/tasks/complete', { taskKey: task.key }, token);
+        fetchTasks();
+      } catch (e: any) {
+        if (route) return;
+        Alert.alert('Task', e?.message || 'Complete the required action first');
+      }
+    }
   };
 
   const getTotalPossibleReward = (tasks: Task[]) => {
@@ -108,7 +177,7 @@ export default function TasksScreen() {
   };
 
   const renderTaskItem = (task: Task, showMultiplier: boolean = true) => (
-    <View key={task.id} style={styles.taskItem}>
+    <View key={task.key} style={styles.taskItem}>
       <View style={styles.taskInfo}>
         <Text style={styles.taskTitle}>{task.title}</Text>
         <View style={styles.taskRewardRow}>
@@ -190,6 +259,26 @@ export default function TasksScreen() {
       </LinearGradient>
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {activeTab === 'rewards' ? (
+          <View style={styles.rewardsPanel}>
+            <Text style={styles.rewardsTitle}>Pending Rewards</Text>
+            <Text style={styles.rewardsAmount}>🪙 {pendingReward}</Text>
+            <Text style={styles.rewardsHint}>Complete tasks and check in daily to earn beans.</Text>
+            <TouchableOpacity
+              style={[styles.getRewardBtn, pendingReward <= 0 && { opacity: 0.5 }]}
+              onPress={handleGetReward}
+              disabled={pendingReward <= 0}
+            >
+              <Text style={styles.getRewardText}>Claim to Wallet</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.walletLinkBtn} onPress={() => router.push('/profile/wallet' as any)}>
+              <Text style={styles.walletLinkText}>Open Wallet</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {activeTab === 'tasks' && (
+        <>
         {/* Quick Actions */}
         <View style={styles.quickActions}>
           <TouchableOpacity
@@ -204,7 +293,7 @@ export default function TasksScreen() {
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.quickActionItem}>
+          <TouchableOpacity style={styles.quickActionItem} onPress={() => router.push('/(tabs)/profile' as any)}>
             <Text style={styles.quickActionLabel}>Invitation</Text>
             <View style={styles.quickActionReward}>
               <Text style={styles.coinIconSmall}>🪙</Text>
@@ -212,7 +301,7 @@ export default function TasksScreen() {
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.quickActionItem}>
+          <TouchableOpacity style={styles.quickActionItem} onPress={() => router.push('/(tabs)/reels' as any)}>
             <Text style={styles.quickActionLabel}>Video</Text>
             <View style={styles.quickActionReward}>
               <Text style={styles.diamondIcon}>💎</Text>
@@ -220,7 +309,7 @@ export default function TasksScreen() {
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.quickActionItem}>
+          <TouchableOpacity style={styles.quickActionItem} onPress={() => router.push('/profile/wallet' as any)}>
             <Text style={styles.quickActionLabel}>Diamonds</Text>
             <View style={styles.quickActionReward}>
               <Text style={styles.diamondIcon}>💎</Text>
@@ -234,10 +323,10 @@ export default function TasksScreen() {
           <View style={styles.taskSectionHeader}>
             <Text style={styles.taskSectionTitle}>Newbie Tasks</Text>
             <Text style={styles.taskSectionProgress}>
-              (<Text style={styles.coinIconSmall}>🪙</Text>{getTotalCurrentReward(NEWBIE_TASKS)}/{getTotalPossibleReward(NEWBIE_TASKS)})
+              (<Text style={styles.coinIconSmall}>🪙</Text>{getTotalCurrentReward(newbieTasks)}/{getTotalPossibleReward(newbieTasks)})
             </Text>
           </View>
-          {NEWBIE_TASKS.map(task => renderTaskItem(task))}
+          {newbieTasks.map(task => renderTaskItem(task))}
         </View>
 
         {/* Daily Tasks */}
@@ -245,7 +334,7 @@ export default function TasksScreen() {
           <View style={styles.taskSectionHeader}>
             <Text style={styles.taskSectionTitle}>Daily Tasks</Text>
             <Text style={styles.taskSectionProgress}>
-              (<Text style={styles.coinIconSmall}>🪙</Text>{getTotalCurrentReward(DAILY_TASKS)}/{getTotalPossibleReward(DAILY_TASKS)})
+              (<Text style={styles.coinIconSmall}>🪙</Text>{getTotalCurrentReward(dailyTasks)}/{getTotalPossibleReward(dailyTasks)})
             </Text>
           </View>
           <View style={styles.timerRow}>
@@ -254,7 +343,7 @@ export default function TasksScreen() {
               {formatCountdown(dailyCountdown.hours, dailyCountdown.minutes, dailyCountdown.seconds)}
             </Text>
           </View>
-          {DAILY_TASKS.map(task => renderTaskItem(task))}
+          {dailyTasks.map(task => renderTaskItem(task))}
         </View>
 
         {/* Monthly Tasks */}
@@ -262,7 +351,7 @@ export default function TasksScreen() {
           <View style={styles.taskSectionHeader}>
             <Text style={styles.taskSectionTitle}>Monthly Tasks</Text>
             <Text style={styles.taskSectionProgress}>
-              (<Text style={styles.coinIconSmall}>🪙</Text>{getTotalCurrentReward(MONTHLY_TASKS)}/{getTotalPossibleReward(MONTHLY_TASKS)})
+              (<Text style={styles.coinIconSmall}>🪙</Text>{getTotalCurrentReward(monthlyTasks)}/{getTotalPossibleReward(monthlyTasks)})
             </Text>
           </View>
           <View style={styles.timerRow}>
@@ -271,10 +360,12 @@ export default function TasksScreen() {
               {countdown.days}Day(s) {formatCountdown(countdown.hours, countdown.minutes, countdown.seconds)}
             </Text>
           </View>
-          {MONTHLY_TASKS.map(task => renderTaskItem(task))}
+          {monthlyTasks.map(task => renderTaskItem(task))}
         </View>
 
         <View style={{ height: 40 }} />
+        </>
+        )}
       </ScrollView>
     </View>
   );
@@ -550,4 +641,21 @@ const styles = StyleSheet.create({
     color: '#999',
     fontSize: 11,
   },
+  rewardsPanel: {
+    margin: 16,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    gap: 12,
+  },
+  rewardsTitle: { color: '#9333EA', fontSize: 18, fontWeight: '700' },
+  rewardsAmount: { color: '#1A1A1A', fontSize: 36, fontWeight: '800' },
+  rewardsHint: { color: '#888', fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  walletLinkBtn: {
+    marginTop: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+  },
+  walletLinkText: { color: '#9333EA', fontSize: 14, fontWeight: '600' },
 });

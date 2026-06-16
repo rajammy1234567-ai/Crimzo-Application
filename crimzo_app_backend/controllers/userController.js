@@ -6,6 +6,72 @@ const LiveSession = require('../models/LiveSession');
 const Reel = require('../models/Reel');
 const GiftHistory = require('../models/GiftHistory');
 const { pushNotification } = require('../utils/notificationHelper');
+const { uploadToCloudinary } = require('../config/cloudinary');
+
+function resolveUserIdParam(param, fallbackId) {
+  if (!param || param === 'me') return String(fallbackId);
+  return String(param);
+}
+
+function formatUserRef(u) {
+  if (!u) return null;
+  return {
+    id: u._id?.toString() || u.id,
+    username: u.username,
+    avatar: u.avatar,
+    bio: u.bio,
+    is_online: !!u.is_online,
+  };
+}
+
+async function isMutualFollow(userA, userB) {
+  const [ab, ba] = await Promise.all([
+    Follow.exists({ follower_id: userA, following_id: userB }),
+    Follow.exists({ follower_id: userB, following_id: userA }),
+  ]);
+  return !!(ab && ba);
+}
+
+async function adjustMutualFriends(userA, userB, delta) {
+  if (!delta) return;
+  const mutual = await isMutualFollow(userA, userB);
+  if (mutual) {
+    await User.updateMany(
+      { _id: { $in: [userA, userB] } },
+      { $inc: { friends_count: delta } },
+    );
+  }
+}
+
+async function countMutualFriends(userId) {
+  const mongoose = require('mongoose');
+  const oid = new mongoose.Types.ObjectId(userId);
+  const agg = await Follow.aggregate([
+    { $match: { follower_id: oid } },
+    {
+      $lookup: {
+        from: 'follows',
+        let: { target: '$following_id' },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ['$follower_id', '$$target'] },
+                  { $eq: ['$following_id', oid] },
+                ],
+              },
+            },
+          },
+        ],
+        as: 'reverse',
+      },
+    },
+    { $match: { 'reverse.0': { $exists: true } } },
+    { $count: 'total' },
+  ]);
+  return agg[0]?.total || 0;
+}
 
 async function followStatusFor(viewerId, targetId) {
   const [following, outgoing, incoming] = await Promise.all([
@@ -58,17 +124,28 @@ exports.getFullProfile = async (req, res) => {
     }
 
     const liveCheck = await LiveSession.findOne({ user_id: userId, status: 'active' });
+    const friendsCount = await countMutualFriends(userId);
+    if (friendsCount !== (u.friends_count || 0)) {
+      await User.findByIdAndUpdate(userId, { friends_count: friendsCount });
+    }
 
     res.json({
       success: true,
       profile: {
         id: u.id, crimzo_id: u.crimzo_id, username: u.username, email: u.email,
         avatar: u.avatar, bio: u.bio, country: u.country,
+        gender: u.gender || '',
+        age: u.age || '',
+        language: u.language || 'English',
+        second_language: u.second_language || '',
+        tags: u.tags || '',
+        show_location: !!u.show_location,
+        push_notifications_enabled: u.push_notifications_enabled !== false,
         diamonds: u.diamonds, beans: u.beans,
         wallet_balance: u.wallet_balance || 0,
         followers_count: u.followers_count,
         following_count: u.following_count,
-        friends_count: u.friends_count,
+        friends_count: friendsCount,
         is_online: u.is_online, status: u.status,
         created_at: u.created_at,
         totalStreams,
@@ -111,9 +188,16 @@ exports.followUser = async (req, res) => {
 
     const existingFollow = await Follow.findOne({ follower_id: followerId, following_id: userId });
     if (existingFollow) {
+      const wasMutual = await isMutualFollow(followerId, userId);
       await Follow.deleteOne({ _id: existingFollow._id });
       await User.findByIdAndUpdate(followerId, { $inc: { following_count: -1 } });
       await User.findByIdAndUpdate(userId, { $inc: { followers_count: -1 } });
+      if (wasMutual) {
+        await User.updateMany(
+          { _id: { $in: [followerId, userId] } },
+          { $inc: { friends_count: -1 } },
+        );
+      }
       return res.json({ success: true, action: 'unfollowed', isFollowing: false, isRequested: false });
     }
 
@@ -176,6 +260,7 @@ exports.acceptFollowRequest = async (req, res) => {
       await Follow.create({ follower_id: request.requester_id, following_id: userId });
       await User.findByIdAndUpdate(request.requester_id, { $inc: { following_count: 1 } });
       await User.findByIdAndUpdate(userId, { $inc: { followers_count: 1 } });
+      await adjustMutualFriends(request.requester_id, userId, 1);
     }
 
     request.status = 'accepted';
@@ -311,7 +396,10 @@ exports.unblockUser = async (req, res) => {
 // Update profile
 exports.updateProfile = async (req, res) => {
   try {
-    const { username, bio, country, avatar } = req.body;
+    const {
+      username, bio, country, avatar, gender, age, language,
+      second_language, tags, show_location, push_notifications_enabled,
+    } = req.body;
     const userId = req.user.id;
 
     const update = {};
@@ -319,16 +407,57 @@ exports.updateProfile = async (req, res) => {
     if (bio !== undefined) update.bio = bio;
     if (country) update.country = country;
     if (avatar) update.avatar = avatar;
+    if (gender !== undefined) update.gender = gender;
+    if (age !== undefined) update.age = String(age);
+    if (language !== undefined) update.language = language;
+    if (second_language !== undefined) update.second_language = second_language;
+    if (tags !== undefined) update.tags = tags;
+    if (show_location !== undefined) update.show_location = !!show_location;
+    if (push_notifications_enabled !== undefined) {
+      update.push_notifications_enabled = !!push_notifications_enabled;
+    }
 
     if (Object.keys(update).length === 0) {
       return res.status(400).json({ error: 'No fields to update' });
     }
 
-    await User.findByIdAndUpdate(userId, update);
-    res.json({ success: true, message: 'Profile updated' });
+    const updated = await User.findByIdAndUpdate(userId, update, { new: true });
+    res.json({
+      success: true,
+      message: 'Profile updated',
+      profile: {
+        username: updated.username,
+        bio: updated.bio,
+        country: updated.country,
+        avatar: updated.avatar,
+        gender: updated.gender,
+        age: updated.age,
+        language: updated.language,
+        second_language: updated.second_language,
+        tags: updated.tags,
+        show_location: updated.show_location,
+        push_notifications_enabled: updated.push_notifications_enabled !== false,
+      },
+    });
   } catch (error) {
     console.error('Update profile error:', error);
     res.status(500).json({ error: 'Failed to update profile' });
+  }
+};
+
+exports.uploadAvatar = async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file?.buffer) {
+      return res.status(400).json({ error: 'Image file required' });
+    }
+    const uploadResult = await uploadToCloudinary(file.buffer, 'avatars', 'image');
+    const avatarUrl = uploadResult.secure_url;
+    await User.findByIdAndUpdate(req.user.id, { avatar: avatarUrl });
+    res.json({ success: true, avatar: avatarUrl });
+  } catch (error) {
+    console.error('Upload avatar error:', error);
+    res.status(500).json({ error: 'Failed to upload avatar' });
   }
 };
 
@@ -395,7 +524,7 @@ exports.searchUsers = async (req, res) => {
 // Get followers list
 exports.getFollowers = async (req, res) => {
   try {
-    const userId = req.params.userId || req.user.id;
+    const userId = resolveUserIdParam(req.params.userId, req.user.id);
     const currentUserId = req.user.id;
 
     const mongoose = require('mongoose');
@@ -405,19 +534,17 @@ exports.getFollowers = async (req, res) => {
 
     const follows = await Follow.find({ following_id: userId })
       .sort({ created_at: -1 })
-      .populate('follower_id', 'id username avatar bio is_online');
+      .populate('follower_id', 'username avatar bio is_online');
 
     const formatted = await Promise.all(follows.map(async (f) => {
       const follower = f.follower_id;
       if (!follower) return null;
-      const isFollowingBack = !!(await Follow.findOne({ follower_id: currentUserId, following_id: follower._id }));
+      const followerId = follower._id?.toString();
+      const status = await followStatusFor(currentUserId, followerId);
       return {
-        id: follower.id,
-        username: follower.username,
-        avatar: follower.avatar,
-        bio: follower.bio,
-        is_online: follower.is_online,
-        is_following: isFollowingBack
+        ...formatUserRef(follower),
+        is_following: status.isFollowing,
+        is_requested: status.isRequested,
       };
     }));
 
@@ -431,7 +558,8 @@ exports.getFollowers = async (req, res) => {
 // Get following list
 exports.getFollowing = async (req, res) => {
   try {
-    const userId = req.params.userId || req.user.id;
+    const userId = resolveUserIdParam(req.params.userId, req.user.id);
+    const currentUserId = req.user.id;
 
     const mongoose = require('mongoose');
     if (!mongoose.Types.ObjectId.isValid(userId)) {
@@ -440,24 +568,56 @@ exports.getFollowing = async (req, res) => {
 
     const follows = await Follow.find({ follower_id: userId })
       .sort({ created_at: -1 })
-      .populate('following_id', 'id username avatar bio is_online');
+      .populate('following_id', 'username avatar bio is_online');
 
-    const formatted = follows.map(f => {
+    const formatted = await Promise.all(follows.map(async (f) => {
       const u = f.following_id;
       if (!u) return null;
+      const targetId = u._id?.toString();
+      const status = await followStatusFor(currentUserId, targetId);
       return {
-        id: u.id,
-        username: u.username,
-        avatar: u.avatar,
-        bio: u.bio,
-        is_online: u.is_online,
-        is_following: true
+        ...formatUserRef(u),
+        is_following: status.isFollowing,
+        is_requested: status.isRequested,
       };
-    }).filter(Boolean);
+    }));
 
-    res.json({ success: true, following: formatted });
+    res.json({ success: true, following: formatted.filter(Boolean) });
   } catch (error) {
     console.error('Get following error:', error);
     res.status(500).json({ error: 'Failed to get following' });
+  }
+};
+
+// Mutual follows (friends)
+exports.getFriends = async (req, res) => {
+  try {
+    const userId = resolveUserIdParam(req.params.userId, req.user.id);
+    const mongoose = require('mongoose');
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.json({ success: true, friends: [] });
+    }
+
+    const oid = new mongoose.Types.ObjectId(userId);
+    const following = await Follow.find({ follower_id: oid }).select('following_id').lean();
+    const followingIds = following.map((f) => f.following_id);
+
+    const mutual = await Follow.find({
+      follower_id: { $in: followingIds },
+      following_id: oid,
+    })
+      .sort({ created_at: -1 })
+      .populate('follower_id', 'username avatar bio is_online')
+      .lean();
+
+    const friends = mutual
+      .map((row) => formatUserRef(row.follower_id))
+      .filter(Boolean)
+      .map((u) => ({ ...u, is_following: true, is_requested: false }));
+
+    res.json({ success: true, friends });
+  } catch (error) {
+    console.error('Get friends error:', error);
+    res.status(500).json({ error: 'Failed to get friends' });
   }
 };

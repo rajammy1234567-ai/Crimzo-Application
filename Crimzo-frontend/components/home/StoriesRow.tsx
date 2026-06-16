@@ -2,9 +2,10 @@ import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { normalizeStoryUserId } from '../../lib/storyUtils';
 
 interface StoryGroup {
-    user_id: number;
+    user_id: string | number | { _id?: string; id?: string };
     username: string;
     avatar: string | null;
     stories: any[];
@@ -12,7 +13,7 @@ interface StoryGroup {
 
 interface Props {
     storyGroups: StoryGroup[];
-    currentUserId: number;
+    currentUserId: string;
     currentUserAvatar: string | null;
     hasOwnStory: boolean;
     onAddStory: () => void;
@@ -24,7 +25,10 @@ const StoriesRow: React.FC<Props> = ({
     storyGroups, currentUserId, currentUserAvatar,
     hasOwnStory, onAddStory, onOpenStoryViewer, viewedUserIds,
 }) => {
-    const isViewed = (userId: number | string) => viewedUserIds?.has(String(userId)) ?? false;
+    const isViewed = (userId: unknown) => {
+        const key = normalizeStoryUserId(userId);
+        return key ? (viewedUserIds?.has(key) ?? false) : false;
+    };
 
     return (
         <ScrollView
@@ -81,11 +85,12 @@ const StoriesRow: React.FC<Props> = ({
 
             {/* Other stories */}
             {storyGroups.map((group, index) => {
-                if (group.user_id === currentUserId) return null;
-                const seen = isViewed(group.user_id);
+                const groupUserId = normalizeStoryUserId(group.user_id);
+                if (!groupUserId || groupUserId === currentUserId) return null;
+                const seen = isViewed(groupUserId);
                 return (
                     <TouchableOpacity
-                        key={group.user_id}
+                        key={groupUserId}
                         style={s.item}
                         onPress={() => onOpenStoryViewer(index)}
                         activeOpacity={0.7}

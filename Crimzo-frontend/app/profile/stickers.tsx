@@ -5,10 +5,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import axios from 'axios';
+import { apiGet } from '../../lib/apiClient';
 
 const { width } = Dimensions.get('window');
-import { API_URL } from '../../lib/apiClient';
 const CARD_SIZE = (width - 60) / 3;
 
 interface CollectedSticker {
@@ -38,14 +37,21 @@ export default function CollectedStickersScreen() {
     }, []);
 
     const fetchCollected = async () => {
+        if (!token) {
+            setLoading(false);
+            return;
+        }
         try {
-            const res = await axios.get(`${API_URL}/api/stickers/collected`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            if (res.data.success) {
-                setStickers(res.data.stickers || []);
-                setTotalGifts(res.data.totalGifts || 0);
-                setTotalBeans(res.data.totalBeans || 0);
+            const res = await apiGet<{
+                success?: boolean;
+                stickers?: CollectedSticker[];
+                totalGifts?: number;
+                totalBeans?: number;
+            }>('/api/stickers/collected', token);
+            if (res.success) {
+                setStickers(res.stickers || []);
+                setTotalGifts(res.totalGifts || 0);
+                setTotalBeans(res.totalBeans || 0);
             }
         } catch (error) {
             console.error('Fetch collected stickers error:', error);

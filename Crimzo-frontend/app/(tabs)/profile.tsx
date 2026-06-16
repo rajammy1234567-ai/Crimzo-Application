@@ -17,6 +17,8 @@ import {
   Platform,
   KeyboardAvoidingView,
   TextInput,
+  Share,
+  Clipboard,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
@@ -49,7 +51,9 @@ export default function ProfileScreen() {
 
   // Follow list
   const [listModalVisible, setListModalVisible] = useState(false);
-  const [listType, setListType] = useState<'followers' | 'following'>('followers');
+  const [listType, setListType] = useState<'followers' | 'following' | 'friends'>('followers');
+  const scrollRef = useRef<ScrollView>(null);
+  const reelsSectionY = useRef(0);
   const [listData, setListData] = useState<any[]>([]);
   const [listLoading, setListLoading] = useState(false);
 
@@ -175,13 +179,13 @@ export default function ProfileScreen() {
   };
 
   // ── Follow list ──
-  const openFollowList = async (type: 'followers' | 'following') => {
+  const openFollowList = async (type: 'followers' | 'following' | 'friends') => {
     setListType(type);
     setListModalVisible(true);
     setListLoading(true);
     try {
       const data = await apiGet<Record<string, any[]>>(
-        `/api/user/${type}/${user?.id}`,
+        `/api/user/${type}/me`,
         token,
       );
       setListData(data[type] || []);
@@ -196,20 +200,43 @@ export default function ProfileScreen() {
   const handleFollowFromList = async (targetUserId: string, index: number) => {
     if (!token) return;
     try {
-      const data = await apiPost<{ action?: string }>(
+      const data = await apiPost<{
+        action?: string;
+        isFollowing?: boolean;
+        isRequested?: boolean;
+      }>(
         '/api/user/follow',
         { userId: targetUserId },
         token,
       );
       setListData((prev) => {
         const updated = [...prev];
-        updated[index] = { ...updated[index], is_following: data.action === 'followed' };
+        updated[index] = {
+          ...updated[index],
+          is_following: data.isFollowing ?? data.action === 'followed',
+          is_requested: data.isRequested ?? data.action === 'requested',
+        };
         return updated;
       });
       fetchProfile();
     } catch (e) {
       console.error('Follow from list error:', e);
     }
+  };
+
+  const shareInvite = async () => {
+    const code = user?.crimzo_id || String(user?.id || '');
+    try {
+      await Share.share({
+        message: `Join me on Crimzo! Use my invite code: CRIMZO-${code}\nhttps://crimzo.app/invite/${code}`,
+      });
+    } catch (e) {
+      console.error('Share invite error:', e);
+    }
+  };
+
+  const scrollToReels = () => {
+    scrollRef.current?.scrollTo({ y: reelsSectionY.current, animated: true });
   };
 
   const openUserFromList = (targetId: string) => {
@@ -304,7 +331,7 @@ export default function ProfileScreen() {
         case 'My Tasks': router.push('/profile/tasks' as any); break;
         case 'Collected Stickers': router.push('/profile/stickers' as any); break;
         case 'My Invitation':
-          Alert.alert('Invite Friends', `Share your invite code!\n\nCode: CRIMZO-${user?.crimzo_id || user?.id || '000'}`);
+          shareInvite();
           break;
         case 'Settings': router.push('/profile/settings' as any); break;
         case 'Help & Support':
@@ -342,6 +369,7 @@ export default function ProfileScreen() {
       <StatusBar barStyle="light-content" />
 
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FF2D55" />}
         contentContainerStyle={{ paddingBottom: TAB_BAR_HEIGHT + 20 }}
@@ -386,9 +414,20 @@ export default function ProfileScreen() {
           <View style={s.nameSection}>
             <Text style={s.displayName}>{user?.username || 'User'}</Text>
             <View style={s.crimzoIdRow}>
-              <LinearGradient colors={['#FF2D55', '#FF6B8A']} style={s.crimzoIdBadge}>
-                <Text style={s.crimzoIdText}>ID: {user?.crimzo_id || 'Generating...'}</Text>
-              </LinearGradient>
+              <TouchableOpacity
+                onPress={() => {
+                  const id = user?.crimzo_id || String(user?.id || '');
+                  if (id) {
+                    Clipboard.setString(id);
+                    Alert.alert('Copied', 'Crimzo ID copied!');
+                  }
+                }}
+                activeOpacity={0.8}
+              >
+                <LinearGradient colors={['#FF2D55', '#FF6B8A']} style={s.crimzoIdBadge}>
+                  <Text style={s.crimzoIdText}>ID: {user?.crimzo_id || 'Generating...'}</Text>
+                </LinearGradient>
+              </TouchableOpacity>
               {user?.country ? (
                 <View style={s.countryBadge}>
                   <Text style={s.countryText}>📍 {user.country}</Text>
@@ -402,7 +441,7 @@ export default function ProfileScreen() {
         {/* ── Stats Cards ── */}
         <View style={s.statsContainer}>
           <View style={s.statsGrid}>
-            <TouchableOpacity style={s.statCard} activeOpacity={0.7}>
+            <TouchableOpacity style={s.statCard} onPress={scrollToReels} activeOpacity={0.7}>
               <Text style={s.statValue}>{myReels.length}</Text>
               <Text style={s.statLabel}>Posts</Text>
             </TouchableOpacity>
@@ -414,7 +453,7 @@ export default function ProfileScreen() {
               <Text style={s.statValue}>{formatNumber(user?.following_count)}</Text>
               <Text style={s.statLabel}>Following</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={s.statCard} activeOpacity={0.7}>
+            <TouchableOpacity style={s.statCard} onPress={() => openFollowList('friends')} activeOpacity={0.7}>
               <Text style={s.statValue}>{formatNumber(user?.friends_count)}</Text>
               <Text style={s.statLabel}>Friends</Text>
             </TouchableOpacity>
@@ -425,29 +464,37 @@ export default function ProfileScreen() {
         <View style={s.engagementRow}>
           <View style={s.engagementCard}>
             <View style={s.engagementInner}>
-              <View style={s.engagementItem}>
+              <TouchableOpacity style={s.engagementItem} onPress={scrollToReels} activeOpacity={0.7}>
                 <Ionicons name="heart" size={14} color="#FF2D55" />
                 <Text style={s.engagementValue}>{formatNumber(user?.totalLikes)}</Text>
                 <Text style={s.engagementLabel}>Likes</Text>
-              </View>
+              </TouchableOpacity>
               <View style={s.engagementDivider} />
-              <View style={s.engagementItem}>
+              <TouchableOpacity style={s.engagementItem} onPress={scrollToReels} activeOpacity={0.7}>
                 <Ionicons name="eye" size={14} color="#9333EA" />
                 <Text style={s.engagementValue}>{formatNumber(user?.totalViews)}</Text>
                 <Text style={s.engagementLabel}>Views</Text>
-              </View>
+              </TouchableOpacity>
               <View style={s.engagementDivider} />
-              <View style={s.engagementItem}>
+              <TouchableOpacity
+                style={s.engagementItem}
+                onPress={() => router.push('/profile/wallet' as any)}
+                activeOpacity={0.7}
+              >
                 <Text style={{ fontSize: 13 }}>💎</Text>
                 <Text style={s.engagementValue}>{formatNumber(user?.diamonds)}</Text>
                 <Text style={s.engagementLabel}>Diamonds</Text>
-              </View>
+              </TouchableOpacity>
               <View style={s.engagementDivider} />
-              <View style={s.engagementItem}>
+              <TouchableOpacity
+                style={s.engagementItem}
+                onPress={() => router.push('/profile/wallet' as any)}
+                activeOpacity={0.7}
+              >
                 <Text style={{ fontSize: 13 }}>🟡</Text>
                 <Text style={s.engagementValue}>{formatNumber(user?.beans)}</Text>
                 <Text style={s.engagementLabel}>Beans</Text>
-              </View>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -462,10 +509,17 @@ export default function ProfileScreen() {
             <Ionicons name="wallet-outline" size={16} color="#FFB347" style={{ marginRight: 6 }} />
             <Text style={s.walletBtnText}>Wallet</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={s.msgBtn} onPress={() => router.push('/profile/messages' as any)} activeOpacity={0.7}>
+            <Ionicons name="chatbubble-outline" size={16} color="#9333EA" style={{ marginRight: 6 }} />
+            <Text style={s.msgBtnText}>Messages</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Reels Grid ── */}
-        <View style={s.reelsHeader}>
+        <View
+          style={s.reelsHeader}
+          onLayout={(e) => { reelsSectionY.current = e.nativeEvent.layout.y; }}
+        >
           <View style={s.reelsTabActive}>
             <Ionicons name="grid-outline" size={22} color="#FFF" />
           </View>
@@ -480,6 +534,14 @@ export default function ProfileScreen() {
             <Ionicons name="camera-outline" size={48} color="rgba(255,255,255,0.15)" />
             <Text style={s.reelsEmptyTitle}>No Posts Yet</Text>
             <Text style={s.reelsEmptySub}>Upload your first reel!</Text>
+            <TouchableOpacity
+              style={s.uploadReelBtn}
+              onPress={() => router.push('/(tabs)/reels' as any)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add-circle-outline" size={18} color="#FFF" />
+              <Text style={s.uploadReelBtnText}>Create Reel</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <View style={s.reelsGrid}>
@@ -951,19 +1013,25 @@ const s = StyleSheet.create({
   },
 
   // ── Action buttons ──
-  actionRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginTop: 14, marginBottom: 14 },
+  actionRow: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 10, marginTop: 14, marginBottom: 14 },
   editBtn: {
-    flex: 1, flexDirection: 'row', backgroundColor: 'rgba(255,45,85,0.12)', paddingVertical: 11, borderRadius: 12,
+    flex: 1, minWidth: '30%', flexDirection: 'row', backgroundColor: 'rgba(255,45,85,0.12)', paddingVertical: 11, borderRadius: 12,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: 'rgba(255,45,85,0.25)',
   },
   editBtnText: { color: '#FF2D55', fontSize: 14, fontWeight: '700' },
   walletBtn: {
-    flex: 1, flexDirection: 'row', backgroundColor: 'rgba(255,179,71,0.1)', paddingVertical: 11, borderRadius: 12,
+    flex: 1, minWidth: '30%', flexDirection: 'row', backgroundColor: 'rgba(255,179,71,0.1)', paddingVertical: 11, borderRadius: 12,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: 'rgba(255,179,71,0.2)',
   },
   walletBtnText: { color: '#FFB347', fontSize: 14, fontWeight: '700' },
+  msgBtn: {
+    flex: 1, minWidth: '30%', flexDirection: 'row', backgroundColor: 'rgba(147,51,234,0.1)', paddingVertical: 11, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(147,51,234,0.2)',
+  },
+  msgBtnText: { color: '#9333EA', fontSize: 14, fontWeight: '700' },
 
   // ── Reels tab header ──
   reelsHeader: {
@@ -1013,6 +1081,17 @@ const s = StyleSheet.create({
   reelsEmpty: { alignItems: 'center', paddingVertical: 48 },
   reelsEmptyTitle: { color: 'rgba(255,255,255,0.5)', fontSize: 16, fontWeight: '700', marginTop: 12 },
   reelsEmptySub: { color: 'rgba(255,255,255,0.25)', fontSize: 13, marginTop: 4 },
+  uploadReelBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 20,
+    backgroundColor: '#FF2D55',
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: 24,
+  },
+  uploadReelBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
 
   // ── Hamburger menu ──
   menuBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
