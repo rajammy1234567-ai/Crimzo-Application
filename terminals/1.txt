@@ -1,0 +1,35 @@
+---
+pid: 7840
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "cd \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\crimzo_app_backend\"; npm start"
+started_at: 2026-06-15T09:57:32.914Z
+running_for_ms: 4420005  
+---
+
+> live-stream-backend@1.0.0 start
+> node server.js
+
+ℹ️  LOCAL MODE: Using local file storage for uploads (no Cloudinary needed for testing)
+   → Media files will be saved to ./uploads/ and served at /uploads/...
+   → For production later: sign up free at cloudinary.com and fill CLOUDINARY_* in .env
+✅ Using MongoDB Atlas (cloud)
+node:events:486
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use 0.0.0.0:5001
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at node:net:2206:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21)
+Emitted 'error' event on Server instance at:
+    at emitErrorNT (node:net:1976:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:89:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 5001
+}
+
+Node.js v24.13.0

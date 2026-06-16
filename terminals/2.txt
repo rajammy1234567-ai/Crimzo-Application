@@ -1,0 +1,17 @@
+---
+pid: 19212
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "cd \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-admin\"; npm run dev"
+started_at: 2026-06-15T12:30:16.619Z
+running_for_ms: 60125001 
+---
+
+> crimzo-admin@0.0.0 dev
+> vite
+
+Port 5173 is in use, trying another one...
+
+  VITE v7.3.1  ready in 725 ms
+
+  ➜  Local:   http://localhost:5174/
+  ➜  Network: use --host to expose
