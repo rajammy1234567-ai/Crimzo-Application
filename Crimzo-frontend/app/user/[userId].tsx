@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
+import { useVideoCall } from '../../contexts/VideoCallContext';
 import { apiGet, apiPost, resolveMediaUrl } from '../../lib/apiClient';
 import FollowListModal, { FollowUser } from '../../components/profile/FollowListModal';
 import { subscribe } from '../../lib/realtimeSync';
@@ -33,6 +34,7 @@ export default function UserProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user: me, token } = useAuth();
+  const { startCall } = useVideoCall();
 
   const [profile, setProfile] = useState<any>(null);
   const [reels, setReels] = useState<any[]>([]);
@@ -239,6 +241,12 @@ export default function UserProfileScreen() {
           >
             <Text style={s.messageText}>Message</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={s.videoCallBtn}
+            onPress={() => startCall(profile.id, profile.username, profile.avatar)}
+          >
+            <Ionicons name="videocam" size={20} color="#4CD964" />
+          </TouchableOpacity>
         </View>
 
         {profile.isLive && profile.liveSessionId && (
@@ -393,6 +401,16 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
   messageText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+  videoCallBtn: {
+    width: 44,
+    backgroundColor: 'rgba(76,217,100,0.15)',
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(76,217,100,0.3)',
+  },
   watchLiveBtn: {
     flexDirection: 'row',
     alignItems: 'center',

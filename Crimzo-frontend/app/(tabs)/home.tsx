@@ -201,7 +201,7 @@ export default function HomeScreen() {
 
       if (response.success) {
         fetchStories();
-        Alert.alert('✨ Story Uploaded!', 'Your story is now visible to everyone for 24 hours.');
+        Alert.alert('✨ Story Uploaded!', 'Your story is now visible to your followers for 24 hours.');
       }
     } catch (error: any) {
       console.error('Story upload error:', error);

@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const Story = require('../models/Story');
 const User = require('../models/User');
+const Follow = require('../models/Follow');
 const { uploadToCloudinary } = require('../config/cloudinary');
 
 const STORY_TTL_MS = 24 * 60 * 60 * 1000;
@@ -148,11 +149,19 @@ exports.getAllStories = async (req, res) => {
     }
 
     const userId = req.user.id;
-    const result = [];
     const userKey = String(userId);
+
+    const followingRows = await Follow.find({ follower_id: userId })
+      .select('following_id')
+      .lean();
+    const followingIds = new Set(followingRows.map((f) => String(f.following_id)));
+
+    const result = [];
     if (grouped[userKey]) result.push(grouped[userKey]);
     for (const key of Object.keys(grouped)) {
-      if (key !== userKey) result.push(grouped[key]);
+      if (key !== userKey && followingIds.has(key)) {
+        result.push(grouped[key]);
+      }
     }
 
     res.json({ success: true, storyGroups: result });

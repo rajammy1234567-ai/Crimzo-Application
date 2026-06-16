@@ -53,7 +53,7 @@ export default function AddMoneyModal({
           <View style={s.handle} />
           <Text style={s.title}>Add Money to Wallet</Text>
           <Text style={s.sub}>
-            Verified bank/UPI se paise cut hoke wallet mein aayenge.
+            UPI, Card ya Net Banking se Razorpay par secure payment karo.
           </Text>
 
           {linkedBank?.status === 'verified' ? (
@@ -64,9 +64,7 @@ export default function AddMoneyModal({
                 color="#4CD964"
               />
               <View style={{ flex: 1 }}>
-                <Text style={s.bankLabel}>
-                  {linkedBank.type === 'upi' ? 'Pay via' : 'Debit from'}
-                </Text>
+                <Text style={s.bankLabel}>Withdraw ke liye linked</Text>
                 <Text style={s.bankVal}>{linkedBank.display}</Text>
               </View>
               {onLinkBank ? (
@@ -75,13 +73,7 @@ export default function AddMoneyModal({
                 </TouchableOpacity>
               ) : null}
             </View>
-          ) : (
-            <TouchableOpacity style={s.linkBankBanner} onPress={onLinkBank} activeOpacity={0.85}>
-              <Ionicons name="shield-outline" size={22} color="#FF2D55" />
-              <Text style={s.linkBankText}>Pehle Bank/UPI verify karo (OTP)</Text>
-              <Ionicons name="chevron-forward" size={18} color="#FF2D55" />
-            </TouchableOpacity>
-          )}
+          ) : null}
 
           <View style={s.balanceRow}>
             <Ionicons name="wallet-outline" size={20} color="#4CD964" />
@@ -119,8 +111,8 @@ export default function AddMoneyModal({
           </View>
 
           <TouchableOpacity
-            onPress={linkedBank?.status === 'verified' ? handleAdd : onLinkBank}
-            disabled={busy || (linkedBank?.status === 'verified' ? (!selected && !custom) : false)}
+            onPress={handleAdd}
+            disabled={busy || (!selected && !custom)}
             activeOpacity={0.85}
           >
             <LinearGradient
@@ -133,9 +125,7 @@ export default function AddMoneyModal({
                 <>
                   <Ionicons name="add-circle" size={22} color="#FFF" />
                   <Text style={s.addBtnText}>
-                    {linkedBank?.status === 'verified'
-                      ? `Add ₹${displayAmount.toLocaleString('en-IN')} to Wallet`
-                      : 'Verify Bank / UPI'}
+                    {`Add ₹${displayAmount.toLocaleString('en-IN')} via Razorpay`}
                   </Text>
                 </>
               )}

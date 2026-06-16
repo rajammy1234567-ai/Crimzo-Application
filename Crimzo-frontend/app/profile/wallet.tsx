@@ -22,6 +22,7 @@ import { useWallet } from '../../lib/useWallet';
 import RazorpayCheckout from '../../components/payments/RazorpayCheckout';
 import AddMoneyModal from '../../components/payments/AddMoneyModal';
 import SetupPaymentModal from '../../components/payments/SetupPaymentModal';
+import WithdrawModal from '../../components/payments/WithdrawModal';
 
 const { width: SW } = Dimensions.get('window');
 const CARD_W = (SW - 48 - 10) / 2;
@@ -78,6 +79,7 @@ export default function WalletScreen() {
   } = useWallet();
   const [showAddMoney, setShowAddMoney] = useState(false);
   const [showSetupPayment, setShowSetupPayment] = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
   const walletBalance = user?.wallet_balance ?? 0;
 
   const [curTab, setCurTab] = useState<'diamonds' | 'beans'>('diamonds');
@@ -171,7 +173,7 @@ export default function WalletScreen() {
         {/* INR wallet */}
         <TouchableOpacity
           style={s.inrBal}
-          onPress={() => (hasVerifiedPayment ? setShowAddMoney(true) : setShowSetupPayment(true))}
+          onPress={() => setShowAddMoney(true)}
           activeOpacity={0.85}
         >
           <Ionicons name="wallet-outline" size={18} color="#FFF" />
@@ -230,24 +232,7 @@ export default function WalletScreen() {
             <>
               <TouchableOpacity
                 style={s.pay}
-                onPress={() => {
-                  if (!hasVerifiedPayment) { setShowSetupPayment(true); return; }
-                  if (walletBalance < 500) {
-                    Alert.alert('Minimum ₹500', 'Withdraw ke liye wallet mein kam se kam ₹500 hone chahiye.');
-                    return;
-                  }
-                  Alert.alert(
-                    'Withdraw to Bank/UPI',
-                    `₹${walletBalance.toLocaleString('en-IN')} available\nMinimum: ₹500\nPayout: ${paymentMethod?.display || 'verified account'}`,
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      { text: 'Withdraw ₹500', onPress: () => withdrawMoney(500) },
-                      walletBalance >= 1000
-                        ? { text: `Withdraw All`, onPress: () => withdrawMoney(Math.floor(walletBalance)) }
-                        : undefined,
-                    ].filter(Boolean) as { text: string; onPress?: () => void; style?: 'cancel' | 'default' | 'destructive' }[],
-                  );
-                }}
+                onPress={() => setShowWithdraw(true)}
                 activeOpacity={0.7}
               >
                 <View style={s.payL}>
@@ -271,21 +256,17 @@ export default function WalletScreen() {
 
               <TouchableOpacity
                 style={s.pay}
-                onPress={() => (hasVerifiedPayment ? setShowAddMoney(true) : setShowSetupPayment(true))}
+                onPress={() => setShowAddMoney(true)}
                 activeOpacity={0.7}
               >
                 <View style={s.payL}>
                   <View style={[s.payIco, { backgroundColor: 'rgba(76,217,100,0.15)' }]}>
-                    <Ionicons name={hasVerifiedPayment ? 'wallet' : 'shield-checkmark'} size={18} color="#4CD964" />
+                    <Ionicons name="wallet" size={18} color="#4CD964" />
                   </View>
                   <View>
-                    <Text style={s.payLbl}>
-                      {hasVerifiedPayment ? 'Add Money to Wallet' : 'Verify Bank / UPI'}
-                    </Text>
+                    <Text style={s.payLbl}>Add Money to Wallet</Text>
                     <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>
-                      {hasVerifiedPayment && paymentMethod
-                        ? paymentMethod.display
-                        : 'Step 1 — OTP verification required'}
+                      Razorpay — UPI / Card / Net Banking
                     </Text>
                   </View>
                 </View>
@@ -476,6 +457,19 @@ export default function WalletScreen() {
         checkout={topupCheckout}
         onSuccess={handleTopupSuccess}
         onCancel={cancelTopup}
+      />
+
+      <WithdrawModal
+        visible={showWithdraw}
+        onClose={() => setShowWithdraw(false)}
+        onWithdraw={async (amt) => {
+          setShowWithdraw(false);
+          await withdrawMoney(amt);
+        }}
+        onSetupPayment={() => { setShowWithdraw(false); setShowSetupPayment(true); }}
+        busy={busy}
+        balance={walletBalance}
+        paymentMethod={paymentMethod}
       />
     </View>
   );

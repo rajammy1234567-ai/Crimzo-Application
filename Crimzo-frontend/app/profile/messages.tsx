@@ -20,6 +20,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { apiGet, apiPost, ApiError } from '../../lib/apiClient';
+import { useVideoCall } from '../../contexts/VideoCallContext';
 
 type Message = {
   id: number;
@@ -48,6 +49,7 @@ type Conversation = {
 
 export default function MessagesScreen() {
   const { user, token, updateUser } = useAuth();
+  const { startCall } = useVideoCall();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -198,6 +200,12 @@ export default function MessagesScreen() {
               <Text style={styles.onlineText}>Online</Text>
             )}
           </View>
+          <TouchableOpacity
+            onPress={() => startCall(selectedChat.user_id, selectedChat.username, selectedChat.avatar)}
+            style={styles.giftHeaderBtn}
+          >
+            <Ionicons name="videocam" size={22} color="#4CD964" />
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => setShowGift(true)} style={styles.giftHeaderBtn}>
             <Ionicons name="diamond" size={22} color="#FFD700" />
           </TouchableOpacity>

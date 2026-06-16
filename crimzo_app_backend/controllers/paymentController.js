@@ -380,27 +380,25 @@ exports.createTopupOrder = async (req, res) => {
       .lean();
 
     const linked = formatPaymentMethod(user?.linked_bank);
-    if (!isPaymentVerified(user?.linked_bank)) {
-      return res.status(400).json({
-        error: 'Verify your bank or UPI first',
-        code: 'PAYMENT_NOT_VERIFIED',
-      });
-    }
+    const hasVerified = isPaymentVerified(user?.linked_bank);
+    const payType = hasVerified ? (user?.linked_bank?.type || 'bank') : 'card';
 
-    const payType = user?.linked_bank?.type || 'bank';
-    const debitLabel = payType === 'upi'
-      ? `Pay ₹${amountInr.toLocaleString('en-IN')} via UPI (${user.linked_bank.upi_id})`
-      : payType === 'card'
-        ? `Pay ₹${amountInr.toLocaleString('en-IN')} via Card`
-        : `Debit ₹${amountInr.toLocaleString('en-IN')} from ${linked.bank_name} •••• ${linked.account_last4}`;
+    const debitLabel = hasVerified
+      ? (payType === 'upi'
+        ? `Pay ₹${amountInr.toLocaleString('en-IN')} via UPI (${user.linked_bank.upi_id})`
+        : payType === 'card'
+          ? `Pay ₹${amountInr.toLocaleString('en-IN')} via Card`
+          : `Debit ₹${amountInr.toLocaleString('en-IN')} from ${linked?.bank_name} •••• ${linked?.account_last4}`)
+      : `Add ₹${amountInr.toLocaleString('en-IN')} to Crimzo Wallet`;
+
     const checkoutUser = {
       email: user?.email || '',
-      name: linked.account_holder_name || user?.username || 'Crimzo User',
+      name: (hasVerified && linked?.account_holder_name) || user?.username || 'Crimzo User',
     };
     const paymentPrefs = {
       method: payType === 'upi' ? 'upi' : payType === 'card' ? 'card' : 'netbanking',
-      upi_vpa: payType === 'upi' ? user.linked_bank.upi_id : null,
-      bank_code: payType === 'bank' ? (user?.linked_bank?.razorpay_bank_code || null) : null,
+      upi_vpa: hasVerified && payType === 'upi' ? user.linked_bank.upi_id : null,
+      bank_code: hasVerified && payType === 'bank' ? (user?.linked_bank?.razorpay_bank_code || null) : null,
       showAllMethods: true,
     };
 

@@ -193,12 +193,15 @@ export function useWallet() {
 
   const confirmPayment = (amountInr: number, method: PaymentMethodInfo) =>
     new Promise<boolean>((resolve) => {
-      const via = method.type === 'upi'
-        ? `UPI (${method.upi_id})`
-        : `${method.bank_name} •••• ${method.account_last4}`;
+      const via = method.display
+        || (method.type === 'upi'
+          ? `UPI (${method.upi_id})`
+          : method.bank_name
+            ? `${method.bank_name} •••• ${method.account_last4}`
+            : 'Razorpay (UPI / Card / Net Banking)');
       Alert.alert(
         'Confirm Payment',
-        `₹${amountInr.toLocaleString('en-IN')} ${method.type === 'upi' ? 'pay via' : 'debit from'}\n${via}\n\nWallet mein add hoga. Proceed?`,
+        `₹${amountInr.toLocaleString('en-IN')} — ${via}\n\nWallet mein add hoga. Proceed?`,
         [
           { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
           { text: 'Yes, Pay', onPress: () => resolve(true) },
@@ -212,14 +215,6 @@ export function useWallet() {
       return { needsSetup: false };
     }
 
-    if (isPendingVerification) {
-      return { needsSetup: true, needsOtp: true };
-    }
-
-    if (!hasVerifiedPayment || !paymentMethod) {
-      return { needsSetup: true };
-    }
-
     setBusy(true);
     try {
       const data = await apiPost<TopupCheckoutData & { success?: boolean; code?: string }>(
@@ -229,7 +224,10 @@ export function useWallet() {
       );
 
       const method = data.linkedBank || paymentMethod;
-      const confirmed = await confirmPayment(amountInr, method);
+      const confirmed = await confirmPayment(
+        amountInr,
+        method || { type: 'card', display: 'Razorpay Checkout', status: 'verified' },
+      );
       if (!confirmed) return { needsSetup: false };
 
       if (data.mode === 'dev_mock') {

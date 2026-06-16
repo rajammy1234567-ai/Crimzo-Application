@@ -54,11 +54,20 @@ app.get("/", (req, res) => {
 app.get("/api/health", (req, res) => {
   const dbState = mongoose.connection.readyState; // 0=disconnected,1=connected,2=connecting,3=disconnecting
   const states = ['disconnected', 'connected', 'connecting', 'disconnecting'];
+  const { hasRealCloudinary } = require('./config/cloudinary');
+  const { getRazorpayStatus } = require('./config/razorpay');
+  const rz = getRazorpayStatus();
   res.json({
     status: "ok",
     message: "Crimzo API is running",
     db: states[dbState] || 'unknown',
     port: PORT,
+    services: {
+      cloudinary: hasRealCloudinary,
+      razorpay: rz.configured,
+      razorpayMode: rz.mode,
+      agora: !!(process.env.AGORA_APP_ID && process.env.AGORA_APP_CERTIFICATE),
+    },
   });
 });
 

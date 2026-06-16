@@ -273,6 +273,41 @@ module.exports = (io) => {
       });
     });
 
+    // ── 1-on-1 video call signaling ──
+    socket.on('video_call_invite', (data) => {
+      const { calleeId, callerId, callerName, callerAvatar, channelName } = data || {};
+      if (!calleeId || !callerId || !channelName) return;
+      io.to(userRoom(calleeId)).emit('video_call_incoming', {
+        callerId,
+        callerName: callerName || 'Someone',
+        callerAvatar: callerAvatar || null,
+        channelName,
+      });
+      console.log(`[VideoCall] ${callerName} → user ${calleeId} channel=${channelName}`);
+    });
+
+    socket.on('video_call_accept', (data) => {
+      const { callerId, calleeId, calleeName, channelName } = data || {};
+      if (!callerId || !channelName) return;
+      io.to(userRoom(callerId)).emit('video_call_accepted', {
+        calleeId,
+        calleeName: calleeName || 'User',
+        channelName,
+      });
+    });
+
+    socket.on('video_call_reject', (data) => {
+      const { callerId, reason } = data || {};
+      if (!callerId) return;
+      io.to(userRoom(callerId)).emit('video_call_rejected', { reason: reason || 'declined' });
+    });
+
+    socket.on('video_call_end', (data) => {
+      const { otherUserId, channelName } = data || {};
+      if (!otherUserId) return;
+      io.to(userRoom(otherUserId)).emit('video_call_ended', { channelName });
+    });
+
     socket.on('disconnect', () => {
       console.log('User disconnected:', socket.id);
     });

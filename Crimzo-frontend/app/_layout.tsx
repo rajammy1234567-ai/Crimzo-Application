@@ -2,12 +2,14 @@ import React from 'react';
 import { Stack } from 'expo-router';
 import { AuthProvider } from '../contexts/AuthContext';
 import { RealtimeProvider } from '../contexts/RealtimeProvider';
+import { VideoCallProvider } from '../contexts/VideoCallContext';
 import { StatusBar } from 'expo-status-bar';
 
 export default function RootLayout() {
   return (
     <AuthProvider>
       <RealtimeProvider>
+      <VideoCallProvider>
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
@@ -39,7 +41,12 @@ export default function RootLayout() {
         <Stack.Screen name="profile/wallet" />
         <Stack.Screen name="profile/stickers" />
         <Stack.Screen name="profile/tasks" />
+        <Stack.Screen
+          name="call/index"
+          options={{ presentation: 'fullScreenModal' }}
+        />
       </Stack>
+      </VideoCallProvider>
       </RealtimeProvider>
     </AuthProvider>
   );

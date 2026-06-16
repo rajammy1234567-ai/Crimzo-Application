@@ -13,6 +13,7 @@ import { View, Text } from 'react-native';
 
 /* ── Enums ── */
 export const ChannelProfileType = {
+  ChannelProfileCommunication: 0,
   ChannelProfileLiveBroadcasting: 1,
 } as const;
 

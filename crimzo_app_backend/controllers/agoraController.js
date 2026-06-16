@@ -1,5 +1,61 @@
 const { RtcTokenBuilder, RtcRole } = require('agora-access-token');
 
+function buildAgoraUid(userId) {
+  const uidStr = String(userId).replace(/[^0-9]/g, '');
+  const parsed = parseInt(uidStr.slice(-9) || '0', 10);
+  if (parsed > 0) return parsed;
+  return (Date.now() % 1000000) + 10000;
+}
+
+function requireAgoraCreds(res) {
+  const appId = process.env.AGORA_APP_ID;
+  const appCertificate = process.env.AGORA_APP_CERTIFICATE;
+  if (!appId || !appCertificate) {
+    res.status(503).json({ error: 'Agora not configured. Set AGORA_APP_ID and AGORA_APP_CERTIFICATE in .env' });
+    return null;
+  }
+  return { appId, appCertificate };
+}
+
+/** 1-on-1 video call token (Communication channel — both users publish) */
+exports.generateCallToken = async (req, res) => {
+  try {
+    const { channelName } = req.body;
+    if (!channelName || !String(channelName).startsWith('vc_')) {
+      return res.status(400).json({ error: 'Valid call channel name required' });
+    }
+
+    const creds = requireAgoraCreds(res);
+    if (!creds) return;
+
+    const uid = buildAgoraUid(req.user.id);
+    const expirationTimeInSeconds = 3600;
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
+
+    const token = RtcTokenBuilder.buildTokenWithUid(
+      creds.appId,
+      creds.appCertificate,
+      channelName,
+      uid,
+      RtcRole.PUBLISHER,
+      privilegeExpiredTs,
+    );
+
+    res.json({
+      success: true,
+      token,
+      channelName,
+      uid,
+      appId: creds.appId,
+      mode: 'communication',
+    });
+  } catch (error) {
+    console.error('Call token generation error:', error);
+    res.status(500).json({ error: 'Failed to generate call token' });
+  }
+};
+
 // Generate Agora token
 exports.generateToken = async (req, res) => {
   try {
