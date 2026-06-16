@@ -38,6 +38,8 @@ export default function RootLayout() {
         <Stack.Screen name="profile/edit" />
         <Stack.Screen name="profile/messages" />
         <Stack.Screen name="profile/settings" />
+        <Stack.Screen name="profile/notifications" />
+        <Stack.Screen name="profile/blacklist" />
         <Stack.Screen name="profile/wallet" />
         <Stack.Screen name="profile/stickers" />
         <Stack.Screen name="profile/tasks" />

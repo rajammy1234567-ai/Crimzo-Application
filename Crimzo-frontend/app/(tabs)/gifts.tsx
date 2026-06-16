@@ -29,12 +29,13 @@ export default function GiftsScreen() {
   const { user } = useAuth();
   const {
     busy,
-    topupCheckout,
+    checkout,
     paymentMethod,
     hasVerifiedPayment,
     isPendingVerification,
     addMoney,
     buyWithWallet,
+    buyWithRazorpay,
     setupPaymentMethod,
     verifyPaymentOtp,
     resendPaymentOtp,
@@ -81,19 +82,26 @@ export default function GiftsScreen() {
     setSelPkg(pkg.id);
     Alert.alert(
       'Buy Diamonds',
-      `${fmt(pkg.diamonds)} Diamonds for ${price(pkg.price)}\n\nPaid from your wallet balance (₹${walletBalance.toLocaleString('en-IN')})`,
+      `${fmt(pkg.diamonds)} Diamonds for ${price(pkg.price)}\n\nPay via Razorpay or use wallet balance.`,
       [
         { text: 'Cancel', style: 'cancel', onPress: () => setSelPkg(null) },
+        {
+          text: 'Pay via Razorpay',
+          onPress: async () => {
+            setSelPkg(null);
+            await buyWithRazorpay(pkg.id, 'diamonds');
+          },
+        },
         canAfford
           ? {
-              text: 'Buy Now',
+              text: 'Use Wallet',
               onPress: async () => {
                 setSelPkg(null);
                 await buyWithWallet(pkg.id, 'diamonds');
               },
             }
           : {
-              text: 'Add Money First',
+              text: 'Add Money',
               onPress: () => {
                 setSelPkg(null);
                 setShowAddMoney(true);
@@ -104,10 +112,6 @@ export default function GiftsScreen() {
   };
 
   const openAddMoney = () => {
-    if (!hasVerifiedPayment || isPendingVerification) {
-      setShowSetupPayment(true);
-      return;
-    }
     setShowAddMoney(true);
   };
 
@@ -216,8 +220,8 @@ export default function GiftsScreen() {
 
         <View style={s.flowBox}>
           <Text style={s.flowTitle}>How it works</Text>
-          <Text style={s.flowStep}>① Link bank → debit to add wallet balance</Text>
-          <Text style={s.flowStep}>② Buy Diamonds — deducted from wallet balance</Text>
+          <Text style={s.flowStep}>① Add Money — Razorpay (UPI / Card / Net Banking)</Text>
+          <Text style={s.flowStep}>② Buy Diamonds — Pay via Razorpay ya wallet balance se</Text>
           <Text style={s.flowStep}>③ Send gifts — use diamonds in live & PK</Text>
         </View>
 
@@ -249,7 +253,7 @@ export default function GiftsScreen() {
       />
 
       <RazorpayCheckout
-        checkout={topupCheckout}
+        checkout={checkout}
         onSuccess={handleTopupSuccess}
         onCancel={cancelTopup}
       />

@@ -17,6 +17,7 @@ import {
   GamingSection,
 } from '../../components/home';
 import { subscribe } from '../../lib/realtimeSync';
+import { useNotifications } from '../../lib/useNotifications';
 
 export default function HomeScreen() {
   const { user, token, isGuest } = useAuth();
@@ -33,7 +34,8 @@ export default function HomeScreen() {
   const [showStoryViewer, setShowStoryViewer] = useState(false);
   const [storyViewerIndex, setStoryViewerIndex] = useState(0);
   const [uploadingStory, setUploadingStory] = useState(false);
-  const [viewedUserIds, setViewedUserIds] = useState<Set<number>>(new Set());
+  const [viewedUserIds, setViewedUserIds] = useState<Set<string>>(new Set());
+  const { unreadCount, refreshUnreadCount } = useNotifications();
 
   const resetOverlays = useCallback(() => {
     setUploadingStory(false);
@@ -69,7 +71,8 @@ export default function HomeScreen() {
       fetchLiveUsers();
       fetchStories();
       loadViewedStories();
-    }, [token])
+      refreshUnreadCount();
+    }, [token, refreshUnreadCount])
   );
 
   // ── Viewed stories tracking ──
@@ -77,20 +80,21 @@ export default function HomeScreen() {
     try {
       const stored = await AsyncStorage.getItem('viewed_story_users');
       if (stored) {
-        const parsed = JSON.parse(stored);
-        setViewedUserIds(new Set(parsed));
+        const parsed = JSON.parse(stored) as (string | number)[];
+        setViewedUserIds(new Set(parsed.map((id) => String(id))));
       }
     } catch (e) { }
   };
 
-  const markStoryViewed = async (userId: number) => {
-    setViewedUserIds(prev => {
+  const markStoryViewed = useCallback((userId: string | number) => {
+    const key = String(userId);
+    setViewedUserIds((prev) => {
       const next = new Set(prev);
-      next.add(userId);
+      next.add(key);
       AsyncStorage.setItem('viewed_story_users', JSON.stringify([...next]));
       return next;
     });
-  };
+  }, []);
 
   // ── Data fetching ──
   const fetchLiveUsers = async () => {
@@ -106,8 +110,17 @@ export default function HomeScreen() {
   const fetchStories = async () => {
     if (!token) return;
     try {
-      const res = await apiGet<{ storyGroups?: unknown[] }>('/api/stories', token);
-      setStoryGroups(res.storyGroups || []);
+      const res = await apiGet<{ storyGroups?: { user_id: string | number }[] }>('/api/stories', token);
+      const groups = res.storyGroups || [];
+      setStoryGroups(groups);
+      setViewedUserIds((prev) => {
+        const active = new Set(groups.map((g) => String(g.user_id)));
+        const next = new Set([...prev].filter((id) => active.has(id)));
+        if (next.size !== prev.size) {
+          AsyncStorage.setItem('viewed_story_users', JSON.stringify([...next]));
+        }
+        return next;
+      });
     } catch (error) {
       console.error('Fetch stories error:', error);
     }
@@ -241,7 +254,9 @@ export default function HomeScreen() {
       <HomeHeader
         username={user?.username || ''}
         onlineCount={onlineCount}
+        notificationCount={unreadCount}
         onSearch={() => router.push('/search' as any)}
+        onNotification={() => router.push('/profile/notifications' as any)}
       />
 
       <StoriesRow

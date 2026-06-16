@@ -77,7 +77,7 @@ export default function StoryViewer({ visible, storyGroups, initialGroupIndex, c
 
     const currentGroup = storyGroups[groupIndex];
     const currentStory = currentGroup?.stories?.[storyIndex];
-    const isOwn = currentGroup?.user_id === currentUserId;
+    const isOwn = String(currentGroup?.user_id) === String(currentUserId);
 
     // Reset when opening or changing initial group
     useEffect(() => {

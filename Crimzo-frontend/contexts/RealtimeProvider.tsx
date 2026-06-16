@@ -55,6 +55,20 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       publish('live_streams_updated');
     });
 
+    socket.on('new_notification', (data: {
+      title?: string;
+      body?: string;
+      type?: string;
+    }) => {
+      publish('notifications_updated', data);
+      if (data?.type === 'follow_request') {
+        Alert.alert(
+          data.title || 'New notification',
+          data.body || 'You have a new follow request',
+        );
+      }
+    });
+
     socketRef.current = socket;
 
     return () => {

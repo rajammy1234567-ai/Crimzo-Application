@@ -33,6 +33,8 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 // We will calculate TAB_BAR_HEIGHT and REEL_HEIGHT dynamically inside the component hook
 // based on safe area insets to accurately match the float offset in _layout.tsx.
 
+type FeedMode = 'foryou' | 'following';
+
 type Reel = {
   id: string;
   user_id: string;
@@ -45,6 +47,7 @@ type Reel = {
   avatar: string | null;
   is_liked: boolean;
   is_following: boolean;
+  is_requested?: boolean;
   created_at: string;
 };
 
@@ -74,7 +77,7 @@ function ReelItem({
   token: string | null;
   currentUserId: string | undefined;
   onLike: (reelId: string) => void;
-  onFollow: (userId: string) => void;
+  onFollow: (userId: string) => Promise<void>;
   onOpenComments: (reelId: string) => void;
   onDeleteReel?: (reelId: string) => void;
   onEditReel?: (reelId: string, currentCaption: string) => void;
@@ -89,6 +92,8 @@ function ReelItem({
   const [liked, setLiked] = useState(item.is_liked);
   const [likesCount, setLikesCount] = useState(item.likes_count);
   const [following, setFollowing] = useState(item.is_following);
+  const [requested, setRequested] = useState(!!item.is_requested);
+  const [followBusy, setFollowBusy] = useState(false);
   const heartScale = useRef(new Animated.Value(1)).current;
   const doubleTapRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bigHeartOpacity = useRef(new Animated.Value(0)).current;
@@ -112,7 +117,8 @@ function ReelItem({
     setLiked(item.is_liked);
     setLikesCount(item.likes_count);
     setFollowing(item.is_following);
-  }, [item.is_liked, item.likes_count, item.is_following]);
+    setRequested(!!item.is_requested);
+  }, [item.is_liked, item.likes_count, item.is_following, item.is_requested]);
 
   const animateHeart = () => {
     Animated.sequence([
@@ -166,10 +172,17 @@ function ReelItem({
     }
   };
 
-  const handleFollow = () => {
-    setFollowing(!following);
-    onFollow(item.user_id);
+  const handleFollow = async () => {
+    if (followBusy) return;
+    setFollowBusy(true);
+    try {
+      await onFollow(item.user_id);
+    } finally {
+      setFollowBusy(false);
+    }
   };
+
+  const followLabel = following ? 'Following' : requested ? 'Requested' : 'Follow';
 
   const handleShare = async () => {
     try {
@@ -293,12 +306,23 @@ function ReelItem({
           <Text style={styles.usernameText}>{item.username}</Text>
           {!isOwnReel && (
             <TouchableOpacity
-              style={[styles.followBtn, following && styles.followingBtn]}
+              style={[
+                styles.followBtn,
+                (following || requested) && styles.followingBtn,
+                requested && !following && styles.requestedBtn,
+              ]}
               onPress={handleFollow}
               activeOpacity={0.7}
+              disabled={followBusy}
             >
-              <Text style={[styles.followBtnText, following && styles.followingBtnText]}>
-                {following ? 'Following' : 'Follow'}
+              <Text
+                style={[
+                  styles.followBtnText,
+                  (following || requested) && styles.followingBtnText,
+                  requested && !following && styles.requestedBtnText,
+                ]}
+              >
+                {followLabel}
               </Text>
             </TouchableOpacity>
           )}
@@ -491,6 +515,7 @@ export default function ReelsScreen() {
   const TAB_BAR_HEIGHT = 54 + BOTTOM_OFFSET;
   const REEL_HEIGHT = SCREEN_HEIGHT - TAB_BAR_HEIGHT;
 
+  const [feedMode, setFeedMode] = useState<FeedMode>('foryou');
   const [reels, setReels] = useState<Reel[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -512,11 +537,11 @@ export default function ReelsScreen() {
   const [editingCaption, setEditingCaption] = useState('');
   const recordedViewsRef = useRef<Set<string>>(new Set());
 
-  const fetchReels = useCallback(async () => {
+  const fetchReels = useCallback(async (mode: FeedMode) => {
     if (!token) { setLoading(false); setRefreshing(false); return; }
     try {
       const data = await apiGet<{ success?: boolean; reels?: Reel[] }>(
-        '/api/reels/feed?limit=50',
+        `/api/reels/feed?limit=50&mode=${mode}`,
         token,
       );
       if (data.success && Array.isArray(data.reels)) {
@@ -527,6 +552,7 @@ export default function ReelsScreen() {
             avatar: reel.avatar ? resolveMediaUrl(reel.avatar) : reel.avatar,
           })),
         );
+        setActiveIndex(0);
       }
     } catch (e) {
       console.error('Fetch reels error:', e);
@@ -537,8 +563,13 @@ export default function ReelsScreen() {
   }, [token]);
 
   useEffect(() => {
-    fetchReels();
-  }, [fetchReels]);
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    fetchReels(feedMode);
+  }, [token, feedMode, fetchReels]);
 
   useEffect(() => {
     return subscribe('reel_deleted', (reelId) => {
@@ -551,7 +582,7 @@ export default function ReelsScreen() {
   useFocusEffect(
     useCallback(() => {
       setScreenFocused(true);
-      fetchReels();
+      fetchReels(feedMode);
       return () => {
         setScreenFocused(false);
         setCommentsVisible(false);
@@ -561,7 +592,7 @@ export default function ReelsScreen() {
         setUploading(false);
         setUploadAsset(null);
       };
-    }, [fetchReels])
+    }, [fetchReels, feedMode])
   );
 
   const handleLike = async (reelId: string) => {
@@ -576,10 +607,30 @@ export default function ReelsScreen() {
   const handleFollow = async (userId: string) => {
     if (!token) return;
     try {
-      await apiPost('/api/user/follow', { userId }, token);
+      const res = await apiPost<{
+        action?: string;
+        isFollowing?: boolean;
+        isRequested?: boolean;
+      }>('/api/user/follow', { userId }, token);
+      const isFollowing = res.isFollowing ?? res.action === 'followed';
+      const isRequested = res.isRequested ?? res.action === 'requested';
+      setReels((prev) =>
+        prev.map((r) =>
+          r.user_id === userId
+            ? { ...r, is_following: isFollowing, is_requested: isRequested }
+            : r,
+        ),
+      );
     } catch (e) {
       console.error('Follow error:', e);
     }
+  };
+
+  const switchFeedMode = (mode: FeedMode) => {
+    if (mode === feedMode) return;
+    setReels([]);
+    setActiveIndex(0);
+    setFeedMode(mode);
   };
 
   const handleViewReel = async (reelId: string) => {
@@ -684,7 +735,7 @@ export default function ReelsScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchReels();
+    fetchReels(feedMode);
   };
 
   // ── Reel upload from reels tab ──
@@ -751,7 +802,7 @@ export default function ReelsScreen() {
           setUploadDone(false);
           setShowReelUpload(false);
           setUploadAsset(null);
-          fetchReels();
+          fetchReels(feedMode);
         }, 1200);
       } else {
         throw new Error('Failed to save reel');
@@ -775,20 +826,43 @@ export default function ReelsScreen() {
     );
   }
 
+  const FeedTabs = () => (
+    <View style={styles.feedTabs}>
+      <TouchableOpacity onPress={() => switchFeedMode('following')} activeOpacity={0.8}>
+        <Text style={[styles.feedTabText, feedMode === 'following' && styles.feedTabActive]}>
+          Following
+        </Text>
+        {feedMode === 'following' && <View style={styles.feedTabIndicator} />}
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => switchFeedMode('foryou')} activeOpacity={0.8}>
+        <Text style={[styles.feedTabText, feedMode === 'foryou' && styles.feedTabActive]}>
+          For You
+        </Text>
+        {feedMode === 'foryou' && <View style={styles.feedTabIndicator} />}
+      </TouchableOpacity>
+    </View>
+  );
+
   if (reels.length === 0) {
     return (
       <View style={styles.emptyContainer} pointerEvents={tabPointerEvents}>
         <StatusBar barStyle="light-content" />
         <View style={styles.emptyHeader}>
-          <Text style={styles.headerTitle}>Reels</Text>
+          <FeedTabs />
           <TouchableOpacity style={styles.uploadHeaderBtn} onPress={handlePickReel}>
             <Ionicons name="add-circle-outline" size={26} color="#FF2D55" />
           </TouchableOpacity>
         </View>
         <View style={styles.emptyContent}>
           <Ionicons name="film-outline" size={64} color="#555" />
-          <Text style={styles.emptyTitle}>No Reels Yet</Text>
-          <Text style={styles.emptySubtext}>Be the first to share a reel!</Text>
+          <Text style={styles.emptyTitle}>
+            {feedMode === 'following' ? 'No reels from people you follow' : 'No Reels Yet'}
+          </Text>
+          <Text style={styles.emptySubtext}>
+            {feedMode === 'following'
+              ? 'Follow creators to see their reels here, or switch to For You.'
+              : 'Be the first to share a reel!'}
+          </Text>
           <TouchableOpacity style={[styles.emptyBtn, { backgroundColor: '#FF2D55', marginBottom: 12 }]} onPress={handlePickReel}>
             <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
             <Text style={styles.emptyBtnText}>Upload Reel</Text>
@@ -817,7 +891,7 @@ export default function ReelsScreen() {
 
       {/* Header overlay */}
       <View style={styles.headerOverlay}>
-        <Text style={styles.reelsTitle}>Reels</Text>
+        <FeedTabs />
         <TouchableOpacity style={styles.uploadHeaderBtn} onPress={handlePickReel}>
           <Ionicons name="add-circle-outline" size={26} color="#FFF" />
         </TouchableOpacity>
@@ -958,7 +1032,7 @@ const styles = StyleSheet.create({
     paddingTop: 50,
     paddingBottom: 12,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
   },
   emptyContent: {
@@ -1007,6 +1081,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  feedTabs: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 20,
+  },
+  feedTabText: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 16,
+    fontWeight: '700',
+    paddingBottom: 6,
+  },
+  feedTabActive: {
+    color: '#FFF',
+  },
+  feedTabIndicator: {
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: '#FFF',
+    marginTop: -4,
   },
   uploadHeaderBtn: {
     padding: 4,
@@ -1126,6 +1220,12 @@ const styles = StyleSheet.create({
   },
   followingBtnText: {
     color: 'rgba(255,255,255,0.45)',
+  },
+  requestedBtn: {
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
+  requestedBtnText: {
+    color: 'rgba(255,255,255,0.65)',
   },
   captionText: {
     color: 'rgba(255,255,255,0.92)',

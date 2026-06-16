@@ -17,14 +17,14 @@ interface Props {
     hasOwnStory: boolean;
     onAddStory: () => void;
     onOpenStoryViewer: (index: number) => void;
-    viewedUserIds?: Set<number>;
+    viewedUserIds?: Set<string>;
 }
 
 const StoriesRow: React.FC<Props> = ({
     storyGroups, currentUserId, currentUserAvatar,
     hasOwnStory, onAddStory, onOpenStoryViewer, viewedUserIds,
 }) => {
-    const isViewed = (userId: number) => viewedUserIds?.has(userId) ?? false;
+    const isViewed = (userId: number | string) => viewedUserIds?.has(String(userId)) ?? false;
 
     return (
         <ScrollView

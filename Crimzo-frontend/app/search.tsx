@@ -26,6 +26,7 @@ type SearchUser = {
   followers_count?: number;
   is_online?: boolean;
   is_following?: boolean;
+  is_requested?: boolean;
 };
 
 export default function SearchScreen() {
@@ -71,12 +72,17 @@ export default function SearchScreen() {
   const toggleFollow = async (userId: string, index: number) => {
     if (!token) return;
     try {
-      const res = await apiPost<{ action?: string }>('/api/user/follow', { userId }, token);
+      const res = await apiPost<{
+        action?: string;
+        isFollowing?: boolean;
+        isRequested?: boolean;
+      }>('/api/user/follow', { userId }, token);
       setResults((prev) => {
         const next = [...prev];
         next[index] = {
           ...next[index],
-          is_following: res.action === 'followed',
+          is_following: res.isFollowing ?? res.action === 'followed',
+          is_requested: res.isRequested ?? res.action === 'requested',
         };
         return next;
       });
@@ -178,14 +184,14 @@ export default function SearchScreen() {
                 )}
               </View>
               <TouchableOpacity
-                style={[s.followBtn, item.is_following && s.followingBtn]}
+                style={[s.followBtn, (item.is_following || item.is_requested) && s.followingBtn]}
                 onPress={(e) => {
                   e.stopPropagation?.();
                   toggleFollow(item.id, index);
                 }}
               >
-                <Text style={[s.followText, item.is_following && s.followingText]}>
-                  {item.is_following ? 'Following' : 'Follow'}
+                <Text style={[s.followText, (item.is_following || item.is_requested) && s.followingText]}>
+                  {item.is_following ? 'Following' : item.is_requested ? 'Requested' : 'Follow'}
                 </Text>
               </TouchableOpacity>
             </TouchableOpacity>

@@ -4,13 +4,112 @@ const ReelLike = require('../models/ReelLike');
 const ReelView = require('../models/ReelView');
 const ReelComment = require('../models/ReelComment');
 const User = require('../models/User');
+const Follow = require('../models/Follow');
+const FollowRequest = require('../models/FollowRequest');
+const BlockedUser = require('../models/BlockedUser');
 const { uploadToCloudinary } = require('../config/cloudinary');
 const mongoose = require('mongoose');
+
+const FORYOU_CANDIDATE_POOL = 400;
 
 function normalizeMediaUrl(url) {
   if (!url) return url;
   const publicBase = (process.env.PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 5001}`).replace(/\/$/, '');
   return url.replace(/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i, publicBase);
+}
+
+function reelCreatorId(reel) {
+  const u = reel.user_id || {};
+  const uid = u._id || u || reel.user_id;
+  return uid ? String(uid) : null;
+}
+
+/** Instagram-style ranking: engagement + recency + follow boost + light shuffle */
+function computeReelScore(reel, { isFollowing, hoursOld }) {
+  const likes = reel.likes_count || 0;
+  const comments = reel.comments_count || 0;
+  const views = reel.views_count || 0;
+  const engagement = likes * 3 + comments * 5 + Math.sqrt(views) * 2;
+  const recency = Math.exp(-hoursOld / 36) * 120;
+  let score = engagement + recency;
+  if (isFollowing) score *= 2;
+  score += Math.random() * 8;
+  return score;
+}
+
+async function getSocialContext(currentUserId) {
+  const currentOid = new mongoose.Types.ObjectId(currentUserId);
+
+  const [followingRows, pendingRows, blockedRows] = await Promise.all([
+    Follow.find({ follower_id: currentOid }).select('following_id').lean(),
+    FollowRequest.find({ requester_id: currentOid, status: 'pending' }).select('target_id').lean(),
+    BlockedUser.find({
+      $or: [{ blocker_id: currentOid }, { blocked_id: currentOid }],
+    }).lean(),
+  ]);
+
+  const followingIdSet = new Set(followingRows.map((f) => String(f.following_id)));
+  const requestedIdSet = new Set(pendingRows.map((r) => String(r.target_id)));
+  const blockedIdSet = new Set();
+  blockedRows.forEach((b) => {
+    if (String(b.blocker_id) === String(currentUserId)) {
+      blockedIdSet.add(String(b.blocked_id));
+    } else {
+      blockedIdSet.add(String(b.blocker_id));
+    }
+  });
+
+  const allowedFollowingIds = [...followingIdSet]
+    .filter((id) => !blockedIdSet.has(id))
+    .map((id) => new mongoose.Types.ObjectId(id));
+  allowedFollowingIds.push(currentOid);
+
+  return {
+    currentOid,
+    followingIdSet,
+    requestedIdSet,
+    blockedIdSet,
+    allowedFollowingIds,
+    blockedObjectIds: [...blockedIdSet].map((id) => new mongoose.Types.ObjectId(id)),
+  };
+}
+
+async function enrichReels(reels, ctx) {
+  const { currentOid, followingIdSet, requestedIdSet } = ctx;
+
+  return Promise.all(reels.map(async (r) => {
+    const creatorId = reelCreatorId(r);
+    const populatedUser = r.user_id || {};
+    const followingId = populatedUser._id || populatedUser || r.user_id;
+
+    const [likeCount, commentCount, isLiked, isFollowing] = await Promise.all([
+      ReelLike.countDocuments({ reel_id: r._id }),
+      ReelComment.countDocuments({ reel_id: r._id }),
+      ReelLike.exists({ reel_id: r._id, user_id: currentOid }),
+      creatorId ? Promise.resolve(followingIdSet.has(creatorId)) : Follow.exists({ follower_id: currentOid, following_id: followingId }),
+    ]);
+
+    const u = populatedUser;
+    const uid = u._id || u || r.user_id;
+    const isRequested = creatorId ? requestedIdSet.has(creatorId) : false;
+
+    return {
+      id: r._id ? r._id.toString() : null,
+      user_id: uid ? (uid.toString ? uid.toString() : uid) : null,
+      video_url: normalizeMediaUrl(r.video_url),
+      thumbnail_url: normalizeMediaUrl(r.thumbnail_url),
+      caption: r.caption,
+      likes_count: likeCount || r.likes_count || 0,
+      views_count: r.views_count || 0,
+      comments_count: commentCount || r.comments_count || 0,
+      created_at: r.created_at,
+      username: u.username,
+      avatar: u.avatar,
+      is_liked: !!isLiked,
+      is_following: !!isFollowing,
+      is_requested: isRequested,
+    };
+  }));
 }
 
 // Generate presigned URL - LEGACY (was S3). For simplicity now recommend using /upload multipart.
@@ -102,52 +201,55 @@ exports.uploadReel = async (req, res) => {
   }
 };
 
-// Get reels feed
+// Get reels feed — Instagram-style: mode=following | mode=foryou (default)
 exports.getFeed = async (req, res) => {
   try {
-    const { limit = 20, offset = 0 } = req.query;
+    const { limit = 20, offset = 0, mode = 'foryou' } = req.query;
     const currentUserId = req.user.id;
+    const parsedLimit = Math.min(parseInt(limit, 10) || 20, 50);
+    const parsedOffset = parseInt(offset, 10) || 0;
+    const feedMode = mode === 'following' ? 'following' : 'foryou';
 
-    const reels = await Reel.find()
-      .sort({ created_at: -1 })
-      .skip(parseInt(offset))
-      .limit(parseInt(limit))
-      .populate('user_id', 'username avatar')
-      .lean();
+    const ctx = await getSocialContext(currentUserId);
+    let reels = [];
 
-    // Enrich with counts and flags (use parallel for perf but simple loop ok)
-    const currentOid = new mongoose.Types.ObjectId(currentUserId);
+    if (feedMode === 'following') {
+      reels = await Reel.find({ user_id: { $in: ctx.allowedFollowingIds } })
+        .sort({ created_at: -1 })
+        .skip(parsedOffset)
+        .limit(parsedLimit)
+        .populate('user_id', 'username avatar')
+        .lean();
+    } else {
+      const blockedFilter = ctx.blockedObjectIds.length
+        ? { user_id: { $nin: ctx.blockedObjectIds } }
+        : {};
 
-    const Follow = require('../models/Follow');
-    const formattedReels = await Promise.all(reels.map(async (r) => {
-      const populatedUser = r.user_id || {};
-      const followingId = populatedUser._id || populatedUser || r.user_id;
-      const [likeCount, commentCount, isLiked, isFollowing] = await Promise.all([
-        ReelLike.countDocuments({ reel_id: r._id }),
-        ReelComment.countDocuments({ reel_id: r._id }),
-        ReelLike.exists({ reel_id: r._id, user_id: currentOid }),
-        Follow.exists({ follower_id: currentOid, following_id: followingId })
-      ]);
-      const u = populatedUser;
-      const uid = u._id || u || r.user_id;
-      return {
-        id: r._id ? r._id.toString() : null,
-        user_id: uid ? (uid.toString ? uid.toString() : uid) : null,
-        video_url: normalizeMediaUrl(r.video_url),
-        thumbnail_url: normalizeMediaUrl(r.thumbnail_url),
-        caption: r.caption,
-        likes_count: likeCount || r.likes_count || 0,
-        views_count: r.views_count || 0,
-        comments_count: commentCount || r.comments_count || 0,
-        created_at: r.created_at,
-        username: u.username || u.username,
-        avatar: u.avatar,
-        is_liked: !!isLiked,
-        is_following: !!isFollowing
-      };
-    }));
+      const candidates = await Reel.find(blockedFilter)
+        .sort({ created_at: -1 })
+        .limit(FORYOU_CANDIDATE_POOL)
+        .populate('user_id', 'username avatar')
+        .lean();
 
-    res.json({ success: true, reels: formattedReels });
+      const now = Date.now();
+      const ranked = candidates
+        .map((r) => {
+          const creatorId = reelCreatorId(r);
+          const hoursOld = (now - new Date(r.created_at).getTime()) / 3600000;
+          const isFollowing = creatorId ? ctx.followingIdSet.has(creatorId) : false;
+          return {
+            reel: r,
+            score: computeReelScore(r, { isFollowing, hoursOld }),
+          };
+        })
+        .sort((a, b) => b.score - a.score);
+
+      reels = ranked.slice(parsedOffset, parsedOffset + parsedLimit).map((entry) => entry.reel);
+    }
+
+    const formattedReels = await enrichReels(reels, ctx);
+
+    res.json({ success: true, mode: feedMode, reels: formattedReels });
   } catch (error) {
     console.error('Get reels error:', error);
     res.status(500).json({ error: 'Failed to get reels' });

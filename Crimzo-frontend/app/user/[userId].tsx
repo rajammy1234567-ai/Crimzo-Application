@@ -92,18 +92,53 @@ export default function UserProfileScreen() {
     if (!token || !userId || followLoading) return;
     setFollowLoading(true);
     try {
-      const res = await apiPost<{ action?: string }>('/api/user/follow', { userId }, token);
-      const followed = res.action === 'followed';
+      const res = await apiPost<{
+        action?: string;
+        isFollowing?: boolean;
+        isRequested?: boolean;
+      }>('/api/user/follow', { userId }, token);
       setProfile((p: any) => ({
         ...p,
-        isFollowing: followed,
-        followers_count: Math.max(
-          0,
-          (p?.followers_count || 0) + (followed ? 1 : -1),
-        ),
+        isFollowing: res.isFollowing ?? res.action === 'followed',
+        isRequested: res.isRequested ?? res.action === 'requested',
+        followers_count: res.action === 'unfollowed'
+          ? Math.max(0, (p?.followers_count || 0) - 1)
+          : p?.followers_count,
       }));
     } catch (e) {
       console.error('Follow error:', e);
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  const acceptIncoming = async () => {
+    if (!token || !userId || followLoading) return;
+    setFollowLoading(true);
+    try {
+      await apiPost('/api/user/follow/accept', { requesterId: userId }, token);
+      setProfile((p: any) => ({
+        ...p,
+        hasIncomingRequest: false,
+        isFollowing: false,
+        followers_count: (p?.followers_count || 0) + 1,
+      }));
+      Alert.alert('Accepted', `${profile?.username} is now following you`);
+    } catch (e) {
+      Alert.alert('Error', 'Could not accept request');
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  const rejectIncoming = async () => {
+    if (!token || !userId || followLoading) return;
+    setFollowLoading(true);
+    try {
+      await apiPost('/api/user/follow/reject', { requesterId: userId }, token);
+      setProfile((p: any) => ({ ...p, hasIncomingRequest: false }));
+    } catch (e) {
+      Alert.alert('Error', 'Could not decline request');
     } finally {
       setFollowLoading(false);
     }
@@ -222,19 +257,33 @@ export default function UserProfileScreen() {
         </View>
 
         <View style={s.actionRow}>
-          <TouchableOpacity
-            style={[s.followMainBtn, profile.isFollowing && s.followingMainBtn]}
-            onPress={toggleFollow}
-            disabled={followLoading}
-          >
-            {followLoading ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <Text style={[s.followMainText, profile.isFollowing && s.followingMainText]}>
-                {profile.isFollowing ? 'Following' : 'Follow'}
-              </Text>
-            )}
-          </TouchableOpacity>
+          {profile.hasIncomingRequest ? (
+            <>
+              <TouchableOpacity style={s.followMainBtn} onPress={acceptIncoming} disabled={followLoading}>
+                <Text style={s.followMainText}>Accept</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.followMainBtn, s.followingMainBtn]} onPress={rejectIncoming} disabled={followLoading}>
+                <Text style={[s.followMainText, s.followingMainText]}>Decline</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity
+              style={[
+                s.followMainBtn,
+                (profile.isFollowing || profile.isRequested) && s.followingMainBtn,
+              ]}
+              onPress={toggleFollow}
+              disabled={followLoading}
+            >
+              {followLoading ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Text style={[s.followMainText, (profile.isFollowing || profile.isRequested) && s.followingMainText]}>
+                  {profile.isFollowing ? 'Following' : profile.isRequested ? 'Requested' : 'Follow'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={s.messageBtn}
             onPress={() => router.push('/profile/messages' as any)}
@@ -246,6 +295,29 @@ export default function UserProfileScreen() {
             onPress={() => startCall(profile.id, profile.username, profile.avatar)}
           >
             <Ionicons name="videocam" size={20} color="#4CD964" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={s.moreBtn}
+            onPress={() => {
+              Alert.alert(profile.username, undefined, [
+                {
+                  text: 'Block User',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      await apiPost('/api/user/block', { userId: profile.id }, token);
+                      Alert.alert('Blocked', `${profile.username} has been blocked`);
+                      router.back();
+                    } catch {
+                      Alert.alert('Error', 'Could not block user');
+                    }
+                  },
+                },
+                { text: 'Cancel', style: 'cancel' },
+              ]);
+            }}
+          >
+            <Ionicons name="ellipsis-horizontal" size={20} color="#999" />
           </TouchableOpacity>
         </View>
 
@@ -410,6 +482,12 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(76,217,100,0.3)',
+  },
+  moreBtn: {
+    width: 36,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   watchLiveBtn: {
     flexDirection: 'row',

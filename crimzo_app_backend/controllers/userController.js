@@ -1,8 +1,26 @@
 const User = require('../models/User');
 const Follow = require('../models/Follow');
+const FollowRequest = require('../models/FollowRequest');
+const BlockedUser = require('../models/BlockedUser');
 const LiveSession = require('../models/LiveSession');
 const Reel = require('../models/Reel');
 const GiftHistory = require('../models/GiftHistory');
+const { pushNotification } = require('../utils/notificationHelper');
+
+async function followStatusFor(viewerId, targetId) {
+  const [following, outgoing, incoming] = await Promise.all([
+    Follow.findOne({ follower_id: viewerId, following_id: targetId }),
+    FollowRequest.findOne({ requester_id: viewerId, target_id: targetId, status: 'pending' }),
+    FollowRequest.findOne({ requester_id: targetId, target_id: viewerId, status: 'pending' }),
+  ]);
+  return {
+    isFollowing: !!following,
+    isRequested: !!outgoing,
+    hasIncomingRequest: !!incoming,
+    incomingRequestId: incoming?._id?.toString() || null,
+    outgoingRequestId: outgoing?._id?.toString() || null,
+  };
+}
 
 // Get full profile
 exports.getFullProfile = async (req, res) => {
@@ -34,10 +52,9 @@ exports.getFullProfile = async (req, res) => {
       { $group: { _id: null, total: { $sum: '$beans_earned' } } }
     ]).catch(() => []);
 
-    let isFollowing = false;
+    let followState = { isFollowing: false, isRequested: false, hasIncomingRequest: false, incomingRequestId: null };
     if (String(req.user.id) !== String(userId)) {
-      const followCheck = await Follow.findOne({ follower_id: req.user.id, following_id: userId });
-      isFollowing = !!followCheck;
+      followState = await followStatusFor(req.user.id, userId);
     }
 
     const liveCheck = await LiveSession.findOne({ user_id: userId, status: 'active' });
@@ -59,7 +76,10 @@ exports.getFullProfile = async (req, res) => {
         totalLikes: reelLikes,
         totalDiamondsSpent: sentAgg[0]?.total || 0,
         totalBeansEarned: receivedAgg[0]?.total || 0,
-        isFollowing,
+        isFollowing: followState.isFollowing,
+        isRequested: followState.isRequested,
+        hasIncomingRequest: followState.hasIncomingRequest,
+        incomingRequestId: followState.incomingRequestId,
         isLive: !!liveCheck,
         liveSessionId: liveCheck ? liveCheck.id : null
       }
@@ -70,7 +90,7 @@ exports.getFullProfile = async (req, res) => {
   }
 };
 
-// Follow/Unfollow
+/** Instagram-style: follow sends request → target accepts/rejects */
 exports.followUser = async (req, res) => {
   try {
     const followerId = req.user.id;
@@ -79,22 +99,212 @@ exports.followUser = async (req, res) => {
       return res.status(400).json({ error: 'Invalid user' });
     }
 
-    const existing = await Follow.findOne({ follower_id: followerId, following_id: userId });
+    const blocked = await BlockedUser.findOne({
+      $or: [
+        { blocker_id: followerId, blocked_id: userId },
+        { blocker_id: userId, blocked_id: followerId },
+      ],
+    });
+    if (blocked) {
+      return res.status(403).json({ error: 'Cannot follow this user' });
+    }
 
-    if (existing) {
-      await Follow.deleteOne({ _id: existing._id });
+    const existingFollow = await Follow.findOne({ follower_id: followerId, following_id: userId });
+    if (existingFollow) {
+      await Follow.deleteOne({ _id: existingFollow._id });
       await User.findByIdAndUpdate(followerId, { $inc: { following_count: -1 } });
       await User.findByIdAndUpdate(userId, { $inc: { followers_count: -1 } });
-      res.json({ success: true, action: 'unfollowed' });
-    } else {
-      await Follow.create({ follower_id: followerId, following_id: userId });
-      await User.findByIdAndUpdate(followerId, { $inc: { following_count: 1 } });
-      await User.findByIdAndUpdate(userId, { $inc: { followers_count: 1 } });
-      res.json({ success: true, action: 'followed' });
+      return res.json({ success: true, action: 'unfollowed', isFollowing: false, isRequested: false });
     }
+
+    const pending = await FollowRequest.findOne({
+      requester_id: followerId,
+      target_id: userId,
+      status: 'pending',
+    });
+    if (pending) {
+      await FollowRequest.deleteOne({ _id: pending._id });
+      return res.json({ success: true, action: 'request_cancelled', isFollowing: false, isRequested: false });
+    }
+
+    const requester = await User.findById(followerId).select('username avatar').lean();
+    const reqDoc = await FollowRequest.create({
+      requester_id: followerId,
+      target_id: userId,
+      status: 'pending',
+    });
+
+    await pushNotification({
+      userId,
+      type: 'follow_request',
+      title: 'New follow request',
+      body: `${requester?.username || 'Someone'} wants to follow you`,
+      actor: requester,
+      referenceId: reqDoc.id,
+    });
+
+    res.json({
+      success: true,
+      action: 'requested',
+      isFollowing: false,
+      isRequested: true,
+      requestId: reqDoc.id,
+    });
   } catch (error) {
     console.error('Follow error:', error);
     res.status(500).json({ error: 'Failed to follow/unfollow' });
+  }
+};
+
+exports.acceptFollowRequest = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { requestId, requesterId } = req.body;
+
+    const query = requestId
+      ? { _id: requestId, target_id: userId, status: 'pending' }
+      : { requester_id: requesterId, target_id: userId, status: 'pending' };
+
+    const request = await FollowRequest.findOne(query);
+    if (!request) return res.status(404).json({ error: 'Follow request not found' });
+
+    const already = await Follow.findOne({
+      follower_id: request.requester_id,
+      following_id: userId,
+    });
+    if (!already) {
+      await Follow.create({ follower_id: request.requester_id, following_id: userId });
+      await User.findByIdAndUpdate(request.requester_id, { $inc: { following_count: 1 } });
+      await User.findByIdAndUpdate(userId, { $inc: { followers_count: 1 } });
+    }
+
+    request.status = 'accepted';
+    await request.save();
+
+    const me = await User.findById(userId).select('username avatar').lean();
+    await pushNotification({
+      userId: request.requester_id,
+      type: 'follow_accepted',
+      title: 'Follow request accepted',
+      body: `${me?.username || 'User'} accepted your follow request`,
+      actor: me,
+      referenceId: userId,
+    });
+
+    res.json({ success: true, action: 'accepted' });
+  } catch (error) {
+    console.error('Accept follow error:', error);
+    res.status(500).json({ error: 'Failed to accept request' });
+  }
+};
+
+exports.rejectFollowRequest = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { requestId, requesterId } = req.body;
+
+    const query = requestId
+      ? { _id: requestId, target_id: userId, status: 'pending' }
+      : { requester_id: requesterId, target_id: userId, status: 'pending' };
+
+    const request = await FollowRequest.findOne(query);
+    if (!request) return res.status(404).json({ error: 'Follow request not found' });
+
+    request.status = 'rejected';
+    await request.save();
+
+    res.json({ success: true, action: 'rejected' });
+  } catch (error) {
+    console.error('Reject follow error:', error);
+    res.status(500).json({ error: 'Failed to reject request' });
+  }
+};
+
+exports.getFollowRequests = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const requests = await FollowRequest.find({ target_id: userId, status: 'pending' })
+      .sort({ created_at: -1 })
+      .populate('requester_id', 'id username avatar bio')
+      .lean();
+
+    res.json({
+      success: true,
+      requests: requests.map((r) => ({
+        id: r._id.toString(),
+        requester: r.requester_id ? {
+          id: r.requester_id._id?.toString() || r.requester_id.id,
+          username: r.requester_id.username,
+          avatar: r.requester_id.avatar,
+          bio: r.requester_id.bio,
+        } : null,
+        created_at: r.created_at,
+      })).filter((r) => r.requester),
+    });
+  } catch (error) {
+    console.error('Get follow requests error:', error);
+    res.status(500).json({ error: 'Failed to get follow requests' });
+  }
+};
+
+exports.getBlockedUsers = async (req, res) => {
+  try {
+    const rows = await BlockedUser.find({ blocker_id: req.user.id })
+      .populate('blocked_id', 'id username avatar')
+      .sort({ created_at: -1 })
+      .lean();
+    res.json({
+      success: true,
+      blocked: rows.map((r) => ({
+        id: r.blocked_id?._id?.toString(),
+        username: r.blocked_id?.username,
+        avatar: r.blocked_id?.avatar,
+      })).filter((b) => b.id),
+    });
+  } catch (error) {
+    console.error('Get blocked error:', error);
+    res.status(500).json({ error: 'Failed to get blocked users' });
+  }
+};
+
+exports.blockUser = async (req, res) => {
+  try {
+    const blockerId = req.user.id;
+    const { userId } = req.body;
+    if (!userId || String(blockerId) === String(userId)) {
+      return res.status(400).json({ error: 'Invalid user' });
+    }
+    await BlockedUser.findOneAndUpdate(
+      { blocker_id: blockerId, blocked_id: userId },
+      { blocker_id: blockerId, blocked_id: userId, created_at: new Date() },
+      { upsert: true },
+    );
+    await Follow.deleteMany({
+      $or: [
+        { follower_id: blockerId, following_id: userId },
+        { follower_id: userId, following_id: blockerId },
+      ],
+    });
+    await FollowRequest.deleteMany({
+      $or: [
+        { requester_id: blockerId, target_id: userId },
+        { requester_id: userId, target_id: blockerId },
+      ],
+    });
+    res.json({ success: true, message: 'User blocked' });
+  } catch (error) {
+    console.error('Block user error:', error);
+    res.status(500).json({ error: 'Failed to block user' });
+  }
+};
+
+exports.unblockUser = async (req, res) => {
+  try {
+    await BlockedUser.deleteOne({ blocker_id: req.user.id, blocked_id: req.body.userId });
+    res.json({ success: true, message: 'User unblocked' });
+  } catch (error) {
+    console.error('Unblock error:', error);
+    res.status(500).json({ error: 'Failed to unblock user' });
   }
 };
 
@@ -161,10 +371,7 @@ exports.searchUsers = async (req, res) => {
       .lean();
 
     const formatted = await Promise.all(users.map(async (u) => {
-      const isFollowing = !!(await Follow.findOne({
-        follower_id: currentUserId,
-        following_id: u._id,
-      }));
+      const status = await followStatusFor(currentUserId, u._id);
       return {
         id: u._id.toString(),
         username: u.username,
@@ -173,7 +380,8 @@ exports.searchUsers = async (req, res) => {
         crimzo_id: u.crimzo_id,
         followers_count: u.followers_count || 0,
         is_online: !!u.is_online,
-        is_following: isFollowing,
+        is_following: status.isFollowing,
+        is_requested: status.isRequested,
       };
     }));
 

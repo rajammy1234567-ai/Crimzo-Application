@@ -361,6 +361,213 @@ exports.getPackages = async (_req, res) => {
   });
 };
 
+/** Razorpay — buy diamonds/beans directly (no wallet balance needed) */
+exports.createPackageOrder = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { packageId, productType = 'diamonds' } = req.body;
+
+    if (!['diamonds', 'beans'].includes(productType)) {
+      return res.status(400).json({ error: 'Invalid product type' });
+    }
+
+    const pkg = resolvePackage(productType, packageId);
+    if (!pkg) return res.status(404).json({ error: 'Package not found' });
+
+    const amountInr = pkg.price;
+    const amountPaise = Math.round(amountInr * 100);
+    const diamonds = productType === 'diamonds' ? pkg.diamonds : 0;
+    const beans = productType === 'beans' ? pkg.beans : 0;
+    const packageName = productType === 'diamonds'
+      ? `${diamonds.toLocaleString('en-IN')} Diamonds`
+      : `${beans.toLocaleString('en-IN')} Beans`;
+
+    const razorpay = getRazorpayClient();
+    const user = await User.findById(userId).select('email username').lean();
+    const checkoutUser = {
+      email: user?.email || '',
+      name: user?.username || 'Crimzo User',
+    };
+    const paymentPrefs = { method: 'card', showAllMethods: true };
+
+    if (!razorpay) {
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(503).json({ error: 'Payment gateway not configured' });
+      }
+
+      const mockOrderId = `dev_pkg_${userId}_${Date.now()}`;
+      const order = await PaymentOrder.create({
+        user_id: userId,
+        product_type: productType,
+        package_id: pkg.id,
+        amount_inr: amountInr,
+        amount_paise: amountPaise,
+        diamonds,
+        beans,
+        razorpay_order_id: mockOrderId,
+        status: 'created',
+        payment_method: 'razorpay',
+      });
+
+      return res.json({
+        success: true,
+        mode: 'dev_mock',
+        orderId: order._id.toString(),
+        amount: amountPaise,
+        amountInr,
+        currency: 'INR',
+        packageName,
+        diamonds,
+        beans,
+        productType,
+        paymentPrefs,
+        user: checkoutUser,
+      });
+    }
+
+    const receipt = `${productType}_${userId}_${Date.now()}`.slice(0, 40);
+    const rzOrder = await razorpay.orders.create({
+      amount: amountPaise,
+      currency: 'INR',
+      receipt,
+      notes: {
+        userId: String(userId),
+        type: productType,
+        packageId: String(pkg.id),
+      },
+    });
+
+    const order = await PaymentOrder.create({
+      user_id: userId,
+      product_type: productType,
+      package_id: pkg.id,
+      amount_inr: amountInr,
+      amount_paise: amountPaise,
+      diamonds,
+      beans,
+      razorpay_order_id: rzOrder.id,
+      status: 'created',
+      payment_method: 'razorpay',
+    });
+
+    res.json({
+      success: true,
+      mode: 'razorpay',
+      orderId: order._id.toString(),
+      razorpayOrderId: rzOrder.id,
+      razorpayKeyId: process.env.RAZORPAY_KEY_ID,
+      amount: amountPaise,
+      amountInr,
+      currency: 'INR',
+      packageName,
+      diamonds,
+      beans,
+      productType,
+      paymentPrefs,
+      user: checkoutUser,
+    });
+  } catch (error) {
+    console.error('Create package order error:', error);
+    res.status(500).json({ error: 'Failed to create order', details: error.message });
+  }
+};
+
+/** Verify Razorpay package payment → credit diamonds/beans */
+exports.verifyPackagePayment = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { orderId, razorpay_order_id, razorpay_payment_id, razorpay_signature, devMock } = req.body;
+
+    const order = await PaymentOrder.findOne({
+      _id: orderId,
+      user_id: userId,
+      product_type: { $in: ['diamonds', 'beans'] },
+    });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    if (order.status === 'paid' || order.status === 'dev_mock') {
+      const user = await User.findById(userId).select('wallet_balance diamonds beans');
+      return res.json({
+        success: true,
+        alreadyProcessed: true,
+        wallet_balance: user?.wallet_balance || 0,
+        diamonds: user?.diamonds || 0,
+        beans: user?.beans || 0,
+        credited: order.product_type === 'diamonds' ? order.diamonds : order.beans,
+        productType: order.product_type,
+      });
+    }
+
+    if (devMock) {
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(400).json({ error: 'Dev mock disabled in production' });
+      }
+      order.status = 'dev_mock';
+      order.paid_at = new Date();
+      order.razorpay_payment_id = `dev_pay_${Date.now()}`;
+      await order.save();
+
+      const inc = {};
+      if (order.diamonds > 0) inc.diamonds = order.diamonds;
+      if (order.beans > 0) inc.beans = order.beans;
+      const user = await User.findByIdAndUpdate(userId, { $inc: inc }, { new: true })
+        .select('wallet_balance diamonds beans');
+
+      return res.json({
+        success: true,
+        mode: 'dev_mock',
+        wallet_balance: user.wallet_balance,
+        diamonds: user.diamonds,
+        beans: user.beans,
+        credited: order.product_type === 'diamonds' ? order.diamonds : order.beans,
+        productType: order.product_type,
+      });
+    }
+
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    if (!keySecret) return res.status(503).json({ error: 'Payment gateway not configured' });
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({ error: 'Missing payment verification fields' });
+    }
+    if (order.razorpay_order_id !== razorpay_order_id) {
+      return res.status(400).json({ error: 'Order ID mismatch' });
+    }
+
+    const body = `${razorpay_order_id}|${razorpay_payment_id}`;
+    const expected = crypto.createHmac('sha256', keySecret).update(body).digest('hex');
+    if (expected !== razorpay_signature) {
+      order.status = 'failed';
+      await order.save();
+      return res.status(400).json({ error: 'Payment verification failed' });
+    }
+
+    order.status = 'paid';
+    order.razorpay_payment_id = razorpay_payment_id;
+    order.razorpay_signature = razorpay_signature;
+    order.paid_at = new Date();
+    await order.save();
+
+    const inc = {};
+    if (order.diamonds > 0) inc.diamonds = order.diamonds;
+    if (order.beans > 0) inc.beans = order.beans;
+    const user = await User.findByIdAndUpdate(userId, { $inc: inc }, { new: true })
+      .select('wallet_balance diamonds beans');
+
+    res.json({
+      success: true,
+      mode: 'razorpay',
+      wallet_balance: user.wallet_balance,
+      diamonds: user.diamonds,
+      beans: user.beans,
+      credited: order.product_type === 'diamonds' ? order.diamonds : order.beans,
+      productType: order.product_type,
+    });
+  } catch (error) {
+    console.error('Verify package payment error:', error);
+    res.status(500).json({ error: 'Payment verification failed', details: error.message });
+  }
+};
+
 /** Step 1: Debit linked bank → credit app wallet (Razorpay routes money in production) */
 exports.createTopupOrder = async (req, res) => {
   try {

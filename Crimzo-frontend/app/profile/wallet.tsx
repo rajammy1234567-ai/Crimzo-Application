@@ -63,12 +63,13 @@ export default function WalletScreen() {
   const router = useRouter();
   const {
     busy,
-    topupCheckout,
+    checkout,
     paymentMethod,
     hasVerifiedPayment,
     isPendingVerification,
     addMoney,
     buyWithWallet,
+    buyWithRazorpay,
     setupPaymentMethod,
     verifyPaymentOtp,
     resendPaymentOtp,
@@ -125,12 +126,19 @@ export default function WalletScreen() {
     setSelPkg(pkg.id);
     Alert.alert(
       `Buy ${isDia ? 'Diamonds' : 'Beans'}`,
-      `${fmt(amount)} for ${price(pkg.price)} from wallet (₹${walletBalance.toLocaleString('en-IN')})`,
+      `${fmt(amount)} for ${price(pkg.price)}\n\nPay directly via Razorpay (UPI/Card) or use wallet balance.`,
       [
         { text: 'Cancel', style: 'cancel', onPress: () => setSelPkg(null) },
+        {
+          text: 'Pay via Razorpay',
+          onPress: async () => {
+            setSelPkg(null);
+            await buyWithRazorpay(pkg.id, productType);
+          },
+        },
         canAfford
           ? {
-              text: 'Buy Now',
+              text: 'Use Wallet',
               onPress: async () => {
                 setSelPkg(null);
                 await buyWithWallet(pkg.id, productType);
@@ -320,9 +328,10 @@ export default function WalletScreen() {
               {/* info */}
               <View style={s.info}>
                 {[
+                  ['card', '#FF2D55', 'Diamonds/Beans — Pay via Razorpay (UPI, Card, Net Banking)'],
+                  ['wallet', '#4CD964', 'Add Money — Razorpay se wallet top-up, phir wallet se buy'],
                   ['diamond', '#FFD700', 'Diamonds are used to send gifts to streamers'],
-                  ['cafe', '#FF9500', 'Beans are earned when you receive gifts'],
-                  ['shield-checkmark', '#4CD964', 'All payments are secure and encrypted'],
+                  ['shield-checkmark', '#4CD964', 'All payments secured by Razorpay'],
                 ].map(([ico, col, txt], i) => (
                   <View key={i} style={s.infoR}>
                     <Ionicons name={ico as any} size={14} color={col as string} />
@@ -454,7 +463,7 @@ export default function WalletScreen() {
       />
 
       <RazorpayCheckout
-        checkout={topupCheckout}
+        checkout={checkout}
         onSuccess={handleTopupSuccess}
         onCancel={cancelTopup}
       />

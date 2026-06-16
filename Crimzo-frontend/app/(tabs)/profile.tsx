@@ -299,18 +299,16 @@ export default function ProfileScreen() {
       switch (label) {
         case 'My Profile': router.push('/profile/edit' as any); break;
         case 'Messages': router.push('/profile/messages' as any); break;
-        case 'My Tasks':
-          router.push('/profile/tasks' as any);
-          break;
-        case 'Collected Stickers':
-          router.push('/profile/stickers' as any);
-          break;
+        case 'Notifications': router.push('/profile/notifications' as any); break;
+        case 'Wallet': router.push('/profile/wallet' as any); break;
+        case 'My Tasks': router.push('/profile/tasks' as any); break;
+        case 'Collected Stickers': router.push('/profile/stickers' as any); break;
         case 'My Invitation':
-          Alert.alert('Invite Friends', 'Share your invite code!\n\nCode: CRIMZO-' + (user?.id || '000'));
+          Alert.alert('Invite Friends', `Share your invite code!\n\nCode: CRIMZO-${user?.crimzo_id || user?.id || '000'}`);
           break;
         case 'Settings': router.push('/profile/settings' as any); break;
         case 'Help & Support':
-          Alert.alert('Help & Support', 'Email: support@crimzo.app\nVersion: 1.0.0');
+          Alert.alert('Help & Support', 'Email: support@crimzo.app\nVersion: 4.0.1');
           break;
         default: break;
       }
@@ -555,6 +553,8 @@ export default function ProfileScreen() {
               {[
                 { icon: 'person-circle-outline', label: 'My Profile', color: '#9333EA' },
                 { icon: 'chatbubbles-outline', label: 'Messages', color: '#9333EA' },
+                { icon: 'notifications-outline', label: 'Notifications', color: '#FF2D55' },
+                { icon: 'wallet-outline', label: 'Wallet', color: '#4CD964' },
                 { icon: 'checkmark-circle-outline', label: 'My Tasks', color: '#9333EA' },
                 { icon: 'star-outline', label: 'Collected Stickers', color: '#FFB347' },
                 { icon: 'people-outline', label: 'My Invitation', color: '#9333EA' },

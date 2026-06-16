@@ -39,6 +39,7 @@ app.use("/api/pk", require("./routes/pkRoutes"));
 app.use("/api/stories", require("./routes/storyRoutes"));
 app.use("/api/reels", require("./routes/reelRoutes"));
 app.use("/api/messages", require("./routes/messageRoutes"));
+app.use("/api/notifications", require("./routes/notificationRoutes"));
 app.use("/api/payments", require("./routes/paymentRoutes"));
 app.use("/api/admin", require("./routes/adminRoutes"));
 

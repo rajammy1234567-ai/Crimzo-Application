@@ -218,7 +218,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
-    await AsyncStorage.multiRemove(['auth_token', 'is_guest', 'cached_user']);
+    await AsyncStorage.multiRemove([
+      'auth_token',
+      'is_guest',
+      'cached_user',
+      'viewed_story_users',
+      'app_settings',
+    ]);
     setToken(null);
     setUser(null);
     setIsGuest(false);

@@ -4,8 +4,9 @@ import { apiGet, apiPost, apiDelete, ApiError } from './apiClient';
 import { useAuth } from '../contexts/AuthContext';
 import type { PaymentMethodInfo } from '../components/payments/SetupPaymentModal';
 
-export type TopupCheckoutData = {
+export type WalletCheckoutData = {
   mode: 'razorpay' | 'dev_mock';
+  checkoutKind: 'topup' | 'package';
   orderId: string;
   razorpayOrderId?: string;
   razorpayKeyId?: string;
@@ -14,6 +15,9 @@ export type TopupCheckoutData = {
   currency: string;
   packageName: string;
   linkedBank?: PaymentMethodInfo;
+  productType?: 'diamonds' | 'beans';
+  diamonds?: number;
+  beans?: number;
   paymentPrefs?: {
     method: 'upi' | 'netbanking' | 'card';
     showAllMethods?: boolean;
@@ -22,6 +26,9 @@ export type TopupCheckoutData = {
   };
   user: { email: string; name: string };
 };
+
+/** @deprecated alias */
+export type TopupCheckoutData = WalletCheckoutData;
 
 type TopupVerifyResponse = {
   success?: boolean;
@@ -48,7 +55,7 @@ type PurchaseResponse = {
 export function useWallet() {
   const { token, updateUser } = useAuth();
   const [busy, setBusy] = useState(false);
-  const [topupCheckout, setTopupCheckout] = useState<TopupCheckoutData | null>(null);
+  const [checkout, setCheckout] = useState<WalletCheckoutData | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodInfo | null>(null);
   const [hasVerifiedPayment, setHasVerifiedPayment] = useState(false);
   const [isPendingVerification, setIsPendingVerification] = useState(false);
@@ -217,7 +224,7 @@ export function useWallet() {
 
     setBusy(true);
     try {
-      const data = await apiPost<TopupCheckoutData & { success?: boolean; code?: string }>(
+      const data = await apiPost<WalletCheckoutData & { success?: boolean; code?: string }>(
         '/api/payments/topup/create-order',
         { amount: amountInr },
         token,
@@ -253,7 +260,7 @@ export function useWallet() {
         return { needsSetup: false };
       }
 
-      setTopupCheckout(data);
+      setCheckout({ ...data, checkoutKind: 'topup' });
       return { needsSetup: false };
     } catch (e) {
       if (e instanceof ApiError) {
@@ -271,47 +278,122 @@ export function useWallet() {
     }
   }, [token, syncBalances, hasVerifiedPayment, paymentMethod, isPendingVerification]);
 
-  const handleTopupSuccess = useCallback(async (payload: {
+  const buyWithRazorpay = useCallback(async (
+    packageId: number,
+    productType: 'diamonds' | 'beans' = 'diamonds',
+  ): Promise<boolean> => {
+    if (!token) {
+      Alert.alert('Login Required', 'Please log in first.');
+      return false;
+    }
+
+    setBusy(true);
+    try {
+      const data = await apiPost<WalletCheckoutData & { success?: boolean }>(
+        '/api/payments/create-order',
+        { packageId, productType },
+        token,
+      );
+
+      if (data.mode === 'dev_mock') {
+        const verified = await apiPost<{
+          success?: boolean;
+          credited?: number;
+          productType?: string;
+          diamonds?: number;
+          beans?: number;
+        }>('/api/payments/verify', { orderId: data.orderId, devMock: true }, token);
+        if (verified.success) {
+          syncBalances(verified);
+          Alert.alert(
+            '✅ Purchase Successful',
+            `+${verified.credited?.toLocaleString()} ${verified.productType} added!`,
+          );
+          return true;
+        }
+        return false;
+      }
+
+      setCheckout({ ...data, checkoutKind: 'package', productType });
+      return true;
+    } catch (e) {
+      Alert.alert('Error', e instanceof ApiError ? e.message : 'Could not start payment');
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }, [token, syncBalances]);
+
+  const handleCheckoutSuccess = useCallback(async (payload: {
     razorpay_order_id: string;
     razorpay_payment_id: string;
     razorpay_signature: string;
   }) => {
-    if (!token || !topupCheckout) return;
+    if (!token || !checkout) return;
 
     setBusy(true);
     try {
-      const verified = await apiPost<TopupVerifyResponse>(
-        '/api/payments/topup/verify',
-        {
-          orderId: topupCheckout.orderId,
-          razorpay_order_id: payload.razorpay_order_id,
-          razorpay_payment_id: payload.razorpay_payment_id,
-          razorpay_signature: payload.razorpay_signature,
-        },
-        token,
-      );
-
-      if (verified.success) {
-        syncBalances(verified);
-        Alert.alert(
-          '✅ Money Added',
-          `₹${verified.creditedInr?.toLocaleString('en-IN')} wallet mein add ho gaya!`,
+      if (checkout.checkoutKind === 'package') {
+        const verified = await apiPost<{
+          success?: boolean;
+          credited?: number;
+          productType?: string;
+          diamonds?: number;
+          beans?: number;
+        }>(
+          '/api/payments/verify',
+          {
+            orderId: checkout.orderId,
+            razorpay_order_id: payload.razorpay_order_id,
+            razorpay_payment_id: payload.razorpay_payment_id,
+            razorpay_signature: payload.razorpay_signature,
+          },
+          token,
         );
+        if (verified.success) {
+          syncBalances(verified);
+          Alert.alert(
+            '✅ Payment Successful',
+            `+${verified.credited?.toLocaleString()} ${verified.productType} added to your account!`,
+          );
+        }
+      } else {
+        const verified = await apiPost<TopupVerifyResponse>(
+          '/api/payments/topup/verify',
+          {
+            orderId: checkout.orderId,
+            razorpay_order_id: payload.razorpay_order_id,
+            razorpay_payment_id: payload.razorpay_payment_id,
+            razorpay_signature: payload.razorpay_signature,
+          },
+          token,
+        );
+        if (verified.success) {
+          syncBalances(verified);
+          Alert.alert(
+            '✅ Money Added',
+            `₹${verified.creditedInr?.toLocaleString('en-IN')} wallet mein add ho gaya!`,
+          );
+        }
       }
     } catch (e) {
       Alert.alert('Error', e instanceof ApiError ? e.message : 'Verification failed');
     } finally {
       setBusy(false);
-      setTopupCheckout(null);
+      setCheckout(null);
     }
-  }, [token, topupCheckout, syncBalances]);
+  }, [token, checkout, syncBalances]);
 
-  const cancelTopup = useCallback(() => {
-    setTopupCheckout(null);
+  const handleTopupSuccess = handleCheckoutSuccess;
+
+  const cancelCheckout = useCallback(() => {
+    setCheckout(null);
     if (Platform.OS !== 'web') {
       Alert.alert('Cancelled', 'Payment cancelled.');
     }
   }, []);
+
+  const cancelTopup = cancelCheckout;
 
   const buyWithWallet = useCallback(async (
     packageId: number,
@@ -396,7 +478,8 @@ export function useWallet() {
 
   return {
     busy,
-    topupCheckout,
+    checkout,
+    topupCheckout: checkout,
     paymentMethod,
     linkedBank: paymentMethod,
     hasVerifiedPayment,
@@ -404,6 +487,7 @@ export function useWallet() {
     isPendingVerification,
     addMoney,
     buyWithWallet,
+    buyWithRazorpay,
     withdrawMoney,
     setupPaymentMethod,
     verifyPaymentOtp,
@@ -413,8 +497,10 @@ export function useWallet() {
     linkBank: setupPaymentMethod,
     refreshBank: refreshPaymentMethod,
     refreshPaymentMethod,
+    handleCheckoutSuccess,
     handleTopupSuccess,
+    cancelCheckout,
     cancelTopup,
-    closeTopup: () => setTopupCheckout(null),
+    closeTopup: () => setCheckout(null),
   };
 }
