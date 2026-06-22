@@ -15,7 +15,7 @@ const userSchema = new mongoose.Schema({
   show_location: { type: Boolean, default: false },
   push_notifications_enabled: { type: Boolean, default: true },
   country: { type: String, default: 'Unknown' },
-  diamonds: { type: Number, default: 810 },
+  diamonds: { type: Number, default: 0 },
   beans: { type: Number, default: 0 },
   /** INR balance — user adds money here first, then buys diamonds/beans */
   wallet_balance: { type: Number, default: 0 },

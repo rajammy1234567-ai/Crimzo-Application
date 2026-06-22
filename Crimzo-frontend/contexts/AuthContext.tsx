@@ -252,7 +252,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const testLogin = async () => {
     try {
       const data = await apiPost<{ token: string; user: User }>('/api/auth/guest', {}, null, 15000);
-      const userData = { ...data.user, username: 'DevTestUser', diamonds: 5000 };
+      const userData = { ...data.user, username: 'DevTestUser' };
       persistAuth(data.token, userData);
     } catch (e) {
       console.error('TestLogin failed, backend may be offline:', e);

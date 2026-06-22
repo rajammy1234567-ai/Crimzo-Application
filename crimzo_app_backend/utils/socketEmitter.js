@@ -35,6 +35,17 @@ function emitDiamondUpdate(userId, diamonds) {
   _io.to(userRoom(userId)).emit('diamond_update', { diamonds });
 }
 
+function emitBeanUpdate(userId, beans) {
+  if (!_io || !userId) return;
+  _io.to(userRoom(userId)).emit('bean_update', { beans });
+}
+
+function emitBalanceUpdate(userId, { diamonds, beans } = {}) {
+  if (!_io || !userId) return;
+  if (typeof diamonds === 'number') emitDiamondUpdate(userId, diamonds);
+  if (typeof beans === 'number') emitBeanUpdate(userId, beans);
+}
+
 function emitReelDeleted(reelId) {
   if (!_io || !reelId) return;
   _io.emit('reel_deleted', { reelId: String(reelId) });
@@ -58,6 +69,8 @@ module.exports = {
   emitStreamEnded,
   emitUserBanned,
   emitDiamondUpdate,
+  emitBeanUpdate,
+  emitBalanceUpdate,
   emitReelDeleted,
   emitStickersUpdated,
   emitLiveStreamsUpdated,

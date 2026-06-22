@@ -81,7 +81,7 @@ const Billing = () => {
         <div>
             <PageHeader
                 title="Billing & Rates"
-                description="Video call aur live talk ke ₹/min rates yahan se control karo. Users ko wallet recharge karna padega."
+                description="Control ₹/min rates for video calls and live talk. Users must recharge their wallet to use paid features."
                 breadcrumbs={[{ label: 'Dashboard', to: '/dashboard' }, { label: 'Billing' }]}
             />
 
@@ -120,7 +120,7 @@ const Billing = () => {
 
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
                 <Card padding>
-                    <CardHeader title="Video Call (1-on-1)" description="Caller wallet se pay karta hai" icon={<Video size={18} />} />
+                    <CardHeader title="Video Call (1-on-1)" description="Caller pays from wallet balance" icon={<Video size={18} />} />
                     <div className="space-y-4 mt-4">
                         <div>
                             <label className="text-xs text-gray-500 uppercase tracking-wider">Rate per minute (₹)</label>
@@ -144,14 +144,14 @@ const Billing = () => {
                                 : <ToggleLeft size={28} className="text-gray-500" />}
                             <div className="text-left">
                                 <p className="text-sm font-semibold text-white">Wallet billing {videoEnabled ? 'ON' : 'OFF'}</p>
-                                <p className="text-xs text-gray-500">OFF = bina recharge video call allowed</p>
+                                <p className="text-xs text-gray-500">OFF = video calls allowed without wallet recharge</p>
                             </div>
                         </button>
                     </div>
                 </Card>
 
                 <Card padding>
-                    <CardHeader title="Live Talk (Popular Live)" description="Viewer host se baat kare — request + accept" icon={<MessageCircle size={18} />} />
+                    <CardHeader title="Live Talk (Popular Live)" description="Viewers chat with host after request + accept" icon={<MessageCircle size={18} />} />
                     <div className="space-y-4 mt-4">
                         <div>
                             <label className="text-xs text-gray-500 uppercase tracking-wider">Rate per minute (₹)</label>
@@ -175,7 +175,7 @@ const Billing = () => {
                                 : <ToggleLeft size={28} className="text-gray-500" />}
                             <div className="text-left">
                                 <p className="text-sm font-semibold text-white">Wallet billing {liveEnabled ? 'ON' : 'OFF'}</p>
-                                <p className="text-xs text-gray-500">OFF = sirf request/accept, bina ₹ charge</p>
+                                <p className="text-xs text-gray-500">OFF = request/accept only, no ₹ charge</p>
                             </div>
                         </button>
                     </div>

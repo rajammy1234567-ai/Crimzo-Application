@@ -360,7 +360,7 @@ export default function LiveChat({
                     <View style={cs.inputField}>
                         <TextInput
                             style={[cs.textInput, !isHost && !canChat && cs.textInputDisabled]}
-                            placeholder={isHost || canChat ? 'Add comment...' : `Request accept hone ke baad chat — ₹${talkRatePerMin}/min`}
+                            placeholder={isHost || canChat ? 'Add comment...' : `Chat after your request is accepted — ₹${talkRatePerMin}/min`}
                             placeholderTextColor="rgba(255,255,255,0.35)"
                             value={inputText}
                             onChangeText={setInputText}

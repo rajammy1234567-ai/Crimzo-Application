@@ -6,7 +6,8 @@ const { finalizeLiveSessionEnd } = require('../controllers/liveController');
 const PKBattle = require('../models/PKBattle');
 const Sticker = require('../models/Sticker');
 const GiftHistory = require('../models/GiftHistory');
-const { userRoom } = require('../utils/socketEmitter');
+const { userRoom, emitBalanceUpdate } = require('../utils/socketEmitter');
+const { transferGift } = require('../utils/diamondTransfer');
 
 // All DB operations now use Mongoose models directly for proper persistence
 
@@ -44,73 +45,65 @@ module.exports = (io) => {
 
     socket.on('send_gift', async (data) => {
       const { battleId, hostId, giftValue, senderId, stickerId } = data;
-      
+
       try {
         if (!senderId || !giftValue) return;
 
-        // Check sender has enough diamonds (using model)
-        const sender = await User.findById(senderId).select('diamonds');
-        if (!sender || (sender.diamonds || 0) < giftValue) {
-          socket.emit('gift_error', { message: 'Not enough diamonds' });
+        const battle = await PKBattle.findOne({ battle_id: battleId });
+        if (!battle) {
+          socket.emit('gift_error', { message: 'Battle not found or has ended' });
           return;
         }
 
-        const battle = await PKBattle.findOne({ battle_id: battleId });
-        if (battle) {
-          // Deduct diamonds from sender
-          await User.findByIdAndUpdate(senderId, { $inc: { diamonds: -giftValue } });
-
-          if (hostId) {
-            await User.findByIdAndUpdate(hostId, { $inc: { diamonds: giftValue } });
-          }
-
-          // Log to gift_history
-          try {
-            let finalStickerId = stickerId;
-            if (stickerId) {
-              const stickerCheck = await Sticker.findById(stickerId);
-              if (!stickerCheck) {
-                const fallback = await Sticker.findOne().select('_id');
-                finalStickerId = fallback ? fallback._id : null;
-              }
-            }
-            if (finalStickerId) {
-              await GiftHistory.create({
-                sender_id: senderId,
-                receiver_id: hostId || null,
-                sticker_id: finalStickerId,
-                diamonds_spent: giftValue,
-                beans_earned: 0,
-                session_id: battleId
-              });
-            }
-          } catch (e) {
-            console.log('Gift history log note:', e.message);
-          }
-
-          // Update PK battle score
-          const isHost1 = String(hostId) === String(battle.host1_id);
-          if (isHost1) {
-            battle.host1_score = (battle.host1_score || 0) + giftValue;
-          } else {
-            battle.host2_score = (battle.host2_score || 0) + giftValue;
-          }
-          await battle.save();
-
-          io.to(battleId).emit('score_update', {
-            battleId,
-            host1_score: battle.host1_score,
-            host2_score: battle.host2_score
-          });
-
-          // Notify sender of updated diamond balance
-          const updatedSender = await User.findById(senderId).select('diamonds');
-          const balance = { diamonds: updatedSender?.diamonds || 0 };
-          socket.emit('diamond_update', balance);
-          io.to(userRoom(senderId)).emit('diamond_update', balance);
+        if (!hostId) {
+          socket.emit('gift_error', { message: 'Invalid gift target' });
+          return;
         }
+
+        const transfer = await transferGift(senderId, hostId, giftValue);
+
+        let finalStickerId = stickerId;
+        if (stickerId) {
+          const stickerCheck = await Sticker.findById(stickerId);
+          if (!stickerCheck) {
+            const fallback = await Sticker.findOne().select('_id');
+            finalStickerId = fallback ? fallback._id : null;
+          }
+        }
+        if (finalStickerId) {
+          await GiftHistory.create({
+            sender_id: senderId,
+            receiver_id: hostId,
+            sticker_id: finalStickerId,
+            diamonds_spent: giftValue,
+            beans_earned: transfer.beansEarned,
+            session_id: battleId,
+          });
+        }
+
+        const isHost1 = String(hostId) === String(battle.host1_id);
+        if (isHost1) {
+          battle.host1_score = (battle.host1_score || 0) + giftValue;
+        } else {
+          battle.host2_score = (battle.host2_score || 0) + giftValue;
+        }
+        await battle.save();
+
+        io.to(battleId).emit('score_update', {
+          battleId,
+          host1_score: battle.host1_score,
+          host2_score: battle.host2_score,
+        });
+
+        emitBalanceUpdate(senderId, { diamonds: transfer.senderDiamonds });
+        emitBalanceUpdate(hostId, { beans: transfer.receiverBeans });
+        socket.emit('diamond_update', { diamonds: transfer.senderDiamonds });
       } catch (error) {
         console.error('Send gift error:', error);
+        const msg = error.message || 'Gift failed';
+        socket.emit('gift_error', {
+          message: msg.includes('Insufficient') ? 'Not enough diamonds' : msg,
+        });
       }
     });
 

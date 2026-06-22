@@ -7,17 +7,29 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { PaymentMethodInfo } from './SetupPaymentModal';
+import { BEAN_PACKAGES, formatCount, formatInr } from '../../lib/diamondPackages';
+
+export type WithdrawInfo = {
+  diamonds?: number;
+  beans?: number;
+  diamondsAsBeans?: number;
+  totalBeans?: number;
+  withdrawableInr?: number;
+  beansPerInr?: number;
+  minWithdraw?: number;
+};
 
 type Props = {
   visible: boolean;
   onClose: () => void;
   onWithdraw: (amount: number) => void;
   busy?: boolean;
-  balance?: number;
+  withdrawInfo?: WithdrawInfo | null;
   minWithdraw?: number;
   paymentMethod?: PaymentMethodInfo | null;
   onSetupPayment?: () => void;
@@ -28,15 +40,23 @@ export default function WithdrawModal({
   onClose,
   onWithdraw,
   busy,
-  balance = 0,
+  withdrawInfo,
   minWithdraw = 500,
   paymentMethod,
   onSetupPayment,
 }: Props) {
   const [amount, setAmount] = useState('');
 
+  const diamonds = withdrawInfo?.diamonds ?? 0;
+  const beans = withdrawInfo?.beans ?? 0;
+  const diamondsAsBeans = withdrawInfo?.diamondsAsBeans ?? diamonds;
+  const totalBeans = withdrawInfo?.totalBeans ?? beans + diamondsAsBeans;
+  const balance = withdrawInfo?.withdrawableInr ?? 0;
+
   const parsed = Number(amount) || 0;
   const canWithdraw = paymentMethod?.status === 'verified' && balance >= minWithdraw;
+
+  const affordableTiers = BEAN_PACKAGES.filter((p) => p.price <= balance && p.price >= minWithdraw);
 
   const handleWithdraw = () => {
     if (!canWithdraw || parsed < minWithdraw || parsed > balance) return;
@@ -49,15 +69,36 @@ export default function WithdrawModal({
       <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
         <View style={s.sheet} onStartShouldSetResponder={() => true}>
           <View style={s.handle} />
-          <Text style={s.title}>Withdraw Money</Text>
+          <Text style={s.title}>Withdraw Earnings</Text>
           <Text style={s.sub}>
-            Funds will be sent from your wallet to your verified bank/UPI (1–3 business days).
+            Diamonds are auto-converted to beans, then beans are paid out to your verified bank/UPI (1–3 business days).
           </Text>
 
+          {diamonds > 0 && (
+            <View style={s.convertRow}>
+              <Ionicons name="swap-horizontal" size={18} color="#FFD700" />
+              <Text style={s.convertTxt}>
+                {formatCount(diamonds)} diamonds → {formatCount(diamondsAsBeans)} beans
+              </Text>
+            </View>
+          )}
+
           <View style={s.balanceRow}>
-            <Text style={s.balanceLabel}>Available</Text>
-            <Text style={s.balanceVal}>₹{balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</Text>
+            <View>
+              <Text style={s.balanceLabel}>Total Beans</Text>
+              <Text style={s.beansVal}>{formatCount(totalBeans)}</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={s.balanceLabel}>Withdrawable</Text>
+              <Text style={s.balanceVal}>{formatInr(balance)}</Text>
+            </View>
           </View>
+
+          {beans > 0 && diamonds > 0 && (
+            <Text style={s.breakdown}>
+              {formatCount(beans)} beans + {formatCount(diamondsAsBeans)} from diamonds
+            </Text>
+          )}
 
           {paymentMethod?.status === 'verified' ? (
             <View style={s.bankRow}>
@@ -71,7 +112,7 @@ export default function WithdrawModal({
             </TouchableOpacity>
           )}
 
-          <Text style={s.inputLabel}>Amount (min ₹{minWithdraw})</Text>
+          <Text style={s.inputLabel}>Amount (min {formatInr(minWithdraw)})</Text>
           <View style={s.inputRow}>
             <Text style={s.rupee}>₹</Text>
             <TextInput
@@ -85,12 +126,33 @@ export default function WithdrawModal({
           </View>
 
           <View style={s.quickRow}>
-            {[minWithdraw, 1000, Math.floor(balance)].filter((v, i, a) => v >= minWithdraw && a.indexOf(v) === i).slice(0, 3).map((amt) => (
-              <TouchableOpacity key={amt} style={s.quickBtn} onPress={() => setAmount(String(amt))}>
-                <Text style={s.quickText}>₹{amt.toLocaleString('en-IN')}</Text>
-              </TouchableOpacity>
-            ))}
+            {[minWithdraw, 1000, Math.floor(balance)]
+              .filter((v, i, a) => v >= minWithdraw && a.indexOf(v) === i)
+              .slice(0, 3)
+              .map((amt) => (
+                <TouchableOpacity key={amt} style={s.quickBtn} onPress={() => setAmount(String(amt))}>
+                  <Text style={s.quickText}>₹{amt.toLocaleString('en-IN')}</Text>
+                </TouchableOpacity>
+              ))}
           </View>
+
+          {affordableTiers.length > 0 && (
+            <>
+              <Text style={s.tierLabel}>Quick withdraw by bean tier</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tierScroll}>
+                {affordableTiers.map((tier) => (
+                  <TouchableOpacity
+                    key={tier.id}
+                    style={s.tierBtn}
+                    onPress={() => setAmount(String(tier.price))}
+                  >
+                    <Text style={s.tierBeans}>{formatCount(tier.beans)} beans</Text>
+                    <Text style={s.tierInr}>{formatInr(tier.price)}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </>
+          )}
 
           <TouchableOpacity
             onPress={canWithdraw ? handleWithdraw : onSetupPayment}
@@ -122,10 +184,20 @@ const s = StyleSheet.create({
   sheet: { backgroundColor: '#1C1C1E', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40 },
   handle: { width: 44, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginBottom: 20 },
   title: { color: '#FFF', fontSize: 22, fontWeight: '800', textAlign: 'center' },
-  sub: { color: 'rgba(255,255,255,0.5)', fontSize: 13, textAlign: 'center', marginTop: 8, marginBottom: 20, lineHeight: 18 },
-  balanceRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14, padding: 14, backgroundColor: 'rgba(255,149,0,0.1)', borderRadius: 14 },
-  balanceLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 14 },
-  balanceVal: { color: '#FF9500', fontSize: 18, fontWeight: '800' },
+  sub: { color: 'rgba(255,255,255,0.5)', fontSize: 13, textAlign: 'center', marginTop: 8, marginBottom: 16, lineHeight: 18 },
+  convertRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center',
+    backgroundColor: 'rgba(255,215,0,0.1)', borderRadius: 12, padding: 10, marginBottom: 12,
+  },
+  convertTxt: { color: '#FFD700', fontSize: 13, fontWeight: '700' },
+  balanceRow: {
+    flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8,
+    padding: 14, backgroundColor: 'rgba(255,149,0,0.1)', borderRadius: 14,
+  },
+  balanceLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 12 },
+  beansVal: { color: '#FF9500', fontSize: 16, fontWeight: '800', marginTop: 2 },
+  balanceVal: { color: '#FF9500', fontSize: 20, fontWeight: '800', marginTop: 2 },
+  breakdown: { color: 'rgba(255,255,255,0.4)', fontSize: 11, textAlign: 'center', marginBottom: 12 },
   bankRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16, padding: 12, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12 },
   bankVal: { color: '#FFF', fontSize: 14, fontWeight: '600', flex: 1 },
   setupBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16, padding: 14, backgroundColor: 'rgba(255,45,85,0.1)', borderRadius: 14 },
@@ -134,9 +206,17 @@ const s = StyleSheet.create({
   inputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, paddingHorizontal: 16, marginBottom: 12 },
   rupee: { color: '#FF9500', fontSize: 20, fontWeight: '800', marginRight: 8 },
   input: { flex: 1, color: '#FFF', fontSize: 18, fontWeight: '700', paddingVertical: 14 },
-  quickRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  quickRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
   quickBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)' },
   quickText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  tierLabel: { color: 'rgba(255,255,255,0.45)', fontSize: 11, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  tierScroll: { marginBottom: 16 },
+  tierBtn: {
+    backgroundColor: 'rgba(255,149,0,0.12)', borderRadius: 12, padding: 12,
+    marginRight: 10, borderWidth: 1, borderColor: 'rgba(255,149,0,0.25)', minWidth: 110,
+  },
+  tierBeans: { color: '#FF9500', fontSize: 13, fontWeight: '800' },
+  tierInr: { color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 4, fontWeight: '600' },
   btn: { paddingVertical: 16, borderRadius: 16, alignItems: 'center' },
   btnText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
 });

@@ -50,6 +50,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
+    socket.on('bean_update', (data: { beans?: number }) => {
+      if (typeof data?.beans === 'number') {
+        updateUser({ beans: data.beans });
+      }
+    });
+
     socket.on('reel_deleted', (data: { reelId?: string }) => {
       if (data?.reelId) publish('reel_deleted', data.reelId);
     });

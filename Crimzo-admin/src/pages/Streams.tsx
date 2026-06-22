@@ -67,7 +67,7 @@ const Streams = () => {
         <div>
             <PageHeader
                 title="Live Streams"
-                description="Monitor active broadcasts. Viewers host se baat karne ke liye request bhejte hain — rate admin Billing se set hoti hai."
+                description="Monitor active broadcasts. Viewers send talk requests to hosts — rates are set in Billing."
                 breadcrumbs={[{ label: 'Dashboard', to: '/dashboard' }, { label: 'Streams' }]}
                 stats={statusFilter === 'active' ? [
                     { label: 'Live Now', value: activeCount, color: 'text-red-400' },

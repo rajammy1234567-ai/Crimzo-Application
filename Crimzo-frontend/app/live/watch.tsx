@@ -308,7 +308,7 @@ export default function WatchScreen() {
     s.on('live_talk_rejected', () => {
       setTalkStatus('rejected');
       setTalkRequestId(null);
-      Alert.alert('Request Declined', 'The host has not accepted your request yet.');
+      Alert.alert('Request Declined', 'The host declined your chat request.');
     });
     socketRef.current = s;
     return () => { 
@@ -428,7 +428,7 @@ export default function WatchScreen() {
     if (!sessionId || !socketRef.current) return;
     socketRef.current.emit('live_send_sticker', {
       sessionId, userId: user?.id, username: user?.username,
-      stickerId: sticker.id, emoji: sticker.emoji, stickerName: sticker.name,
+      stickerId: sticker.id != null ? String(sticker.id) : undefined, emoji: sticker.emoji, stickerName: sticker.name,
       icon_name: sticker.icon_name, icon_color: sticker.icon_color, bg_color: sticker.bg_color,
     });
   };

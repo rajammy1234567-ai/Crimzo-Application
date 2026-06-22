@@ -3,6 +3,7 @@ import { Alert, Platform } from 'react-native';
 import { apiGet, apiPost, apiDelete, ApiError } from './apiClient';
 import { useAuth } from '../contexts/AuthContext';
 import type { PaymentMethodInfo } from '../components/payments/SetupPaymentModal';
+import type { WithdrawInfo } from '../components/payments/WithdrawModal';
 
 export type WalletCheckoutData = {
   mode: 'razorpay' | 'dev_mock';
@@ -59,6 +60,7 @@ export function useWallet() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodInfo | null>(null);
   const [hasVerifiedPayment, setHasVerifiedPayment] = useState(false);
   const [isPendingVerification, setIsPendingVerification] = useState(false);
+  const [withdrawInfo, setWithdrawInfo] = useState<WithdrawInfo | null>(null);
 
   const refreshPaymentMethod = useCallback(async () => {
     if (!token) return;
@@ -444,6 +446,20 @@ export function useWallet() {
     }
   }, [token, syncBalances, addMoney]);
 
+  const loadWithdrawInfo = useCallback(async () => {
+    if (!token) return null;
+    try {
+      const res = await apiGet<WithdrawInfo & { success?: boolean }>('/api/payments/withdraw/info', token);
+      if (res.success) {
+        setWithdrawInfo(res);
+        return res;
+      }
+    } catch {
+      // non-fatal
+    }
+    return null;
+  }, [token]);
+
   const withdrawMoney = useCallback(async (amountInr: number) => {
     if (!token) {
       Alert.alert('Login Required', 'Please log in first.');
@@ -453,20 +469,30 @@ export function useWallet() {
     try {
       const res = await apiPost<{
         success?: boolean;
-        wallet_balance?: number;
+        diamonds?: number;
+        beans?: number;
+        diamondsConverted?: number;
+        beansUsed?: number;
         message?: string;
         minWithdraw?: number;
+        availableInr?: number;
       }>('/api/payments/withdraw', { amount: amountInr }, token);
       if (res.success) {
-        syncBalances({ wallet_balance: res.wallet_balance });
-        Alert.alert('✅ Withdrawal', res.message || 'Withdrawal submitted');
+        syncBalances({ diamonds: res.diamonds, beans: res.beans });
+        const convertedNote = res.diamondsConverted
+          ? `\n\n${res.diamondsConverted.toLocaleString()} diamonds converted to beans.`
+          : '';
+        Alert.alert('✅ Withdrawal', (res.message || 'Withdrawal submitted') + convertedNote);
+        await loadWithdrawInfo();
         return true;
       }
       return false;
     } catch (e) {
       if (e instanceof ApiError) {
-        const data = e.data as { minWithdraw?: number };
-        Alert.alert('Cannot Withdraw', e.message + (data.minWithdraw ? `\n\nMinimum: ₹${data.minWithdraw}` : ''));
+        const data = e.data as { minWithdraw?: number; availableInr?: number };
+        const extra = data.minWithdraw ? `\n\nMinimum: ₹${data.minWithdraw}` : '';
+        const avail = data.availableInr != null ? `\nAvailable: ₹${data.availableInr.toLocaleString('en-IN')}` : '';
+        Alert.alert('Cannot Withdraw', e.message + extra + avail);
       } else {
         Alert.alert('Error', 'Withdrawal failed');
       }
@@ -474,7 +500,7 @@ export function useWallet() {
     } finally {
       setBusy(false);
     }
-  }, [token, syncBalances]);
+  }, [token, syncBalances, loadWithdrawInfo]);
 
   return {
     busy,
@@ -489,6 +515,8 @@ export function useWallet() {
     buyWithWallet,
     buyWithRazorpay,
     withdrawMoney,
+    withdrawInfo,
+    loadWithdrawInfo,
     setupPaymentMethod,
     verifyPaymentOtp,
     resendPaymentOtp,

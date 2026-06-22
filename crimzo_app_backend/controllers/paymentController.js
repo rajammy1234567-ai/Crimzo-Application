@@ -14,7 +14,17 @@ const {
   MAX_TOPUP_INR,
   MIN_WITHDRAW_INR,
   MAX_WITHDRAW_INR,
+  BEANS_PER_INR,
+  MIN_WITHDRAW_BEANS,
 } = require('../config/walletConfig');
+const {
+  diamondsToBeans,
+  beansToInr,
+  inrToBeans,
+  totalWithdrawableBeans,
+  beanTiers,
+  deductBeansForWithdraw,
+} = require('../utils/beanConversion');
 const {
   isRazorpayConfigured,
   getRazorpayClient,
@@ -648,8 +658,8 @@ exports.createTopupOrder = async (req, res) => {
         userId: String(userId),
         type: 'wallet_topup',
         amountInr: String(amountInr),
-        bank: linked.bank_name,
-        account_last4: linked.account_last4,
+        bank: linked?.bank_name || '',
+        account_last4: linked?.account_last4 || '',
       },
     });
 
@@ -841,15 +851,27 @@ exports.purchaseWithWallet = async (req, res) => {
 
 exports.getWithdrawInfo = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('wallet_balance linked_bank');
+    const user = await User.findById(req.user.id).select('diamonds beans linked_bank');
     if (!user) return res.status(404).json({ error: 'User not found' });
     const method = formatPaymentMethod(user.linked_bank);
+    const diamonds = user.diamonds || 0;
+    const beans = user.beans || 0;
+    const diamondsAsBeans = diamondsToBeans(diamonds);
+    const totalBeans = totalWithdrawableBeans(diamonds, beans);
+    const withdrawableInr = beansToInr(totalBeans);
     res.json({
       success: true,
-      wallet_balance: user.wallet_balance || 0,
+      diamonds,
+      beans,
+      diamondsAsBeans,
+      totalBeans,
+      withdrawableInr,
+      beansPerInr: BEANS_PER_INR,
       minWithdraw: MIN_WITHDRAW_INR,
+      minWithdrawBeans: MIN_WITHDRAW_BEANS,
       maxWithdraw: MAX_WITHDRAW_INR,
-      canWithdraw: isPaymentVerified(user.linked_bank) && (user.wallet_balance || 0) >= MIN_WITHDRAW_INR,
+      beanTiers: beanTiers(),
+      canWithdraw: isPaymentVerified(user.linked_bank) && withdrawableInr >= MIN_WITHDRAW_INR,
       paymentMethod: method,
       hasVerifiedPayment: isPaymentVerified(user.linked_bank),
     });
@@ -874,25 +896,41 @@ exports.requestWithdraw = async (req, res) => {
       return res.status(400).json({ error: `Maximum withdrawal is ₹${MAX_WITHDRAW_INR.toLocaleString('en-IN')}` });
     }
 
-    const user = await User.findById(userId).select('wallet_balance linked_bank');
+    const beansNeeded = inrToBeans(amountInr);
+
+    const user = await User.findById(userId).select('diamonds beans linked_bank');
     if (!isPaymentVerified(user?.linked_bank)) {
       return res.status(400).json({ error: 'Verify bank/UPI/card first', code: 'PAYMENT_NOT_VERIFIED' });
     }
 
-    const method = formatPaymentMethod(user.linked_bank);
-    const updated = await User.findOneAndUpdate(
-      { _id: userId, wallet_balance: { $gte: amountInr } },
-      { $inc: { wallet_balance: -amountInr } },
-      { new: true },
-    ).select('wallet_balance');
+    const diamonds = user?.diamonds || 0;
+    const beans = user?.beans || 0;
+    const totalBeans = totalWithdrawableBeans(diamonds, beans);
+    const availableInr = beansToInr(totalBeans);
 
-    if (!updated) {
+    if (totalBeans < beansNeeded) {
       return res.status(400).json({
-        error: 'Insufficient wallet balance',
+        error: 'Insufficient beans balance',
         minWithdraw: MIN_WITHDRAW_INR,
-        available: user?.wallet_balance || 0,
+        availableInr,
+        availableBeans: totalBeans,
+        beansNeeded,
+        diamondsConverted: diamondsToBeans(diamonds),
       });
     }
+
+    const method = formatPaymentMethod(user.linked_bank);
+    const { diamonds: newDiamonds, beans: newBeans } = deductBeansForWithdraw(
+      diamonds,
+      beans,
+      beansNeeded,
+    );
+
+    const updated = await User.findByIdAndUpdate(
+      userId,
+      { diamonds: newDiamonds, beans: newBeans },
+      { new: true },
+    ).select('diamonds beans');
 
     const isDev = process.env.NODE_ENV !== 'production' && !isRazorpayConfigured();
     const withdrawal = await WithdrawalRequest.create({
@@ -908,6 +946,7 @@ exports.requestWithdraw = async (req, res) => {
       user_id: userId,
       product_type: 'wallet_withdrawal',
       amount_inr: amountInr,
+      beans: beansNeeded,
       status: 'paid',
       payment_method: 'withdrawal',
       paid_at: new Date(),
@@ -915,7 +954,10 @@ exports.requestWithdraw = async (req, res) => {
 
     res.json({
       success: true,
-      wallet_balance: updated.wallet_balance,
+      diamonds: updated.diamonds,
+      beans: updated.beans,
+      diamondsConverted: diamondsToBeans(diamonds),
+      beansUsed: beansNeeded,
       withdrawn: amountInr,
       withdrawalId: withdrawal._id.toString(),
       status: withdrawal.status,

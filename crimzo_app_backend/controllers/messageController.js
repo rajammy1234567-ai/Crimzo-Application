@@ -3,6 +3,7 @@ const User = require('../models/User');
 const GiftHistory = require('../models/GiftHistory');
 const mongoose = require('mongoose');
 const { transferDiamonds } = require('../utils/diamondTransfer');
+const { emitBalanceUpdate } = require('../utils/socketEmitter');
 const { CHAT_GIFT_PRESETS } = require('../config/walletConfig');
 
 // Get conversations list (simplified Mongo version)
@@ -99,7 +100,7 @@ exports.getMessages = async (req, res) => {
     res.json({ success: true, messages: formatted });
   } catch (error) {
     console.error('Get messages error:', error);
-    res.json({ success: true, messages: [] });
+    res.status(500).json({ error: 'Failed to load messages' });
   }
 };
 
@@ -156,11 +157,13 @@ exports.sendDiamondGift = async (req, res) => {
     if (!receiverId || !Number.isFinite(amount) || amount < 1) {
       return res.status(400).json({ error: 'Receiver and valid diamond amount required' });
     }
-    if (!CHAT_GIFT_PRESETS.includes(amount) && amount < 1) {
+    if (!CHAT_GIFT_PRESETS.includes(amount)) {
       return res.status(400).json({ error: 'Invalid gift amount', presets: CHAT_GIFT_PRESETS });
     }
 
     const transfer = await transferDiamonds(senderId, receiverId, amount);
+    emitBalanceUpdate(senderId, { diamonds: transfer.senderDiamonds });
+    emitBalanceUpdate(receiverId, { beans: transfer.receiverBeans });
 
     const sender = await User.findById(senderId).select('username');
     const content = `🎁 Sent ${amount.toLocaleString()} diamonds`;
@@ -177,7 +180,7 @@ exports.sendDiamondGift = async (req, res) => {
       sender_id: senderId,
       receiver_id: receiverId,
       diamonds_spent: amount,
-      beans_earned: 0,
+      beans_earned: transfer.beansEarned || amount,
       session_id: `chat_${msg._id}`,
     });
 
@@ -195,7 +198,8 @@ exports.sendDiamondGift = async (req, res) => {
         gift_diamonds: amount,
       },
       senderDiamonds: transfer.senderDiamonds,
-      receiverDiamonds: transfer.receiverDiamonds,
+      receiverBeans: transfer.receiverBeans,
+      beansEarned: transfer.beansEarned,
       transferred: amount,
     });
   } catch (error) {

@@ -17,12 +17,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import axios from 'axios';
 
+import { useRouter } from 'expo-router';
 import { API_URL } from '../lib/apiClient';
 import { subscribe } from '../lib/realtimeSync';
+import { useAuth } from '../contexts/AuthContext';
 const { width: SW } = Dimensions.get('window');
 
 interface Sticker {
-    id: number;
+    id: string | number;
     name: string;
     emoji: string;
     icon_name?: string;
@@ -106,11 +108,13 @@ function StickerIcon({ sticker, size = 36 }: { sticker: Sticker; size?: number }
 }
 
 export default function StickerPanel({ visible, onClose, onSendSticker, token, receiverId, sessionId }: StickerPanelProps) {
+    const router = useRouter();
+    const { updateUser } = useAuth();
     const [stickers, setStickers] = useState<Sticker[]>([]);
     const [diamonds, setDiamonds] = useState(0);
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [loading, setLoading] = useState(true);
-    const [sending, setSending] = useState<number | null>(null);
+    const [sending, setSending] = useState<string | number | null>(null);
     const [confirmSticker, setConfirmSticker] = useState<Sticker | null>(null);
     const slideAnim = useRef(new Animated.Value(400)).current;
 
@@ -149,16 +153,29 @@ export default function StickerPanel({ visible, onClose, onSendSticker, token, r
         const sticker = confirmSticker;
         setConfirmSticker(null);
         if (diamonds < sticker.price) {
-            Alert.alert('Not Enough Diamonds', `You need ${sticker.price} diamonds but only have ${diamonds}.`);
+            Alert.alert(
+                'Not Enough Diamonds',
+                `You need ${sticker.price} diamonds but only have ${diamonds}. Buy diamonds from Wallet to send gifts.`,
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Go to Wallet', onPress: () => { onClose(); router.push('/profile/wallet'); } },
+                ],
+            );
             return;
         }
         try {
             setSending(sticker.id);
+            const stickerId = sticker.id != null ? String(sticker.id) : '';
+            if (!stickerId) {
+                Alert.alert('Error', 'Invalid gift. Please refresh and try again.');
+                return;
+            }
             const r = await axios.post(`${API_URL}/api/stickers/send`,
-                { stickerId: sticker.id, receiverId, sessionId },
+                { stickerId, receiverId, sessionId },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
             setDiamonds(r.data.remainingDiamonds);
+            updateUser({ diamonds: r.data.remainingDiamonds });
             onSendSticker(sticker);
             onClose();
         } catch (e: any) {
@@ -207,7 +224,10 @@ export default function StickerPanel({ visible, onClose, onSendSticker, token, r
                         <View style={st.balancePill}>
                             <Ionicons name="diamond" size={13} color="#00BFFF" />
                             <Text style={st.balanceVal}>{diamonds}</Text>
-                            <TouchableOpacity activeOpacity={0.7}>
+                            <TouchableOpacity
+                                activeOpacity={0.7}
+                                onPress={() => { onClose(); router.push('/profile/wallet'); }}
+                            >
                                 <LinearGradient colors={['#FFD700', '#FFA500']} style={st.addBtn}>
                                     <Ionicons name="add" size={14} color="#0D0D14" />
                                 </LinearGradient>

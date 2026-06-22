@@ -1,44 +1,56 @@
+const mongoose = require('mongoose');
 const Sticker = require('../models/Sticker');
-const UserSticker = require('../models/UserSticker');
 const User = require('../models/User');
+const UserSticker = require('../models/UserSticker');
 const GiftHistory = require('../models/GiftHistory');
+const { transferGift } = require('../utils/diamondTransfer');
+const { emitBalanceUpdate } = require('../utils/socketEmitter');
 
-// Get sticker catalog
+function stickerPublicId(doc) {
+  if (!doc) return null;
+  return doc._id ? doc._id.toString() : String(doc.id || '');
+}
+
+function mapSticker(doc, owned = false) {
+  return {
+    id: stickerPublicId(doc),
+    name: doc.name,
+    emoji: doc.emoji,
+    icon_name: doc.icon_name,
+    icon_color: doc.icon_color,
+    bg_color: doc.bg_color,
+    category: doc.category,
+    price: doc.price,
+    is_animated: !!doc.is_animated,
+    owned,
+  };
+}
+
 exports.getCatalog = async (req, res) => {
   try {
     const userId = req.user.id;
-    const stickers = await Sticker.find().sort({ category: 1, price: 1 }).lean();
+    const [stickers, user, ownedRows] = await Promise.all([
+      Sticker.find().sort({ price: 1 }).lean(),
+      User.findById(userId).select('diamonds'),
+      UserSticker.find({ user_id: userId }).select('sticker_id').lean(),
+    ]);
 
-    const owned = await UserSticker.find({ user_id: userId }).select('sticker_id').lean();
-    const ownedSet = new Set(owned.map(o => String(o.sticker_id)));
-
-    const enriched = stickers.map(s => ({
-      id: s.id,
-      name: s.name,
-      emoji: s.emoji,
-      icon_name: s.icon_name,
-      icon_color: s.icon_color,
-      bg_color: s.bg_color,
-      category: s.category,
-      price: s.price,
-      is_animated: s.is_animated,
-      owned: ownedSet.has(String(s._id))
-    }));
-
-    const user = await User.findById(userId).select('diamonds');
-    res.json({ success: true, stickers: enriched, diamonds: user?.diamonds || 0 });
+    const ownedSet = new Set(ownedRows.map((r) => String(r.sticker_id)));
+    res.json({
+      success: true,
+      stickers: stickers.map((s) => mapSticker(s, ownedSet.has(String(s._id)))),
+      diamonds: user?.diamonds || 0,
+    });
   } catch (error) {
     console.error('Get sticker catalog error:', error);
-    res.status(500).json({ error: 'Failed to get sticker catalog' });
+    res.status(500).json({ error: 'Failed to load stickers' });
   }
 };
 
-// Buy sticker
 exports.buySticker = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { stickerId } = req.body;
-
+    const stickerId = req.body.stickerId || req.body.sticker_id;
     if (!stickerId) {
       return res.status(400).json({ error: 'Sticker ID required' });
     }
@@ -53,97 +65,92 @@ exports.buySticker = async (req, res) => {
       return res.status(400).json({ error: 'You already own this sticker' });
     }
 
-    const user = await User.findById(userId);
-    const userDiamonds = user?.diamonds || 0;
-
-    if (userDiamonds < sticker.price) {
-      return res.status(400).json({ error: `Not enough diamonds. Need ${sticker.price}, have ${userDiamonds}` });
+    const user = await User.findById(userId).select('diamonds');
+    const balance = user?.diamonds || 0;
+    if (balance < sticker.price) {
+      return res.status(400).json({
+        error: 'Not enough diamonds',
+        required: sticker.price,
+        current: balance,
+      });
     }
 
-    user.diamonds = userDiamonds - sticker.price;
+    user.diamonds = balance - sticker.price;
     await user.save();
-
     await UserSticker.create({ user_id: userId, sticker_id: stickerId });
-
-    console.log(`User ${userId} bought sticker ${sticker.name} for ${sticker.price} diamonds`);
 
     res.json({
       success: true,
       message: `Purchased ${sticker.name}!`,
       remainingDiamonds: user.diamonds,
-      sticker: sticker.toJSON()
+      sticker: mapSticker(sticker.toObject(), true),
     });
   } catch (error) {
     console.error('Buy sticker error:', error);
-    res.status(500).json({ error: 'Failed to buy sticker' });
+    res.status(500).json({ error: 'Purchase failed' });
   }
 };
 
-// Get owned stickers
 exports.getOwned = async (req, res) => {
   try {
     const userId = req.user.id;
-    const owned = await UserSticker.find({ user_id: userId })
-      .sort({ purchased_at: -1 })
+    const rows = await UserSticker.find({ user_id: userId })
       .populate('sticker_id')
       .lean();
 
-    const stickers = owned.map(o => o.sticker_id).filter(Boolean);
+    const stickers = rows
+      .filter((r) => r.sticker_id)
+      .map((r) => mapSticker(r.sticker_id, true));
+
     res.json({ success: true, stickers });
   } catch (error) {
     console.error('Get owned stickers error:', error);
-    res.status(500).json({ error: 'Failed to get owned stickers' });
+    res.status(500).json({ error: 'Failed to load owned stickers' });
   }
 };
 
-// Get collected stickers (received as gifts during live streams)
 exports.getCollected = async (req, res) => {
   try {
-    const userId = req.params.userId || req.user.id;
+    const targetId = req.params.userId || req.user.id;
+    const uid = new mongoose.Types.ObjectId(targetId);
 
     const agg = await GiftHistory.aggregate([
-      { $match: { receiver_id: new (require('mongoose')).Types.ObjectId(userId) } },
-      { $group: {
-        _id: '$sticker_id',
-        receive_count: { $sum: 1 },
-        total_beans: { $sum: '$beans_earned' }
-      } },
-      { $sort: { receive_count: -1 } }
+      { $match: { receiver_id: uid, sticker_id: { $ne: null } } },
+      {
+        $group: {
+          _id: '$sticker_id',
+          receive_count: { $sum: 1 },
+          total_beans: { $sum: '$beans_earned' },
+        },
+      },
     ]);
 
-    const stickerIds = agg.map(a => a._id).filter(Boolean);
-    const stickersDocs = await Sticker.find({ _id: { $in: stickerIds } }).lean();
-    const stickerMap = {};
-    stickersDocs.forEach(s => { stickerMap[String(s._id)] = s; });
+    const stickerIds = agg.map((a) => a._id);
+    const stickerDocs = await Sticker.find({ _id: { $in: stickerIds } }).lean();
+    const stickerMap = new Map(stickerDocs.map((s) => [String(s._id), s]));
 
-    const stickers = agg.map(a => {
-      const s = stickerMap[String(a._id)];
-      if (!s) return null;
-      return {
-        id: s.id,
-        name: s.name,
-        emoji: s.emoji,
-        icon_name: s.icon_name,
-        icon_color: s.icon_color,
-        bg_color: s.bg_color,
-        category: s.category,
-        price: s.price,
-        is_animated: s.is_animated,
-        receive_count: a.receive_count,
-        total_beans: a.total_beans || 0
-      };
-    }).filter(Boolean);
+    const stickers = agg
+      .map((a) => {
+        const doc = stickerMap.get(String(a._id));
+        if (!doc) return null;
+        return {
+          ...mapSticker(doc),
+          receive_count: a.receive_count,
+          total_beans: a.total_beans || 0,
+        };
+      })
+      .filter(Boolean);
 
     const totals = await GiftHistory.aggregate([
-      { $match: { receiver_id: new (require('mongoose')).Types.ObjectId(userId) } },
-      { $group: { _id: null, total_gifts: { $sum: 1 }, total_beans: { $sum: '$beans_earned' } } }
+      { $match: { receiver_id: uid } },
+      { $group: { _id: null, total_gifts: { $sum: 1 }, total_beans: { $sum: '$beans_earned' } } },
     ]);
 
     res.json({
       success: true,
       stickers,
       totalGifts: totals[0]?.total_gifts || 0,
-      totalBeans: totals[0]?.total_beans || 0
+      totalBeans: totals[0]?.total_beans || 0,
     });
   } catch (error) {
     console.error('Get collected stickers error:', error);
@@ -151,11 +158,11 @@ exports.getCollected = async (req, res) => {
   }
 };
 
-// Send sticker in live
 exports.sendSticker = async (req, res) => {
   try {
     const senderId = req.user.id;
-    const { stickerId, receiverId, sessionId } = req.body;
+    const stickerId = req.body.stickerId || req.body.sticker_id;
+    const { receiverId, sessionId } = req.body;
 
     if (!stickerId) {
       return res.status(400).json({ error: 'Sticker ID required' });
@@ -166,22 +173,33 @@ exports.sendSticker = async (req, res) => {
       return res.status(404).json({ error: 'Sticker not found' });
     }
 
-    const user = await User.findById(senderId);
-    const userDiamonds = user?.diamonds || 0;
-
-    if (userDiamonds < sticker.price) {
-      return res.status(400).json({ 
-        error: 'Not enough diamonds',
-        required: sticker.price,
-        current: userDiamonds
-      });
-    }
-
-    user.diamonds = userDiamonds - sticker.price;
-    await user.save();
+    let senderDiamonds;
+    let receiverBeans = 0;
+    let beansEarned = 0;
 
     if (receiverId) {
-      await User.findByIdAndUpdate(receiverId, { $inc: { diamonds: sticker.price } });
+      const transfer = await transferGift(senderId, receiverId, sticker.price);
+      senderDiamonds = transfer.senderDiamonds;
+      receiverBeans = transfer.receiverBeans;
+      beansEarned = transfer.beansEarned;
+      emitBalanceUpdate(senderId, { diamonds: senderDiamonds });
+      emitBalanceUpdate(receiverId, { beans: receiverBeans });
+    } else {
+      const user = await User.findOneAndUpdate(
+        { _id: senderId, diamonds: { $gte: sticker.price } },
+        { $inc: { diamonds: -sticker.price } },
+        { new: true },
+      ).select('diamonds');
+      if (!user) {
+        const current = await User.findById(senderId).select('diamonds');
+        return res.status(400).json({
+          error: 'Not enough diamonds',
+          required: sticker.price,
+          current: current?.diamonds || 0,
+        });
+      }
+      senderDiamonds = user.diamonds;
+      emitBalanceUpdate(senderId, { diamonds: senderDiamonds });
     }
 
     await GiftHistory.create({
@@ -189,20 +207,23 @@ exports.sendSticker = async (req, res) => {
       receiver_id: receiverId || null,
       sticker_id: stickerId,
       diamonds_spent: sticker.price,
-      beans_earned: 0,
-      session_id: sessionId || null
+      beans_earned: beansEarned,
+      session_id: sessionId || null,
     });
-
-    console.log(`User ${senderId} sent sticker ${sticker.name} (${sticker.price} diamonds) to ${receiverId || 'stream'}`);
 
     res.json({
       success: true,
-      remainingDiamonds: user.diamonds,
-      sticker: sticker.toJSON(),
-      diamondsCredited: receiverId ? sticker.price : 0,
+      remainingDiamonds: senderDiamonds,
+      receiverBeans,
+      beansEarned,
+      sticker: mapSticker(sticker.toObject()),
     });
   } catch (error) {
     console.error('Send sticker error:', error);
-    res.status(500).json({ error: 'Failed to send sticker' });
+    const msg = error.message || 'Failed to send sticker';
+    if (msg.includes('Insufficient diamonds') || msg.includes('Not enough')) {
+      return res.status(400).json({ error: 'Not enough diamonds' });
+    }
+    res.status(500).json({ error: msg });
   }
 };

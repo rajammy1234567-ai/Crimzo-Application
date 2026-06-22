@@ -26,6 +26,35 @@ const isValidEmail = (email) => {
   return emailRegex.test(email);
 };
 
+function rejectIfBanned(user, res) {
+  if (user?.is_banned) {
+    res.status(403).json({ error: 'Your account has been suspended. Contact support.', banned: true });
+    return true;
+  }
+  return false;
+}
+
+function formatAuthUser(user, extra = {}) {
+  return {
+    id: user.id,
+    crimzo_id: user.crimzo_id,
+    email: user.email,
+    username: user.username,
+    avatar: user.avatar,
+    bio: user.bio,
+    country: user.country,
+    diamonds: user.diamonds ?? 0,
+    beans: user.beans ?? 0,
+    wallet_balance: user.wallet_balance ?? 0,
+    followers_count: user.followers_count ?? 0,
+    following_count: user.following_count ?? 0,
+    friends_count: user.friends_count ?? 0,
+    is_online: user.is_online,
+    status: user.status,
+    ...extra,
+  };
+}
+
 // Nodemailer transporter (Gmail SMTP)
 const createTransporter = () => {
   return nodemailer.createTransport({
@@ -65,8 +94,7 @@ exports.guestLogin = async (req, res) => {
     res.json({
       success: true,
       token,
-      user: {
-        id: user.id,
+      user: formatAuthUser(user, {
         crimzo_id: crimzoId,
         email: guestEmail,
         username: guestUsername,
@@ -74,14 +102,8 @@ exports.guestLogin = async (req, res) => {
         bio: null,
         country: 'India',
         diamonds: 100,
-        beans: 0,
-        followers_count: 0,
-        following_count: 0,
-        friends_count: 0,
-        is_online: false,
-        status: 'offline',
         is_guest: true,
-      },
+      }),
     });
   } catch (error) {
     console.error('Guest login error:', error);
@@ -143,7 +165,7 @@ exports.verifyOtp = async (req, res) => {
         email: phoneEmail,
         password_hash: 'PHONE_AUTH_NO_PASSWORD',
         username,
-        diamonds: 810,
+        diamonds: 0,
         beans: 0,
         country: 'India',
       });
@@ -151,6 +173,8 @@ exports.verifyOtp = async (req, res) => {
     } else {
       console.log('Existing phone user found, ID:', user.id);
     }
+
+    if (rejectIfBanned(user, res)) return;
 
     user.is_online = true;
     user.status = 'online';
@@ -165,14 +189,7 @@ exports.verifyOtp = async (req, res) => {
     res.json({
       success: true,
       token,
-      user: {
-        id: user.id, crimzo_id: user.crimzo_id, email: user.email, username: user.username,
-        avatar: user.avatar, bio: user.bio, country: user.country,
-        diamonds: user.diamonds, beans: user.beans,
-        followers_count: user.followers_count,
-        following_count: user.following_count,
-        friends_count: user.friends_count,
-      },
+      user: formatAuthUser(user),
     });
   } catch (error) {
     console.error('Verify OTP error:', error);
@@ -202,7 +219,7 @@ exports.googleLogin = async (req, res) => {
         password_hash: 'GOOGLE_AUTH_NO_PASSWORD',
         username,
         avatar: avatar || null,
-        diamonds: 810,
+        diamonds: 0,
         beans: 0,
         country: 'India',
       });
@@ -213,6 +230,8 @@ exports.googleLogin = async (req, res) => {
       }
       console.log('Existing Google user found, ID:', user.id);
     }
+
+    if (rejectIfBanned(user, res)) return;
 
     user.is_online = true;
     user.status = 'online';
@@ -227,14 +246,7 @@ exports.googleLogin = async (req, res) => {
     res.json({
       success: true,
       token,
-      user: {
-        id: user.id, crimzo_id: user.crimzo_id, email: user.email, username: user.username,
-        avatar: user.avatar, bio: user.bio, country: user.country,
-        diamonds: user.diamonds, beans: user.beans,
-        followers_count: user.followers_count,
-        following_count: user.following_count,
-        friends_count: user.friends_count,
-      },
+      user: formatAuthUser(user),
     });
   } catch (error) {
     console.error('Google login error:', error);
@@ -295,7 +307,7 @@ exports.register = async (req, res) => {
       password_hash: passwordHash,
       username: username.trim(),
       avatar: avatarUrl,
-      diamonds: 810,
+      diamonds: 0,
       beans: 0,
       country: 'India',
     });
@@ -311,13 +323,14 @@ exports.register = async (req, res) => {
     res.json({
       success: true,
       token,
-      user: {
-        id: user.id, crimzo_id: crimzoId, email: normalizedEmail, username: username.trim(),
-        avatar: avatarUrl, bio: null, country: 'India',
-        diamonds: 810, beans: 0,
-        followers_count: 0, following_count: 0, friends_count: 0,
-        is_online: false, status: 'offline'
-      }
+      user: formatAuthUser(user, {
+        crimzo_id: crimzoId,
+        email: normalizedEmail,
+        username: username.trim(),
+        avatar: avatarUrl,
+        bio: null,
+        country: 'India',
+      }),
     });
   } catch (error) {
     console.error('Register error:', error);
@@ -394,14 +407,7 @@ exports.login = async (req, res) => {
     res.json({
       success: true,
       token,
-      user: {
-        id: user.id, crimzo_id: user.crimzo_id, email: user.email, username: user.username,
-        avatar: user.avatar, bio: user.bio, country: user.country,
-        diamonds: user.diamonds, beans: user.beans,
-        followers_count: user.followers_count,
-        following_count: user.following_count,
-        friends_count: user.friends_count
-      }
+      user: formatAuthUser(user),
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -494,6 +500,8 @@ exports.verifyEmailOtp = async (req, res) => {
       // Existing user — log them in
       emailOtpStore.delete(normalizedEmail);
 
+      if (rejectIfBanned(user, res)) return;
+
       user.is_online = true;
       user.status = 'online';
       await user.save();
@@ -508,14 +516,7 @@ exports.verifyEmailOtp = async (req, res) => {
         success: true,
         isNewUser: false,
         token,
-        user: {
-          id: user.id, crimzo_id: user.crimzo_id, email: user.email, username: user.username,
-          avatar: user.avatar, bio: user.bio, country: user.country,
-          diamonds: user.diamonds, beans: user.beans,
-          followers_count: user.followers_count,
-          following_count: user.following_count,
-          friends_count: user.friends_count,
-        },
+        user: formatAuthUser(user),
       });
     }
 
@@ -561,7 +562,7 @@ exports.completeEmailRegistration = async (req, res) => {
       email: normalizedEmail,
       password_hash: passwordHash,
       username: username.trim(),
-      diamonds: 810,
+      diamonds: 0,
       beans: 0,
       country: 'India',
     });
@@ -576,13 +577,14 @@ exports.completeEmailRegistration = async (req, res) => {
     res.json({
       success: true,
       token,
-      user: {
-        id: user.id, crimzo_id: crimzoId, email: normalizedEmail, username: username.trim(),
-        avatar: null, bio: null, country: 'India',
-        diamonds: 810, beans: 0,
-        followers_count: 0, following_count: 0, friends_count: 0,
-        is_online: false, status: 'offline',
-      },
+      user: formatAuthUser(user, {
+        crimzo_id: crimzoId,
+        email: normalizedEmail,
+        username: username.trim(),
+        avatar: null,
+        bio: null,
+        country: 'India',
+      }),
     });
   } catch (error) {
     console.error('Complete email registration error:', error);

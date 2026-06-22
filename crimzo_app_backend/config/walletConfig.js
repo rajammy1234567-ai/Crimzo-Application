@@ -6,6 +6,10 @@ const MAX_TOPUP_INR = 200000;
 const MIN_WITHDRAW_INR = 500;
 const MAX_WITHDRAW_INR = 200000;
 
+/** 5000 beans = ₹100 (tier-1 package rate) */
+const BEANS_PER_INR = 50;
+const MIN_WITHDRAW_BEANS = MIN_WITHDRAW_INR * BEANS_PER_INR;
+
 /** Preset diamond gift amounts in chat */
 const CHAT_GIFT_PRESETS = [10, 50, 100, 500, 1000];
 
@@ -21,6 +25,8 @@ module.exports = {
   MAX_TOPUP_INR,
   MIN_WITHDRAW_INR,
   MAX_WITHDRAW_INR,
+  BEANS_PER_INR,
+  MIN_WITHDRAW_BEANS,
   CHAT_GIFT_PRESETS,
   VIDEO_CALL_RATE_PER_MIN_INR,
   LIVE_TALK_RATE_PER_MIN_INR,

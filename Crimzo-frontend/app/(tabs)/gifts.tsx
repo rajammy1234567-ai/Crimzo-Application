@@ -221,7 +221,7 @@ export default function GiftsScreen() {
         <View style={s.flowBox}>
           <Text style={s.flowTitle}>How it works</Text>
           <Text style={s.flowStep}>① Add Money — Razorpay (UPI / Card / Net Banking)</Text>
-          <Text style={s.flowStep}>② Buy Diamonds — Pay via Razorpay ya wallet balance se</Text>
+          <Text style={s.flowStep}>② Buy Diamonds — Pay via Razorpay or wallet balance</Text>
           <Text style={s.flowStep}>③ Send gifts — use diamonds in live & PK</Text>
         </View>
 

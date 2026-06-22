@@ -105,7 +105,14 @@ export default function MessagesScreen() {
     if (!selectedChat || gifting) return;
     const myDiamonds = user?.diamonds ?? 0;
     if (myDiamonds < diamonds) {
-      Alert.alert('Not Enough Diamonds', `You have ${myDiamonds} diamonds. Buy more from Wallet tab.`);
+      Alert.alert(
+        'Not Enough Diamonds',
+        `You have ${myDiamonds} diamonds. Buy more from Wallet to send gifts.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Go to Wallet', onPress: () => router.push('/profile/wallet') },
+        ],
+      );
       return;
     }
     setGifting(true);
@@ -295,7 +302,7 @@ export default function MessagesScreen() {
             <View style={styles.giftSheet} onStartShouldSetResponder={() => true}>
               <Text style={styles.giftTitle}>Send Diamonds 🎁</Text>
               <Text style={styles.giftSub}>
-                {selectedChat.username} ko diamonds transfer honge{'\n'}
+                Diamonds will be transferred to {selectedChat.username}{'\n'}
                 Your balance: {(user?.diamonds ?? 0).toLocaleString()} 💎
               </Text>
               <View style={styles.giftGrid}>

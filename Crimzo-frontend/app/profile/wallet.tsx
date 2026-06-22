@@ -17,7 +17,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
-import { DIAMOND_PACKAGES, BEAN_PACKAGES, formatCount as fmt, formatInr as price } from '../../lib/diamondPackages';
+import {
+  DIAMOND_PACKAGES,
+  BEAN_PACKAGES,
+  formatCount as fmt,
+  formatInr as price,
+  beansToInr,
+  totalWithdrawableBeans,
+} from '../../lib/diamondPackages';
 import { useWallet } from '../../lib/useWallet';
 import RazorpayCheckout from '../../components/payments/RazorpayCheckout';
 import AddMoneyModal from '../../components/payments/AddMoneyModal';
@@ -75,6 +82,8 @@ export default function WalletScreen() {
     resendPaymentOtp,
     removePaymentMethod,
     withdrawMoney,
+    withdrawInfo,
+    loadWithdrawInfo,
     handleTopupSuccess,
     cancelTopup,
   } = useWallet();
@@ -82,12 +91,20 @@ export default function WalletScreen() {
   const [showSetupPayment, setShowSetupPayment] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const walletBalance = user?.wallet_balance ?? 0;
+  const userDiamonds = user?.diamonds ?? 0;
+  const userBeans = user?.beans ?? 0;
+  const withdrawableBeans = totalWithdrawableBeans(userDiamonds, userBeans);
+  const withdrawableInr = beansToInr(withdrawableBeans);
 
   const [curTab, setCurTab] = useState<'diamonds' | 'beans'>('diamonds');
   const [subTab, setSubTab] = useState<'recommend' | 'helper'>('recommend');
   const [payMethod, setPayMethod] = useState('upi');
   const [showPayModal, setShowPayModal] = useState(false);
   const [selPkg, setSelPkg] = useState<number | null>(null);
+
+  useEffect(() => {
+    loadWithdrawInfo();
+  }, []);
 
   // animated tab indicator
   const tabAnim = useRef(new Animated.Value(0)).current;
@@ -240,7 +257,10 @@ export default function WalletScreen() {
             <>
               <TouchableOpacity
                 style={s.pay}
-                onPress={() => setShowWithdraw(true)}
+                onPress={async () => {
+                  await loadWithdrawInfo();
+                  setShowWithdraw(true);
+                }}
                 activeOpacity={0.7}
               >
                 <View style={s.payL}>
@@ -248,15 +268,17 @@ export default function WalletScreen() {
                     <Ionicons name="arrow-down-circle" size={18} color="#FF9500" />
                   </View>
                   <View>
-                    <Text style={s.payLbl}>Withdraw Money</Text>
+                    <Text style={s.payLbl}>Withdraw Earnings</Text>
                     <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>
-                      Min ₹500 → verified bank/UPI
+                      {userDiamonds > 0
+                        ? `${fmt(userDiamonds)} diamonds → beans → bank`
+                        : 'Beans → real money to bank/UPI'}
                     </Text>
                   </View>
                 </View>
                 <View style={s.payR}>
                   <Text style={[s.payChg, { color: '#FF9500' }]}>
-                    {walletBalance >= 500 ? 'Available' : 'Need ₹500+'}
+                    {withdrawableInr >= (withdrawInfo?.minWithdraw ?? 500) ? price(withdrawableInr) : `Need ${price(withdrawInfo?.minWithdraw ?? 500)}+`}
                   </Text>
                   <Ionicons name="chevron-forward" size={15} color="#FF9500" />
                 </View>
@@ -315,9 +337,16 @@ export default function WalletScreen() {
                         <Text style={s.cardAmt}>{fmt(amt)}</Text>
                         {bonus && <Text style={s.cardOld}>{fmt(bonus)}</Text>}
 
-                        {/* price */}
+                        {/* price / withdraw value */}
                         <View style={s.cardPrW}>
-                          <Text style={s.cardPr}>{price(pkg.price)}</Text>
+                          {isDia ? (
+                            <Text style={s.cardPr}>{price(pkg.price)}</Text>
+                          ) : (
+                            <>
+                              <Text style={s.cardPr}>{price(pkg.price)}</Text>
+                              <Text style={s.cardWithdraw}>≈ {price(pkg.price)} payout</Text>
+                            </>
+                          )}
                         </View>
                       </LinearGradient>
                     </TouchableOpacity>
@@ -331,6 +360,7 @@ export default function WalletScreen() {
                   ['card', '#FF2D55', 'Diamonds/Beans — Pay via Razorpay (UPI, Card, Net Banking)'],
                   ['wallet', '#4CD964', 'Add Money — top up via Razorpay, then buy with wallet balance'],
                   ['diamond', '#FFD700', 'Diamonds are used to send gifts to streamers'],
+                  ['cafe', '#FF9500', 'Beans convert to real money — 5000 beans = ₹100 on withdraw'],
                   ['shield-checkmark', '#4CD964', 'All payments secured by Razorpay'],
                 ].map(([ico, col, txt], i) => (
                   <View key={i} style={s.infoR}>
@@ -477,7 +507,8 @@ export default function WalletScreen() {
         }}
         onSetupPayment={() => { setShowWithdraw(false); setShowSetupPayment(true); }}
         busy={busy}
-        balance={walletBalance}
+        withdrawInfo={withdrawInfo}
+        minWithdraw={withdrawInfo?.minWithdraw ?? 500}
         paymentMethod={paymentMethod}
       />
     </View>
@@ -543,6 +574,7 @@ const s = StyleSheet.create({
   cardOld: { color: 'rgba(255,255,255,0.28)', fontSize: 11, fontWeight: '600', textDecorationLine: 'line-through', marginTop: 1 },
   cardPrW: { marginTop: 8, backgroundColor: 'rgba(255,45,85,0.1)', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 10, width: '100%', alignItems: 'center' },
   cardPr: { color: '#FF2D55', fontSize: 13, fontWeight: '800' },
+  cardWithdraw: { color: 'rgba(255,149,0,0.85)', fontSize: 10, fontWeight: '700', marginTop: 2 },
 
   // ── info ──
   info: { marginTop: 16, backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 14, padding: 14, gap: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' },

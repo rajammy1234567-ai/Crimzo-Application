@@ -37,3 +37,23 @@ export function formatCount(n: number): string {
 export function formatInr(n: number): string {
   return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
+/** 5000 beans = ₹100 (tier-1 package rate) */
+export const BEANS_PER_INR = BEAN_PACKAGES[0].beans / BEAN_PACKAGES[0].price;
+
+export function diamondsToBeans(diamonds: number): number {
+  return Math.floor(Math.max(0, diamonds));
+}
+
+export function beansToInr(beans: number): number {
+  const n = Math.max(0, beans);
+  return Math.floor((n / BEANS_PER_INR) * 100) / 100;
+}
+
+export function inrToBeans(inr: number): number {
+  return Math.ceil(Math.max(0, inr) * BEANS_PER_INR);
+}
+
+export function totalWithdrawableBeans(diamonds: number, beans: number): number {
+  return (beans || 0) + diamondsToBeans(diamonds);
+}
