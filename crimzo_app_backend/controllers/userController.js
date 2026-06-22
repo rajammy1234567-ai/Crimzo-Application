@@ -96,12 +96,6 @@ exports.getFullProfile = async (req, res) => {
     if (!u) return res.status(404).json({ error: 'User not found' });
 
     const totalStreams = await LiveSession.countDocuments({ user_id: userId });
-    const liveAgg = await LiveSession.aggregate([
-      { $match: { user_id: new (require('mongoose')).Types.ObjectId(userId) } },
-      { $group: { _id: null, totalViews: { $sum: '$viewers_count' } } }
-    ]);
-    const streamViews = liveAgg[0]?.totalViews || 0;
-
     const reelAgg = await Reel.aggregate([
       { $match: { user_id: new (require('mongoose')).Types.ObjectId(userId) } },
       { $group: { _id: null, totalViews: { $sum: '$views_count' }, totalLikes: { $sum: '$likes_count' } } }
@@ -149,7 +143,7 @@ exports.getFullProfile = async (req, res) => {
         is_online: u.is_online, status: u.status,
         created_at: u.created_at,
         totalStreams,
-        totalViews: streamViews + reelViews,
+        totalViews: reelViews,
         totalLikes: reelLikes,
         totalDiamondsSpent: sentAgg[0]?.total || 0,
         totalBeansEarned: receivedAgg[0]?.total || 0,

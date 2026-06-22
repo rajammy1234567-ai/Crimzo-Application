@@ -91,6 +91,7 @@ function ReelItem({
 
   const [liked, setLiked] = useState(item.is_liked);
   const [likesCount, setLikesCount] = useState(item.likes_count);
+  const [viewsCount, setViewsCount] = useState(item.views_count || 0);
   const [following, setFollowing] = useState(item.is_following);
   const [requested, setRequested] = useState(!!item.is_requested);
   const [followBusy, setFollowBusy] = useState(false);
@@ -116,9 +117,10 @@ function ReelItem({
   useEffect(() => {
     setLiked(item.is_liked);
     setLikesCount(item.likes_count);
+    setViewsCount(item.views_count || 0);
     setFollowing(item.is_following);
     setRequested(!!item.is_requested);
-  }, [item.is_liked, item.likes_count, item.is_following, item.is_requested]);
+  }, [item.is_liked, item.likes_count, item.views_count, item.is_following, item.is_requested]);
 
   const animateHeart = () => {
     Animated.sequence([
@@ -252,6 +254,12 @@ function ReelItem({
           <Ionicons name="chatbubble-outline" size={34} color="#FFF" />
           <Text style={styles.actionCount}>{formatCount(item.comments_count)}</Text>
         </TouchableOpacity>
+
+        {/* Views */}
+        <View style={styles.actionBtn}>
+          <Ionicons name="eye-outline" size={32} color="#FFF" />
+          <Text style={styles.actionCount}>{formatCount(viewsCount)}</Text>
+        </View>
 
         {/* Share */}
         <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>

@@ -92,7 +92,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
 
     socket.on('video_call_ended', (data?: { reason?: string }) => {
       const msg = data?.reason === 'balance_exhausted'
-        ? 'Call ended — wallet balance khatam ho gaya.'
+        ? 'Call ended — wallet balance exhausted.'
         : 'The other person left the call.';
       Alert.alert('Call Ended', msg);
     });
@@ -101,7 +101,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
       if (data?.code === 'INSUFFICIENT_BALANCE') {
         Alert.alert(
           'Recharge Required',
-          `${data.message || `Video call ₹${VIDEO_CALL_RATE_PER_MIN}/min hai.`}\n\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
+          `${data.message || `Video call costs ₹${VIDEO_CALL_RATE_PER_MIN}/min.`}\n\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
           [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Add Money', onPress: () => router.push('/profile/wallet' as any) },
@@ -132,7 +132,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
         const data = e.data as { wallet_balance?: number; shortfall?: number };
         Alert.alert(
           'Recharge Required',
-          `Video call ke liye pehle wallet recharge karo.\n\nRate: ₹${VIDEO_CALL_RATE_PER_MIN}/min\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
+          `Please recharge your wallet first for video calls.\n\nRate: ₹${VIDEO_CALL_RATE_PER_MIN}/min\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
           [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Add Money', onPress: () => router.push('/profile/wallet' as any) },

@@ -1,6 +1,8 @@
 const User = require('../models/User');
+const LiveSession = require('../models/LiveSession');
 const { getBillingSettings } = require('../utils/billingSettings');
 const { userCanChatOnLive } = require('../controllers/liveTalkController');
+const { finalizeLiveSessionEnd } = require('../controllers/liveController');
 const PKBattle = require('../models/PKBattle');
 const Sticker = require('../models/Sticker');
 const GiftHistory = require('../models/GiftHistory');
@@ -176,11 +178,16 @@ module.exports = (io) => {
       if (!sessionId) return;
       socket.join(`live_${sessionId}`);
       socket.userId = userId;
+      socket.crimzoUserId = userId != null ? String(userId) : undefined;
+      socket.liveSessionId = String(sessionId);
       socket.username = username;
       console.log(`User ${username} joined live_${sessionId}`);
 
       try {
-        const LiveSession = require('../models/LiveSession');
+        const session = await LiveSession.findById(sessionId).select('user_id status');
+        if (session?.status === 'active' && String(session.user_id) === String(userId)) {
+          socket.isLiveHost = true;
+        }
         const clients = await io.in(`live_${sessionId}`).fetchSockets();
         const count = clients.length;
         await LiveSession.findByIdAndUpdate(sessionId, { viewers_count: count });
@@ -221,7 +228,7 @@ module.exports = (io) => {
         if (!allowed) {
           socket.emit('live_chat_error', {
             code: 'TALK_NOT_ACTIVE',
-            message: 'Pehle host se request bhejo aur ₹1/min recharge karo. Tabhi baat kar sakte ho.',
+            message: 'Please send a request to the host and recharge your wallet first. Then you can chat.',
           });
           return;
         }
@@ -307,7 +314,7 @@ module.exports = (io) => {
           if (balance < callRate) {
             socket.emit('video_call_error', {
               code: 'INSUFFICIENT_BALANCE',
-              message: `Pehle wallet recharge karo. Video call ₹${callRate}/min hai.`,
+              message: `Please recharge your wallet first. Video call costs ₹${callRate}/min.`,
               ratePerMin: callRate,
               wallet_balance: balance,
               minRequired: callRate,
@@ -353,8 +360,32 @@ module.exports = (io) => {
       io.to(userRoom(otherUserId)).emit('video_call_ended', { channelName });
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
       console.log('User disconnected:', socket.id);
+      const sessionId = socket.liveSessionId;
+      const userId = socket.crimzoUserId;
+      if (!sessionId || !userId) return;
+
+      try {
+        const session = await LiveSession.findById(sessionId).select('user_id status');
+        if (session?.status === 'active' && String(session.user_id) === String(userId)) {
+          const clients = await io.in(`live_${sessionId}`).fetchSockets();
+          const hostStillPresent = clients.some(
+            (client) => String(client.crimzoUserId) === String(userId),
+          );
+          if (!hostStillPresent) {
+            await finalizeLiveSessionEnd(sessionId, io, {
+              message: 'The host has ended the live stream.',
+            });
+          }
+        } else {
+          const clients = await io.in(`live_${sessionId}`).fetchSockets();
+          await LiveSession.findByIdAndUpdate(sessionId, { viewers_count: clients.length });
+          io.to(`live_${sessionId}`).emit('viewer_count_update', { count: clients.length });
+        }
+      } catch (err) {
+        console.error('disconnect live cleanup error:', err.message);
+      }
     });
   });
 };

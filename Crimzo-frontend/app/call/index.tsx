@@ -125,7 +125,7 @@ export default function VideoCallScreen() {
           clearBillingTimer();
           Alert.alert(
             'Balance Low',
-            'Agla minute ke liye balance nahi hai. Call band ho rahi hai.',
+            'Insufficient balance for the next minute. Ending the call.',
             [{ text: 'OK', onPress: () => endCall('balance_exhausted') }],
           );
         }
@@ -134,7 +134,7 @@ export default function VideoCallScreen() {
           clearBillingTimer();
           Alert.alert(
             'Balance Over',
-            'Wallet balance khatam — video call band ho rahi hai.',
+            'Wallet balance exhausted — ending the video call.',
             [{ text: 'OK', onPress: () => endCall('balance_exhausted') }],
           );
         }
@@ -165,7 +165,7 @@ export default function VideoCallScreen() {
       if (e instanceof ApiError && (e.data as { code?: string })?.code === 'INSUFFICIENT_BALANCE') {
         Alert.alert(
           'Recharge Required',
-          e.message || `Video call ₹${VIDEO_CALL_RATE_PER_MIN}/min hai.`,
+          e.message || `Video call costs ₹${VIDEO_CALL_RATE_PER_MIN}/min.`,
           [{ text: 'OK', onPress: () => router.back() }],
         );
         return;

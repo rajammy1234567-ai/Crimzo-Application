@@ -132,7 +132,7 @@ export default function SetupPaymentModal({
 
             {step === 'choose' && (
               <>
-                <Text style={s.sub}>Pehle apna payment method verify karo. Uske baad hi paise add ho sakte hain.</Text>
+                <Text style={s.sub}>Verify your payment method first. You can add money only after verification.</Text>
                 <TouchableOpacity
                   style={[s.choice, payType === 'bank' && s.choiceOn]}
                   onPress={() => setPayType('bank')}
@@ -176,13 +176,13 @@ export default function SetupPaymentModal({
               <>
                 <Text style={s.sub}>
                   {payType === 'upi'
-                    ? 'UPI ID daalo — hum OTP bhejenge verify karne ke liye'
-                    : 'Bank details daalo — hum OTP bhejenge account verify karne ke liye'}
+                    ? 'Enter your UPI ID — we will send an OTP to verify it'
+                    : 'Enter your bank details — we will send an OTP to verify your account'}
                 </Text>
                 <Text style={s.label}>Full name</Text>
                 <TextInput
                   style={s.input}
-                  placeholder="Bank/UPI par jo naam hai"
+                  placeholder="Name on bank/UPI account"
                   placeholderTextColor="rgba(255,255,255,0.3)"
                   value={holder}
                   onChangeText={setHolder}
@@ -234,7 +234,7 @@ export default function SetupPaymentModal({
                   </>
                 ) : (
                   <Text style={s.cardNote}>
-                    Card number secure Razorpay par save hoga jab pehli payment karoge. Ab sirf naam + mobile verify.
+                    Your card number will be securely saved on Razorpay when you make your first payment. For now, verify name and mobile only.
                   </Text>
                 )}
                 <TouchableOpacity onPress={handleSetup} disabled={busy} activeOpacity={0.85}>
@@ -256,7 +256,7 @@ export default function SetupPaymentModal({
             {step === 'otp' && (
               <>
                 <Text style={s.sub}>
-                  OTP bheja gaya: {emailMasked || 'your registered email'}
+                  OTP sent to: {emailMasked || 'your registered email'}
                 </Text>
                 {devHint ? (
                   <View style={s.devBox}>
@@ -303,7 +303,7 @@ export default function SetupPaymentModal({
                     <Text style={s.verifiedName}>{existing.account_holder_name}</Text>
                   </View>
                 </View>
-                <Text style={s.sub}>Ab aap Add Money kar sakte ho — paise isi se cut honge.</Text>
+                <Text style={s.sub}>You can now add money — payments will be deducted from this method.</Text>
                 <TouchableOpacity
                   onPress={async () => { await onRemove(); resetForm(); }}
                   style={s.backBtn}

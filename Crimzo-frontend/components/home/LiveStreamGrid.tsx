@@ -125,7 +125,7 @@ const LiveStreamCard: React.FC<{ stream: LiveStream; onPress: () => void }> = ({
                                 <Ionicons name="people" size={10} color="rgba(255,255,255,0.35)" />
                                 <Text style={s.followersText}>{formatViewers(stream.followers_count || stream.viewers_count || 0)} watching</Text>
                             </View>
-                            <Text style={s.talkHint}>Baat karne ke liye ₹{rate}/min</Text>
+                            <Text style={s.talkHint}>Chat costs ₹{rate}/min</Text>
                         </View>
                     </View>
                 </View>

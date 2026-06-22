@@ -16,7 +16,7 @@ exports.checkTalkEligibility = async (req, res) => {
     const payload = buildLiveTalkBalancePayload(user.wallet_balance, settings);
     if (!payload.canTalk) {
       return res.status(400).json({
-        error: `Pehle wallet recharge karo. Live baat ₹${payload.ratePerMin}/min hai.`,
+        error: `Please recharge your wallet first. Live talk costs ₹${payload.ratePerMin}/min.`,
         code: 'INSUFFICIENT_BALANCE',
         ...payload,
       });
@@ -37,13 +37,13 @@ exports.requestTalk = async (req, res) => {
 
     const session = await LiveSession.findById(sessionId).populate('user_id', 'username');
     if (!session || session.status !== 'active') {
-      return res.status(400).json({ error: 'Ye live stream ab active nahi hai' });
+      return res.status(400).json({ error: 'This live stream is no longer active' });
     }
 
     const hostDoc = session.user_id;
     const hostId = hostDoc?._id || hostDoc?.id || session.user_id;
     if (String(hostId) === String(requesterId)) {
-      return res.status(400).json({ error: 'Host apne live se request nahi kar sakta' });
+      return res.status(400).json({ error: 'Hosts cannot request talk on their own stream' });
     }
 
     const requester = await User.findById(requesterId).select('wallet_balance username avatar');
@@ -51,7 +51,7 @@ exports.requestTalk = async (req, res) => {
     const talkPayload = buildLiveTalkBalancePayload(balance, settings);
     if (!talkPayload.canTalk) {
       return res.status(400).json({
-        error: `Pehle wallet recharge karo. Live baat ₹${talkPayload.ratePerMin}/min hai.`,
+        error: `Please recharge your wallet first. Live talk costs ₹${talkPayload.ratePerMin}/min.`,
         code: 'INSUFFICIENT_BALANCE',
         ...talkPayload,
       });
@@ -89,7 +89,7 @@ exports.requestTalk = async (req, res) => {
 
     const io = getIo();
     if (io) {
-      io.to(userRoom(hostId)).emit('live_talk_incoming', {
+      const incomingPayload = {
         requestId: request._id.toString(),
         sessionId: String(sessionId),
         requesterId: String(requesterId),
@@ -97,7 +97,9 @@ exports.requestTalk = async (req, res) => {
         requesterAvatar: requester?.avatar || null,
         ratePerMin: settings.liveTalkRatePerMin,
         billingEnabled: settings.liveTalkBillingEnabled,
-      });
+      };
+      io.to(userRoom(hostId)).emit('live_talk_incoming', incomingPayload);
+      io.to(`live_${sessionId}`).emit('live_talk_incoming', incomingPayload);
     }
 
     res.json({
@@ -150,7 +152,7 @@ exports.respondTalk = async (req, res) => {
         io.to(liveRoom).emit('live_system_message', {
           type: 'talk_accepted',
           username: 'System',
-          message: 'Viewer ko baat karne ki permission mil gayi',
+          message: 'Viewer granted permission to chat',
         });
       } else {
         io.to(userRoom(request.requester_id)).emit('live_talk_rejected', payload);
@@ -372,7 +374,7 @@ exports.tickTalkBilling = async (req, res) => {
       talkSession.ended_at = new Date();
       await talkSession.save();
       return res.status(400).json({
-        error: 'Wallet balance khatam — baat band ho rahi hai',
+        error: 'Wallet balance exhausted — ending the chat.',
         code: 'BALANCE_EXHAUSTED',
         shouldEndTalk: true,
         minutesCharged: talkSession.minutes_charged,

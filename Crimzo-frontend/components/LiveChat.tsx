@@ -347,7 +347,7 @@ export default function LiveChat({
                         <Text style={cs.emptyText}>
                             {isHost
                                 ? 'Welcome to your stream! 🎬'
-                                : (canChat ? 'Say hi to the streamer! 👋' : `Host se baat karne ke liye request bhejo — ₹${talkRatePerMin}/min`)}
+                                : (canChat ? 'Say hi to the streamer! 👋' : `Send a request to chat with the host — ₹${talkRatePerMin}/min`)}
                         </Text>
                     </View>
                 }

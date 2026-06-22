@@ -329,7 +329,7 @@ export default function WalletScreen() {
               <View style={s.info}>
                 {[
                   ['card', '#FF2D55', 'Diamonds/Beans — Pay via Razorpay (UPI, Card, Net Banking)'],
-                  ['wallet', '#4CD964', 'Add Money — Razorpay se wallet top-up, phir wallet se buy'],
+                  ['wallet', '#4CD964', 'Add Money — top up via Razorpay, then buy with wallet balance'],
                   ['diamond', '#FFD700', 'Diamonds are used to send gifts to streamers'],
                   ['shield-checkmark', '#4CD964', 'All payments secured by Razorpay'],
                 ].map(([ico, col, txt], i) => (

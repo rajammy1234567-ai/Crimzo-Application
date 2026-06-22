@@ -8,7 +8,6 @@ import { Card, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { StatCard } from '../components/ui/StatCard';
 import { LoadingSpinner } from '../components/ui/LoadingState';
-import { formatNumber } from '../lib/utils';
 import type { BillingSettings, BillingStats, BillingSessionRow } from '../types';
 
 const Billing = () => {
@@ -67,7 +66,7 @@ const Billing = () => {
                 video_call_billing_enabled: videoEnabled,
                 live_talk_billing_enabled: liveEnabled,
             }, { headers: authHeaders(token) });
-            toast.success('Billing settings saved — app mein turant apply hoga');
+            toast.success('Billing settings saved — changes apply immediately in the app');
             fetchData();
         } catch {
             toast.error('Could not save settings');
@@ -111,7 +110,7 @@ const Billing = () => {
                     />
                     <StatCard
                         title="Total Billed Minutes"
-                        value={formatNumber(stats.videoCallMinutes + stats.liveTalkMinutes)}
+                        value={stats.videoCallMinutes + stats.liveTalkMinutes}
                         icon={IndianRupee}
                         colorClass="bg-crimzo/10 text-crimzo"
                         subtitle="Video + live talk"

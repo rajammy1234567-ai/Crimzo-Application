@@ -34,7 +34,7 @@ exports.generateCallToken = async (req, res) => {
       const rate = billingSettings.videoCallRatePerMin;
       if (balance < rate) {
         return res.status(400).json({
-          error: `Pehle wallet recharge karo. Video call ₹${rate}/min hai.`,
+          error: `Please recharge your wallet first. Video call costs ₹${rate}/min.`,
           code: 'INSUFFICIENT_BALANCE',
           ratePerMin: rate,
           wallet_balance: balance,

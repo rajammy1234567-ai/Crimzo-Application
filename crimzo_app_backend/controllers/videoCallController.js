@@ -25,7 +25,7 @@ exports.checkEligibility = async (req, res) => {
     const payload = buildVideoCallBalancePayload(user.wallet_balance, settings);
     if (!payload.canCall) {
       return res.status(400).json({
-        error: 'Pehle wallet recharge karo. Video call ₹' + payload.ratePerMin + '/min hai.',
+        error: 'Please recharge your wallet first. Video call costs ₹' + payload.ratePerMin + '/min.',
         code: 'INSUFFICIENT_BALANCE',
         ...payload,
       });
@@ -170,7 +170,7 @@ exports.tickBilling = async (req, res) => {
       session.endedAt = new Date();
       await session.save();
       return res.status(400).json({
-        error: 'Wallet balance khatam — call band ho rahi hai',
+        error: 'Wallet balance exhausted — ending the call.',
         code: 'BALANCE_EXHAUSTED',
         shouldEndCall: true,
         minutesCharged: session.minutesCharged,

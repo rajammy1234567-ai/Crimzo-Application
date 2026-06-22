@@ -25,7 +25,6 @@ export default function HomeScreen() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('for-you');
   const [liveStreams, setLiveStreams] = useState<any[]>([]);
-  const [liveUsers, setLiveUsers] = useState<any[]>([]);
   const [onlineCount, setOnlineCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -52,13 +51,10 @@ export default function HomeScreen() {
     }
     fetchData();
     const interval = setInterval(() => {
-      if (token) fetchLiveUsers();
+      if (token) fetchActiveStreams();
     }, 10000);
     const unsubStreams = subscribe('live_streams_updated', () => {
-      fetchLiveUsers();
-      apiGet<{ streams?: unknown[] }>('/api/live/active', token)
-        .then((res) => setLiveStreams(res.streams || []))
-        .catch(() => {});
+      fetchActiveStreams();
     });
     return () => {
       clearInterval(interval);
@@ -69,7 +65,7 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       if (!token) return;
-      fetchLiveUsers();
+      fetchActiveStreams();
       fetchStories();
       loadViewedStories();
       refreshUnreadCount();
@@ -106,13 +102,13 @@ export default function HomeScreen() {
   }, []);
 
   // ── Data fetching ──
-  const fetchLiveUsers = async () => {
+  const fetchActiveStreams = async () => {
     if (!token) return;
     try {
-      const res = await apiGet<{ liveUsers?: unknown[] }>('/api/live/users', token);
-      setLiveUsers(res.liveUsers || []);
+      const res = await apiGet<{ streams?: unknown[] }>('/api/live/active', token);
+      setLiveStreams(res.streams || []);
     } catch (error) {
-      console.error('Fetch live users error:', error);
+      console.error('Fetch active streams error:', error);
     }
   };
 
@@ -143,16 +139,14 @@ export default function HomeScreen() {
       return;
     }
     try {
-      const [streamsRes, countRes, liveUsersRes, storiesRes] = await Promise.all([
+      const [streamsRes, countRes, storiesRes] = await Promise.all([
         apiGet<{ streams?: unknown[] }>('/api/live/active', token),
         apiGet<{ count?: number }>('/api/users/online-count', token),
-        apiGet<{ liveUsers?: unknown[] }>('/api/live/users', token),
         apiGet<{ storyGroups?: unknown[] }>('/api/stories', token),
       ]);
 
       setLiveStreams(streamsRes.streams || []);
       setOnlineCount(countRes.count || 0);
-      setLiveUsers(liveUsersRes.liveUsers || []);
       setStoryGroups(storiesRes.storyGroups || []);
     } catch (error) {
       console.error('Fetch data error:', error);

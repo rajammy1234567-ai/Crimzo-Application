@@ -471,12 +471,7 @@ export default function ProfileScreen() {
                 <Text style={s.engagementLabel}>Likes</Text>
               </TouchableOpacity>
               <View style={s.engagementDivider} />
-              <TouchableOpacity style={s.engagementItem} onPress={scrollToReels} activeOpacity={0.7}>
-                <Ionicons name="eye" size={14} color="#9333EA" />
-                <Text style={s.engagementValue}>{formatNumber(user?.totalViews)}</Text>
-                <Text style={s.engagementLabel}>Views</Text>
-              </TouchableOpacity>
-              <View style={s.engagementDivider} />
+
               <TouchableOpacity
                 style={s.engagementItem}
                 onPress={() => router.push('/profile/wallet' as any)}

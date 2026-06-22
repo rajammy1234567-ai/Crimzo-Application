@@ -1,6 +1,44 @@
-import React, { useEffect, useRef } from 'react';
-import { Modal, View, StyleSheet, ActivityIndicator, Platform } from 'react-native';
+import React, { useEffect, useRef, useCallback } from 'react';
+import { Modal, View, StyleSheet, ActivityIndicator, Platform, Linking } from 'react-native';
 import { WebView } from 'react-native-webview';
+
+const ALLOWED_WEB_SCHEMES = ['http', 'https', 'about', 'data', 'blob', 'file'];
+
+function shouldOpenExternally(url: string): boolean {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  if (lower.startsWith('intent://')) return true;
+  const scheme = lower.split(':')[0];
+  return !ALLOWED_WEB_SCHEMES.includes(scheme);
+}
+
+async function openExternalPaymentUrl(url: string): Promise<boolean> {
+  if (!url) return false;
+  try {
+    if (url.startsWith('intent://')) {
+      const canOpen = await Linking.canOpenURL(url);
+      if (canOpen) {
+        await Linking.openURL(url);
+        return true;
+      }
+      const fallbackMatch = url.match(/S\.browser_fallback_url=([^;]+)/i);
+      if (fallbackMatch?.[1]) {
+        const fallback = decodeURIComponent(fallbackMatch[1]);
+        await Linking.openURL(fallback);
+        return true;
+      }
+      return false;
+    }
+    const canOpen = await Linking.canOpenURL(url);
+    if (canOpen) {
+      await Linking.openURL(url);
+      return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
 export type RazorpayCheckoutData = {
   mode: 'razorpay' | 'dev_mock';
   orderId: string;
@@ -43,7 +81,7 @@ function buildCheckoutHtml(checkout: RazorpayCheckoutData): string {
   const prefs = checkout.paymentPrefs;
   const upiVpa = prefs?.upi_vpa ? prefs.upi_vpa.replace(/'/g, "\\'") : '';
   const bankCode = prefs?.bank_code || '';
-  const useUpi = prefs?.method === 'upi' && upiVpa;
+  const useUpi = prefs?.method === 'upi' && upiVpa && !prefs?.showAllMethods;
   let configBlock = '';
   if (prefs?.showAllMethods) {
     const seq = prefs.method === 'card'
@@ -127,9 +165,19 @@ function buildCheckoutHtml(checkout: RazorpayCheckoutData): string {
 export default function RazorpayCheckout({ checkout, onSuccess, onCancel }: Props) {
   const openedWeb = useRef(false);
 
+  const handleExternalUrl = useCallback((url: string) => {
+    if (!shouldOpenExternally(url)) return true;
+    void openExternalPaymentUrl(url);
+    return false;
+  }, []);
+
   // Web: open Razorpay via script injection
   useEffect(() => {
     if (Platform.OS !== 'web' || !checkout || openedWeb.current) return;
+    if (!checkout.razorpayKeyId || !checkout.razorpayOrderId) {
+      onCancel();
+      return;
+    }
     openedWeb.current = true;
 
     const script = document.createElement('script');
@@ -142,7 +190,7 @@ export default function RazorpayCheckout({ checkout, onSuccess, onCancel }: Prop
         return;
       }
       const prefs = checkout.paymentPrefs;
-      const useUpi = prefs?.method === 'upi' && prefs?.upi_vpa;
+      const useUpi = prefs?.method === 'upi' && prefs?.upi_vpa && !prefs?.showAllMethods;
       const bankCode = prefs?.bank_code;
       const buildConfig = () => {
         if (!prefs?.showAllMethods) {
@@ -225,6 +273,7 @@ export default function RazorpayCheckout({ checkout, onSuccess, onCancel }: Prop
   }, [checkout, onSuccess, onCancel]);
 
   if (!checkout || checkout.mode !== 'razorpay') return null;
+  if (!checkout.razorpayKeyId || !checkout.razorpayOrderId) return null;
 
   if (Platform.OS === 'web') {
     return (
@@ -247,8 +296,14 @@ export default function RazorpayCheckout({ checkout, onSuccess, onCancel }: Prop
           thirdPartyCookiesEnabled
           sharedCookiesEnabled
           mixedContentMode="always"
-          setSupportMultipleWindows={false}
+          setSupportMultipleWindows
           allowsInlineMediaPlayback
+          onShouldStartLoadWithRequest={(request) => handleExternalUrl(request.url)}
+          onNavigationStateChange={(navState) => {
+            if (shouldOpenExternally(navState.url)) {
+              void openExternalPaymentUrl(navState.url);
+            }
+          }}
           onMessage={(event) => {
             try {
               const msg = JSON.parse(event.nativeEvent.data);

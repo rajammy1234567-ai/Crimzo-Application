@@ -145,7 +145,7 @@ export function useWallet() {
         setPaymentMethod(res.paymentMethod);
         setHasVerifiedPayment(true);
         setIsPendingVerification(false);
-        Alert.alert('✅ Verified', 'Payment method active! Ab Add Money kar sakte ho.');
+        Alert.alert('✅ Verified', 'Payment method active! You can now add money.');
         return true;
       }
       return false;
@@ -208,7 +208,7 @@ export function useWallet() {
             : 'Razorpay (UPI / Card / Net Banking)');
       Alert.alert(
         'Confirm Payment',
-        `₹${amountInr.toLocaleString('en-IN')} — ${via}\n\nWallet mein add hoga. Proceed?`,
+        `₹${amountInr.toLocaleString('en-IN')} — ${via}\n\nWill be added to your wallet. Proceed?`,
         [
           { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
           { text: 'Yes, Pay', onPress: () => resolve(true) },
@@ -249,7 +249,7 @@ export function useWallet() {
             syncBalances(verified);
             Alert.alert(
               '✅ Money Added',
-              `₹${verified.creditedInr?.toLocaleString('en-IN')} wallet mein add ho gaya!\nBalance: ₹${verified.wallet_balance?.toLocaleString('en-IN')}`,
+              `₹${verified.creditedInr?.toLocaleString('en-IN')} added to your wallet!\nBalance: ₹${verified.wallet_balance?.toLocaleString('en-IN')}`,
             );
           }
         } catch (e) {
@@ -372,7 +372,7 @@ export function useWallet() {
           syncBalances(verified);
           Alert.alert(
             '✅ Money Added',
-            `₹${verified.creditedInr?.toLocaleString('en-IN')} wallet mein add ho gaya!`,
+            `₹${verified.creditedInr?.toLocaleString('en-IN')} added to your wallet!`,
           );
         }
       }
@@ -426,7 +426,7 @@ export function useWallet() {
         const data = e.data as PurchaseResponse;
         Alert.alert(
           'Insufficient Balance',
-          `You need ₹${data.required?.toLocaleString('en-IN')} but only have ₹${data.available?.toLocaleString('en-IN')}.\n\nPehle Add Money karo.`,
+          `You need ₹${data.required?.toLocaleString('en-IN')} but only have ₹${data.available?.toLocaleString('en-IN')}.\n\nPlease add money first.`,
           [
             { text: 'OK' },
             {

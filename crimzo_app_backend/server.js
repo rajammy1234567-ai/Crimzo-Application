@@ -149,20 +149,21 @@ async function connectWithRetry(attemptsLeft = 8, delayMs = 4000) {
       console.error("Billing settings load error:", err.message);
     }
 
-    // Clean up stale live sessions (Mongo)
+    // Clean up stale live sessions on startup + every 2 minutes
     try {
-      const LiveSession = require("./models/LiveSession");
-      const User = require("./models/User");
-      const staleRes = await LiveSession.updateMany(
-        { status: "active" },
-        { status: "ended", ended_at: new Date() },
-      );
-      if (staleRes.modifiedCount > 0) {
-        console.log(
-          `🧹 Cleaned up ${staleRes.modifiedCount} stale live session(s)`,
-        );
-        await User.updateMany({ status: "live" }, { status: "online" });
+      const { cleanupStaleLiveSessions } = require("./controllers/liveController");
+      const ended = await cleanupStaleLiveSessions(io);
+      if (ended > 0) {
+        console.log(`🧹 Cleaned up ${ended} stale live session(s)`);
       }
+      setInterval(async () => {
+        try {
+          const n = await cleanupStaleLiveSessions(io);
+          if (n > 0) console.log(`🧹 Cleaned up ${n} stale live session(s)`);
+        } catch (err) {
+          console.error("Periodic live cleanup error:", err.message);
+        }
+      }, 2 * 60 * 1000);
     } catch (err) {
       console.error("Cleanup stale sessions error:", err.message);
     }

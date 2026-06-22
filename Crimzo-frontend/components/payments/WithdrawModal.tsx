@@ -51,7 +51,7 @@ export default function WithdrawModal({
           <View style={s.handle} />
           <Text style={s.title}>Withdraw Money</Text>
           <Text style={s.sub}>
-            Wallet se verified bank/UPI par paise bheje jayenge (1–3 business days).
+            Funds will be sent from your wallet to your verified bank/UPI (1–3 business days).
           </Text>
 
           <View style={s.balanceRow}>
@@ -67,7 +67,7 @@ export default function WithdrawModal({
           ) : (
             <TouchableOpacity style={s.setupBanner} onPress={onSetupPayment}>
               <Ionicons name="shield-outline" size={20} color="#FF2D55" />
-              <Text style={s.setupText}>Withdraw ke liye pehle Bank/UPI verify karo</Text>
+              <Text style={s.setupText}>Verify your Bank/UPI first to withdraw</Text>
             </TouchableOpacity>
           )}
 

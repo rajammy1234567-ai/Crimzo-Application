@@ -53,7 +53,7 @@ export default function AddMoneyModal({
           <View style={s.handle} />
           <Text style={s.title}>Add Money to Wallet</Text>
           <Text style={s.sub}>
-            UPI, Card ya Net Banking se Razorpay par secure payment karo.
+            Pay securely via Razorpay using UPI, Card, or Net Banking.
           </Text>
 
           {linkedBank?.status === 'verified' ? (
@@ -64,7 +64,7 @@ export default function AddMoneyModal({
                 color="#4CD964"
               />
               <View style={{ flex: 1 }}>
-                <Text style={s.bankLabel}>Withdraw ke liye linked</Text>
+                <Text style={s.bankLabel}>Linked for withdrawals</Text>
                 <Text style={s.bankVal}>{linkedBank.display}</Text>
               </View>
               {onLinkBank ? (

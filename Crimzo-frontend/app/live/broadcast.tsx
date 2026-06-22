@@ -33,7 +33,7 @@ import {
 } from '../../components/agoraImports';
 
 import { API_URL, apiGet, apiPost, ApiError } from '../../lib/apiClient';
-import { respondLiveTalk, LIVE_TALK_RATE_PER_MIN } from '../../lib/liveTalkBilling';
+import { respondLiveTalk, getLiveTalkStatus, LIVE_TALK_RATE_PER_MIN } from '../../lib/liveTalkBilling';
 
 const LIVE_START_TIMEOUT_MS = 10000;
 const LOADING_SAFETY_MS = 15000;
@@ -175,6 +175,13 @@ export default function BroadcastScreen() {
   const [showTimerModal, setShowTimerModal] = useState(false);
   const [selectedDuration, setSelectedDuration] = useState(0);
   const [timerExpired, setTimerExpired] = useState(false);
+  const [pendingTalkRequests, setPendingTalkRequests] = useState<Array<{
+    id: string;
+    requesterName?: string;
+    requesterAvatar?: string | null;
+  }>>([]);
+  const handledTalkRequestIds = useRef<Set<string>>(new Set());
+  const promptedTalkRequestIds = useRef<Set<string>>(new Set());
 
   // Entrance animation
   const fadeIn = useRef(new Animated.Value(0)).current;
@@ -216,12 +223,98 @@ export default function BroadcastScreen() {
     };
   }, []);
 
+  const handleTalkRequestAction = useCallback(async (
+    requestId: string,
+    action: 'accept' | 'reject',
+  ) => {
+    if (!token) return;
+    try {
+      await respondLiveTalk(token, requestId, action);
+      handledTalkRequestIds.current.add(requestId);
+      promptedTalkRequestIds.current.add(requestId);
+      setPendingTalkRequests((prev) => prev.filter((r) => r.id !== requestId));
+      if (action === 'accept') {
+        Alert.alert('Request Accepted', 'The viewer can now chat on your live stream.');
+      }
+    } catch (e) {
+      Alert.alert('Error', e instanceof ApiError ? e.message : `Could not ${action} request`);
+    }
+  }, [token]);
+
+  const promptTalkRequest = useCallback((data: {
+    requestId?: string;
+    requesterName?: string;
+    requesterAvatar?: string | null;
+    ratePerMin?: number;
+  }) => {
+    if (!data?.requestId || handledTalkRequestIds.current.has(data.requestId)) return;
+    if (promptedTalkRequestIds.current.has(data.requestId)) return;
+    promptedTalkRequestIds.current.add(data.requestId);
+    const rate = data.ratePerMin || LIVE_TALK_RATE_PER_MIN;
+    setPendingTalkRequests((prev) => {
+      if (prev.some((r) => r.id === data.requestId)) return prev;
+      return [...prev, {
+        id: data.requestId!,
+        requesterName: data.requesterName,
+        requesterAvatar: data.requesterAvatar,
+      }];
+    });
+    Alert.alert(
+      'Talk Request',
+      `${data.requesterName || 'A viewer'} wants to chat with you on live.\n\nThe viewer will be charged ₹${rate}/min.`,
+      [
+        {
+          text: 'Decline',
+          style: 'cancel',
+          onPress: () => void handleTalkRequestAction(data.requestId!, 'reject'),
+        },
+        {
+          text: 'Accept',
+          onPress: () => void handleTalkRequestAction(data.requestId!, 'accept'),
+        },
+      ],
+    );
+  }, [handleTalkRequestAction]);
+
+  useEffect(() => {
+    if (!isLive || !sessionId || !token) return;
+    const refreshPendingTalkRequests = async () => {
+      try {
+        const status = await getLiveTalkStatus(token, sessionId);
+        const pending = status.pendingRequests || [];
+        setPendingTalkRequests(pending.map((r) => ({
+          id: r.id,
+          requesterName: r.requesterName,
+          requesterAvatar: r.requesterAvatar,
+        })));
+        pending.forEach((r) => {
+          if (!promptedTalkRequestIds.current.has(r.id) && !handledTalkRequestIds.current.has(r.id)) {
+            promptTalkRequest({
+              requestId: r.id,
+              requesterName: r.requesterName,
+              requesterAvatar: r.requesterAvatar,
+              ratePerMin: status.ratePerMin,
+            });
+          }
+        });
+      } catch {
+        // non-fatal
+      }
+    };
+    void refreshPendingTalkRequests();
+    const interval = setInterval(() => { void refreshPendingTalkRequests(); }, 5000);
+    return () => clearInterval(interval);
+  }, [isLive, sessionId, token, promptTalkRequest]);
+
   // Socket for viewer count
   useEffect(() => {
     if (!isLive || !sessionId || !API_URL) return;
     const s = io(API_URL, { transports: ['websocket'], auth: { token } });
     s.on('connect', () => {
       console.log('[Broadcast] viewer socket connected, joining live');
+      if (user?.id) {
+        s.emit('join_user', { userId: user.id });
+      }
       s.emit('join_live', { sessionId, userId: user?.id, username: user?.username });
     });
     s.on('viewer_count_update', (d: { count: number }) => setViewerCount(Math.max(0, d.count - 1)));
@@ -231,35 +324,7 @@ export default function BroadcastScreen() {
       requesterAvatar?: string | null;
       ratePerMin?: number;
     }) => {
-      if (!data?.requestId) return;
-      const rate = data.ratePerMin || LIVE_TALK_RATE_PER_MIN;
-      Alert.alert(
-        'Talk Request',
-        `${data.requesterName || 'Koi viewer'} live pe tumse baat karna chahta hai.\n\nViewer se ₹${rate}/min charge hoga.`,
-        [
-          {
-            text: 'Decline',
-            style: 'cancel',
-            onPress: async () => {
-              try {
-                await respondLiveTalk(token!, data.requestId!, 'reject');
-              } catch (e) {
-                Alert.alert('Error', e instanceof ApiError ? e.message : 'Could not decline');
-              }
-            },
-          },
-          {
-            text: 'Accept',
-            onPress: async () => {
-              try {
-                await respondLiveTalk(token!, data.requestId!, 'accept');
-              } catch (e) {
-                Alert.alert('Error', e instanceof ApiError ? e.message : 'Could not accept');
-              }
-            },
-          },
-        ],
-      );
+      promptTalkRequest(data);
     });
     s.on('stream_ended', async (data: { message?: string }) => {
       setIsLive(false);
@@ -283,7 +348,7 @@ export default function BroadcastScreen() {
       s.disconnect(); 
       socketRef.current = null; 
     };
-  }, [isLive, sessionId, user?.id, user?.username, token, router]);
+  }, [isLive, sessionId, user?.id, user?.username, token, router, promptTalkRequest]);
 
   const handleTimerExpired = useCallback(() => {
     if (timerExpired) return;
@@ -593,6 +658,32 @@ export default function BroadcastScreen() {
           )}
         </SafeAreaView>
 
+        {isLive && pendingTalkRequests.length > 0 && (
+          <View style={st.talkRequestBanner}>
+            {pendingTalkRequests.map((req) => (
+              <View key={req.id} style={st.talkRequestCard}>
+                <Text style={st.talkRequestText}>
+                  {req.requesterName || 'A viewer'} wants to chat · ₹{LIVE_TALK_RATE_PER_MIN}/min
+                </Text>
+                <View style={st.talkRequestActions}>
+                  <TouchableOpacity
+                    style={st.talkRejectBtn}
+                    onPress={() => void handleTalkRequestAction(req.id, 'reject')}
+                  >
+                    <Text style={st.talkRejectText}>Decline</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={st.talkAcceptBtn}
+                    onPress={() => void handleTalkRequestAction(req.id, 'accept')}
+                  >
+                    <Text style={st.talkAcceptText}>Accept</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* ── SIDE ACTIONS ── */}
         {isLive && (
           <View style={st.sideActions}>
@@ -776,6 +867,25 @@ const st = StyleSheet.create({
   hostAvatarFallback: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.15)' },
   hostAvatarText: { color: '#FFF', fontSize: 12, fontWeight: '800' },
   hostName: { color: '#FFF', fontSize: 13, fontWeight: '700', maxWidth: 120 },
+  talkRequestBanner: {
+    position: 'absolute', top: 120, left: 14, right: 14, zIndex: 25, gap: 8,
+  },
+  talkRequestCard: {
+    backgroundColor: 'rgba(0,0,0,0.72)', borderRadius: 14, padding: 12,
+    borderWidth: 1, borderColor: 'rgba(255,215,0,0.25)',
+  },
+  talkRequestText: { color: '#FFF', fontSize: 13, fontWeight: '700', marginBottom: 10 },
+  talkRequestActions: { flexDirection: 'row', gap: 8 },
+  talkRejectBtn: {
+    flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+  },
+  talkRejectText: { color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '700' },
+  talkAcceptBtn: {
+    flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: '#4CD964',
+    alignItems: 'center',
+  },
+  talkAcceptText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
 
   // Side actions
   sideActions: { position: 'absolute', right: 12, top: '28%', zIndex: 15, gap: 14, alignItems: 'center' },

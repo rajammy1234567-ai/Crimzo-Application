@@ -148,7 +148,7 @@ export default function WatchScreen() {
         if (tick.totalCharged != null) setTalkCharged(tick.totalCharged);
         if (tick.canContinue === false) {
           clearTalkBilling();
-          Alert.alert('Balance Low', 'Agla minute ke liye balance nahi hai. Chat band ho rahi hai.', [
+          Alert.alert('Balance Low', 'Insufficient balance for the next minute. Ending the chat.', [
             { text: 'OK', onPress: () => void finalizeTalkBilling() },
           ]);
         }
@@ -156,7 +156,7 @@ export default function WatchScreen() {
         if (isBalanceExhaustedError(e)) {
           clearTalkBilling();
           void finalizeTalkBilling();
-          Alert.alert('Balance Over', 'Wallet balance khatam — ab chat nahi kar sakte.');
+          Alert.alert('Balance Over', 'Wallet balance exhausted — you can no longer chat.');
         }
       }
     }, 60000);
@@ -180,7 +180,7 @@ export default function WatchScreen() {
         if (billing.minutesCharged != null) setTalkMinutes(billing.minutesCharged);
         if (billing.totalCharged != null) setTalkCharged(billing.totalCharged);
         startTalkBillingLoop();
-        Alert.alert('Connected!', `Ab host se baat kar sakte ho. ₹${LIVE_TALK_RATE_PER_MIN}/min charge ho raha hai.`);
+        Alert.alert('Connected!', `You can now chat with the host. ₹${LIVE_TALK_RATE_PER_MIN}/min is being charged.`);
       }
     } catch (e) {
       Alert.alert('Billing Error', e instanceof ApiError ? e.message : 'Could not start talk billing');
@@ -225,14 +225,14 @@ export default function WatchScreen() {
       if (res.requestId) {
         setTalkRequestId(res.requestId);
         setTalkStatus('pending');
-        Alert.alert('Request Sent', `Host ko request bhej di. Accept hone ke baad ₹${LIVE_TALK_RATE_PER_MIN}/min se baat shuru hogi.`);
+        Alert.alert('Request Sent', `Request sent to the host. Chat will start at ₹${LIVE_TALK_RATE_PER_MIN}/min once accepted.`);
       }
     } catch (e) {
       if (isInsufficientBalanceError(e)) {
         const data = e.data as { wallet_balance?: number };
         Alert.alert(
           'Recharge Required',
-          `Live baat ke liye pehle wallet recharge karo.\n\nRate: ₹${LIVE_TALK_RATE_PER_MIN}/min\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
+          `Please recharge your wallet first for live talk.\n\nRate: ₹${LIVE_TALK_RATE_PER_MIN}/min\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
           [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Add Money', onPress: () => router.push('/profile/wallet' as any) },
@@ -250,11 +250,11 @@ export default function WatchScreen() {
     if (talkPromptShownRef.current || canChat || talkStatus === 'pending') return;
     talkPromptShownRef.current = true;
     Alert.alert(
-      'Host se baat karo?',
-      `Is live host se baat karne ke liye request bhejni hogi.\n\nRate: ₹${LIVE_TALK_RATE_PER_MIN}/min (wallet se)\nHost accept karega tab chat khulegi.`,
+      'Chat with the host?',
+      `You need to send a request to chat with this live host.\n\nRate: ₹${LIVE_TALK_RATE_PER_MIN}/min (from wallet)\nChat opens once the host accepts.`,
       [
-        { text: 'Sirf Dekho', style: 'cancel' },
-        { text: 'Request Bhejo', onPress: () => void sendTalkRequest() },
+        { text: 'Watch Only', style: 'cancel' },
+        { text: 'Send Request', onPress: () => void sendTalkRequest() },
       ],
     );
   }, [canChat, talkStatus, sendTalkRequest]);
@@ -308,7 +308,7 @@ export default function WatchScreen() {
     s.on('live_talk_rejected', () => {
       setTalkStatus('rejected');
       setTalkRequestId(null);
-      Alert.alert('Request Declined', 'Host ne abhi request accept nahi ki.');
+      Alert.alert('Request Declined', 'The host has not accepted your request yet.');
     });
     socketRef.current = s;
     return () => { 
@@ -583,13 +583,13 @@ export default function WatchScreen() {
               {walletBalance != null ? ` · Bal ₹${walletBalance}` : ''}
             </Text>
           ) : talkStatus === 'pending' ? (
-            <Text style={s.talkBannerText}>Request bheji — host accept kar raha hai...</Text>
+            <Text style={s.talkBannerText}>Request sent — waiting for host to accept...</Text>
           ) : (
             <TouchableOpacity onPress={() => void sendTalkRequest()} disabled={requestingTalk} activeOpacity={0.85}>
               <LinearGradient colors={['#FFD700', '#FF9500']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.talkRequestBtn}>
                 <Ionicons name="chatbubbles" size={16} color="#FFF" />
                 <Text style={s.talkRequestText}>
-                  {requestingTalk ? 'Sending...' : `Host se baat karo · ₹${LIVE_TALK_RATE_PER_MIN}/min`}
+                  {requestingTalk ? 'Sending...' : `Chat with host · ₹${LIVE_TALK_RATE_PER_MIN}/min`}
                 </Text>
               </LinearGradient>
             </TouchableOpacity>
