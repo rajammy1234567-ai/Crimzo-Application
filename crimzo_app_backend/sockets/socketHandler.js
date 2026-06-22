@@ -1,4 +1,6 @@
 const User = require('../models/User');
+const { getBillingSettings } = require('../utils/billingSettings');
+const { userCanChatOnLive } = require('../controllers/liveTalkController');
 const PKBattle = require('../models/PKBattle');
 const Sticker = require('../models/Sticker');
 const GiftHistory = require('../models/GiftHistory');
@@ -210,15 +212,32 @@ module.exports = (io) => {
       }
     });
 
-    socket.on('live_chat_message', (data) => {
+    socket.on('live_chat_message', async (data) => {
       const { sessionId, userId, username, message } = data;
+      if (!sessionId || !userId || !message?.trim()) return;
+
+      try {
+        const allowed = await userCanChatOnLive(sessionId, userId);
+        if (!allowed) {
+          socket.emit('live_chat_error', {
+            code: 'TALK_NOT_ACTIVE',
+            message: 'Pehle host se request bhejo aur ₹1/min recharge karo. Tabhi baat kar sakte ho.',
+          });
+          return;
+        }
+      } catch (err) {
+        console.error('[Live Chat] permission check failed:', err);
+        socket.emit('live_chat_error', { code: 'PERMISSION_CHECK_FAILED', message: 'Could not verify chat permission' });
+        return;
+      }
+
       console.log(`[Live Chat] ${username}: ${message}`);
       io.to(`live_${sessionId}`).emit('live_chat_message', {
         id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         type: 'text',
         userId,
         username,
-        message,
+        message: message.trim(),
         timestamp: Date.now()
       });
     });
@@ -274,14 +293,40 @@ module.exports = (io) => {
     });
 
     // ── 1-on-1 video call signaling ──
-    socket.on('video_call_invite', (data) => {
+    socket.on('video_call_invite', async (data) => {
       const { calleeId, callerId, callerName, callerAvatar, channelName } = data || {};
       if (!calleeId || !callerId || !channelName) return;
+
+      let callRate = 1;
+      try {
+        const billingSettings = await getBillingSettings();
+        callRate = billingSettings.videoCallRatePerMin;
+        if (billingSettings.videoCallBillingEnabled && callRate > 0) {
+          const caller = await User.findById(callerId).select('wallet_balance username');
+          const balance = caller?.wallet_balance || 0;
+          if (balance < callRate) {
+            socket.emit('video_call_error', {
+              code: 'INSUFFICIENT_BALANCE',
+              message: `Pehle wallet recharge karo. Video call ₹${callRate}/min hai.`,
+              ratePerMin: callRate,
+              wallet_balance: balance,
+              minRequired: callRate,
+            });
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('[VideoCall] balance check failed:', err);
+        socket.emit('video_call_error', { code: 'BALANCE_CHECK_FAILED', message: 'Could not verify wallet balance' });
+        return;
+      }
+
       io.to(userRoom(calleeId)).emit('video_call_incoming', {
         callerId,
         callerName: callerName || 'Someone',
         callerAvatar: callerAvatar || null,
         channelName,
+        ratePerMin: callRate,
       });
       console.log(`[VideoCall] ${callerName} → user ${calleeId} channel=${channelName}`);
     });

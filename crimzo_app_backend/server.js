@@ -41,6 +41,8 @@ app.use("/api/reels", require("./routes/reelRoutes"));
 app.use("/api/messages", require("./routes/messageRoutes"));
 app.use("/api/notifications", require("./routes/notificationRoutes"));
 app.use("/api/payments", require("./routes/paymentRoutes"));
+app.use("/api/video-call", require("./routes/videoCallRoutes"));
+app.use("/api/settings", require("./routes/settingsRoutes"));
 app.use("/api/tasks", require("./routes/taskRoutes"));
 app.use("/api/admin", require("./routes/adminRoutes"));
 
@@ -136,6 +138,16 @@ async function connectWithRetry(attemptsLeft = 8, delayMs = 4000) {
   try {
     await connectDB();
     await initDatabase();
+
+    try {
+      const { getBillingSettings } = require("./utils/billingSettings");
+      const billing = await getBillingSettings();
+      console.log(
+        `✅ Billing: video call ₹${billing.videoCallRatePerMin}/min, live talk ₹${billing.liveTalkRatePerMin}/min`,
+      );
+    } catch (err) {
+      console.error("Billing settings load error:", err.message);
+    }
 
     // Clean up stale live sessions (Mongo)
     try {

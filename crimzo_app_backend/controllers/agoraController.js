@@ -1,4 +1,6 @@
 const { RtcTokenBuilder, RtcRole } = require('agora-access-token');
+const User = require('../models/User');
+const { getBillingSettings } = require('../utils/billingSettings');
 
 function buildAgoraUid(userId) {
   const uidStr = String(userId).replace(/[^0-9]/g, '');
@@ -20,9 +22,26 @@ function requireAgoraCreds(res) {
 /** 1-on-1 video call token (Communication channel — both users publish) */
 exports.generateCallToken = async (req, res) => {
   try {
-    const { channelName } = req.body;
+    const { channelName, role } = req.body;
     if (!channelName || !String(channelName).startsWith('vc_')) {
       return res.status(400).json({ error: 'Valid call channel name required' });
+    }
+
+    const billingSettings = await getBillingSettings();
+    if (role === 'caller' && billingSettings.videoCallBillingEnabled && billingSettings.videoCallRatePerMin > 0) {
+      const caller = await User.findById(req.user.id).select('wallet_balance');
+      const balance = caller?.wallet_balance || 0;
+      const rate = billingSettings.videoCallRatePerMin;
+      if (balance < rate) {
+        return res.status(400).json({
+          error: `Pehle wallet recharge karo. Video call ₹${rate}/min hai.`,
+          code: 'INSUFFICIENT_BALANCE',
+          ratePerMin: rate,
+          wallet_balance: balance,
+          minRequired: rate,
+          shortfall: rate - balance,
+        });
+      }
     }
 
     const creds = requireAgoraCreds(res);
@@ -49,6 +68,8 @@ exports.generateCallToken = async (req, res) => {
       uid,
       appId: creds.appId,
       mode: 'communication',
+      ratePerMin: billingSettings.videoCallRatePerMin,
+      billingEnabled: billingSettings.videoCallBillingEnabled,
     });
   } catch (error) {
     console.error('Call token generation error:', error);

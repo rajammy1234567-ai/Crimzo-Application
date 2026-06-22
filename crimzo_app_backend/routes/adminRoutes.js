@@ -12,6 +12,11 @@ router.use(authenticateAdmin);
 // Dashboard
 router.get('/dashboard', adminController.getDashboardStats);
 
+// Billing (video call + live talk)
+router.get('/billing/settings', adminController.getBillingSettings);
+router.put('/billing/settings', adminController.updateBillingSettings);
+router.get('/billing/sessions', adminController.getBillingSessions);
+
 // Users
 router.get('/users', adminController.getUsers);
 router.put('/users/:id/ban', adminController.toggleBanUser);

@@ -1,7 +1,11 @@
 const { RtcTokenBuilder, RtcRole } = require('agora-access-token');
 const LiveSession = require('../models/LiveSession');
 const LiveSessionView = require('../models/LiveSessionView');
+const LiveTalkRequest = require('../models/LiveTalkRequest');
+const LiveTalkSession = require('../models/LiveTalkSession');
 const User = require('../models/User');
+const { getBillingSettings } = require('../utils/billingSettings');
+const { emitLiveStreamsUpdated } = require('../utils/socketEmitter');
 
 // Start live stream
 exports.startLive = async (req, res) => {
@@ -43,8 +47,19 @@ exports.startLive = async (req, res) => {
     });
 
     await User.findByIdAndUpdate(userId, { status: 'live' });
+    emitLiveStreamsUpdated();
+    const billingSettings = await getBillingSettings();
 
-    res.json({ success: true, sessionId: session.id, channelName, token, appId, uid });
+    res.json({
+      success: true,
+      sessionId: session.id,
+      channelName,
+      token,
+      appId,
+      uid,
+      talkRatePerMin: billingSettings.liveTalkRatePerMin,
+      talkBillingEnabled: billingSettings.liveTalkBillingEnabled,
+    });
   } catch (error) {
     console.error('Start live error:', error);
     res.status(500).json({ error: 'Failed to start live stream', detail: error.message });
@@ -62,12 +77,22 @@ exports.createEndLive = (io) => async (req, res) => {
       { status: 'ended', ended_at: new Date() }
     );
 
+    await LiveTalkRequest.updateMany(
+      { session_id: sessionId, status: 'pending' },
+      { status: 'cancelled', responded_at: new Date() },
+    );
+    await LiveTalkSession.updateMany(
+      { session_id: sessionId, status: 'active' },
+      { status: 'ended', ended_at: new Date() },
+    );
+
     await User.findByIdAndUpdate(userId, { status: 'online' });
 
     io.to(`live_${sessionId}`).emit('stream_ended', {
       sessionId,
       message: 'The host has ended the live stream.'
     });
+    emitLiveStreamsUpdated();
 
     res.json({ success: true, message: 'Live stream ended' });
   } catch (error) {
@@ -79,10 +104,10 @@ exports.createEndLive = (io) => async (req, res) => {
 // Get active live streams
 exports.getActiveStreams = async (req, res) => {
   try {
+    const billingSettings = await getBillingSettings();
     const sessions = await LiveSession.find({ status: 'active' })
       .sort({ viewers_count: -1, started_at: -1 })
-      .limit(50)
-      .populate('user_id', 'username avatar country bio')
+      .populate('user_id', 'username avatar country bio followers_count')
       .lean();
 
     const streams = sessions.map(ls => {
@@ -99,11 +124,14 @@ exports.getActiveStreams = async (req, res) => {
         username: u.username,
         avatar: u.avatar,
         country: u.country,
-        bio: u.bio
+        bio: u.bio,
+        followers_count: u.followers_count || 0,
+        talk_rate_per_min: billingSettings.liveTalkRatePerMin,
+        talk_billing_enabled: billingSettings.liveTalkBillingEnabled,
       };
     });
 
-    res.json({ success: true, streams });
+    res.json({ success: true, streams, billing: billingSettings });
   } catch (error) {
     console.error('Get active streams error:', error);
     res.status(500).json({ error: 'Failed to get active streams' });
@@ -113,9 +141,9 @@ exports.getActiveStreams = async (req, res) => {
 // Get live users for home page
 exports.getLiveUsers = async (req, res) => {
   try {
+    const billingSettings = await getBillingSettings();
     const sessions = await LiveSession.find({ status: 'active' })
-      .sort({ viewers_count: -1 })
-      .limit(20)
+      .sort({ viewers_count: -1, started_at: -1 })
       .populate('user_id', 'id username avatar country')
       .lean();
 
@@ -128,11 +156,13 @@ exports.getLiveUsers = async (req, res) => {
         user_id: u._id ? u._id.toString() : u.id,
         username: u.username,
         avatar: u.avatar,
-        country: u.country
+        country: u.country,
+        talk_rate_per_min: billingSettings.liveTalkRatePerMin,
+        talk_billing_enabled: billingSettings.liveTalkBillingEnabled,
       };
     });
 
-    res.json({ success: true, liveUsers });
+    res.json({ success: true, liveUsers, billing: billingSettings });
   } catch (error) {
     console.error('Get live users error:', error);
     res.status(500).json({ error: 'Failed to get live users' });

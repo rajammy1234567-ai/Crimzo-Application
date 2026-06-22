@@ -9,6 +9,12 @@ const MAX_WITHDRAW_INR = 200000;
 /** Preset diamond gift amounts in chat */
 const CHAT_GIFT_PRESETS = [10, 50, 100, 500, 1000];
 
+/** 1-on-1 video call — caller pays from wallet (INR per minute) */
+const VIDEO_CALL_RATE_PER_MIN_INR = 1;
+
+/** Live talk with host — viewer pays from wallet (INR per minute) */
+const LIVE_TALK_RATE_PER_MIN_INR = 1;
+
 module.exports = {
   TOPUP_PRESETS,
   MIN_TOPUP_INR,
@@ -16,4 +22,6 @@ module.exports = {
   MIN_WITHDRAW_INR,
   MAX_WITHDRAW_INR,
   CHAT_GIFT_PRESETS,
+  VIDEO_CALL_RATE_PER_MIN_INR,
+  LIVE_TALK_RATE_PER_MIN_INR,
 };

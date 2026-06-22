@@ -1,7 +1,14 @@
 const User = require('../models/User');
 const LiveSession = require('../models/LiveSession');
+const LiveTalkRequest = require('../models/LiveTalkRequest');
+const LiveTalkSession = require('../models/LiveTalkSession');
+const VideoCallSession = require('../models/VideoCallSession');
 const Reel = require('../models/Reel');
 const Sticker = require('../models/Sticker');
+const {
+  getBillingSettings,
+  updateBillingSettings,
+} = require('../utils/billingSettings');
 const jwt = require('jsonwebtoken');
 const {
   emitStreamEnded,
@@ -38,6 +45,18 @@ exports.getDashboardStats = async (req, res) => {
       { $group: { _id: null, total: { $sum: '$diamonds' } } }
     ]);
     const totalDiamonds = diamondsAgg[0]?.total || 0;
+    const walletAgg = await User.aggregate([
+      { $group: { _id: null, total: { $sum: '$wallet_balance' } } },
+    ]);
+    const totalWalletBalance = walletAgg[0]?.total || 0;
+
+    const videoCallRevenueAgg = await VideoCallSession.aggregate([
+      { $group: { _id: null, total: { $sum: '$totalCharged' }, sessions: { $sum: 1 } } },
+    ]);
+    const liveTalkRevenueAgg = await LiveTalkSession.aggregate([
+      { $group: { _id: null, total: { $sum: '$total_charged' }, sessions: { $sum: 1 } } },
+    ]);
+    const billingSettings = await getBillingSettings();
 
     // Chart Data (Last 7 Days User Registration) - Mongo version
     const sevenDaysAgo = new Date();
@@ -59,8 +78,17 @@ exports.getDashboardStats = async (req, res) => {
         activeStreams,
         totalReels,
         totalDiamondsInCirculation: totalDiamonds,
+        totalWalletBalance,
+        videoCallRevenue: videoCallRevenueAgg[0]?.total || 0,
+        videoCallSessions: videoCallRevenueAgg[0]?.sessions || 0,
+        liveTalkRevenue: liveTalkRevenueAgg[0]?.total || 0,
+        liveTalkSessions: liveTalkRevenueAgg[0]?.sessions || 0,
+        pendingTalkRequests: await LiveTalkRequest.countDocuments({ status: 'pending' }),
+        videoCallRatePerMin: billingSettings.videoCallRatePerMin,
+        liveTalkRatePerMin: billingSettings.liveTalkRatePerMin,
       },
-      chartData
+      chartData,
+      billingSettings,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -183,11 +211,142 @@ exports.updateDiamonds = async (req, res) => {
   }
 };
 
+// ====================== BILLING SETTINGS ======================
+exports.getBillingSettings = async (req, res) => {
+  try {
+    const settings = await getBillingSettings();
+    const [videoStats, talkStats, pendingRequests] = await Promise.all([
+      VideoCallSession.aggregate([
+        { $group: { _id: null, revenue: { $sum: '$totalCharged' }, minutes: { $sum: '$minutesCharged' }, count: { $sum: 1 } } },
+      ]),
+      LiveTalkSession.aggregate([
+        { $group: { _id: null, revenue: { $sum: '$total_charged' }, minutes: { $sum: '$minutes_charged' }, count: { $sum: 1 } } },
+      ]),
+      LiveTalkRequest.countDocuments({ status: 'pending' }),
+    ]);
+
+    res.json({
+      settings: {
+        video_call_rate_per_min_inr: settings.videoCallRatePerMin,
+        live_talk_rate_per_min_inr: settings.liveTalkRatePerMin,
+        video_call_billing_enabled: settings.videoCallBillingEnabled,
+        live_talk_billing_enabled: settings.liveTalkBillingEnabled,
+        updated_at: settings.updated_at,
+      },
+      stats: {
+        videoCallRevenue: videoStats[0]?.revenue || 0,
+        videoCallMinutes: videoStats[0]?.minutes || 0,
+        videoCallSessions: videoStats[0]?.count || 0,
+        liveTalkRevenue: talkStats[0]?.revenue || 0,
+        liveTalkMinutes: talkStats[0]?.minutes || 0,
+        liveTalkSessions: talkStats[0]?.count || 0,
+        pendingTalkRequests: pendingRequests,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.updateBillingSettings = async (req, res) => {
+  try {
+    const {
+      video_call_rate_per_min_inr,
+      live_talk_rate_per_min_inr,
+      video_call_billing_enabled,
+      live_talk_billing_enabled,
+    } = req.body;
+
+    const settings = await updateBillingSettings({
+      video_call_rate_per_min_inr,
+      live_talk_rate_per_min_inr,
+      video_call_billing_enabled,
+      live_talk_billing_enabled,
+    });
+
+    res.json({
+      success: true,
+      settings: {
+        video_call_rate_per_min_inr: settings.videoCallRatePerMin,
+        live_talk_rate_per_min_inr: settings.liveTalkRatePerMin,
+        video_call_billing_enabled: settings.videoCallBillingEnabled,
+        live_talk_billing_enabled: settings.liveTalkBillingEnabled,
+        updated_at: settings.updated_at,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.getBillingSessions = async (req, res) => {
+  try {
+    const { type = 'all', page = 1, limit = 20 } = req.query;
+    const pageNum = Number(page) || 1;
+    const limitNum = Math.min(Number(limit) || 20, 50);
+    const skip = (pageNum - 1) * limitNum;
+
+    let videoCalls = [];
+    let liveTalks = [];
+
+    if (type === 'all' || type === 'video') {
+      videoCalls = await VideoCallSession.find()
+        .sort({ createdAt: -1 })
+        .skip(type === 'video' ? skip : 0)
+        .limit(type === 'video' ? limitNum : 10)
+        .populate('payerId', 'username crimzo_id')
+        .lean();
+    }
+
+    if (type === 'all' || type === 'talk') {
+      liveTalks = await LiveTalkSession.find()
+        .sort({ createdAt: -1 })
+        .skip(type === 'talk' ? skip : 0)
+        .limit(type === 'talk' ? limitNum : 10)
+        .populate('talker_id', 'username crimzo_id')
+        .populate('host_id', 'username crimzo_id')
+        .populate('session_id', 'channel_name status')
+        .lean();
+    }
+
+    res.json({
+      videoCalls: videoCalls.map((s) => ({
+        id: s._id.toString(),
+        type: 'video_call',
+        payer: s.payerId?.username,
+        crimzo_id: s.payerId?.crimzo_id,
+        channelName: s.channelName,
+        minutesCharged: s.minutesCharged,
+        totalCharged: s.totalCharged,
+        ratePerMin: s.ratePerMin,
+        status: s.status,
+        startedAt: s.startedAt,
+      })),
+      liveTalks: liveTalks.map((s) => ({
+        id: s._id.toString(),
+        type: 'live_talk',
+        talker: s.talker_id?.username,
+        host: s.host_id?.username,
+        crimzo_id: s.talker_id?.crimzo_id,
+        sessionStatus: s.session_id?.status,
+        minutesCharged: s.minutes_charged,
+        totalCharged: s.total_charged,
+        ratePerMin: s.rate_per_min,
+        status: s.status,
+        startedAt: s.started_at,
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 // ====================== STREAMS ======================
 exports.getStreams = async (req, res) => {
   try {
     const { status = 'active' } = req.query; // active or ended
-    
+    const billingSettings = await getBillingSettings();
+
     const streams = await LiveSession.find({ status })
       .sort({ started_at: -1 })
       .limit(50)
@@ -200,10 +359,12 @@ exports.getStreams = async (req, res) => {
       username: s.user_id?.username,
       crimzo_id: s.user_id?.crimzo_id,
       avatar: s.user_id?.avatar,
-      user_id: s.user_id?._id || s.user_id
+      user_id: s.user_id?._id || s.user_id,
+      talk_rate_per_min: billingSettings.liveTalkRatePerMin,
+      talk_billing_enabled: billingSettings.liveTalkBillingEnabled,
     }));
 
-    res.json({ streams: formatted });
+    res.json({ streams: formatted, billing: billingSettings });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -218,6 +379,15 @@ exports.terminateStream = async (req, res) => {
       streamId,
       { status: 'ended', ended_at: new Date() },
       { new: true }
+    );
+
+    await LiveTalkRequest.updateMany(
+      { session_id: streamId, status: 'pending' },
+      { status: 'cancelled', responded_at: new Date() },
+    );
+    await LiveTalkSession.updateMany(
+      { session_id: streamId, status: 'active' },
+      { status: 'ended', ended_at: new Date() },
     );
     
     // Update host status
