@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
     LayoutDashboard, Users, Radio, Film, Image as ImageIcon, LogOut,
-    Menu, X, Shield
+    Menu, X, Shield, IndianRupee
 } from 'lucide-react';
 
 const navSections = [
@@ -20,11 +20,17 @@ const navSections = [
         ]
     },
     {
+        title: 'Monetization',
+        items: [
+            { to: '/billing', icon: IndianRupee, label: 'Billing & Rates', desc: 'Video call + live talk ₹/min' },
+        ]
+    },
+    {
         title: 'Content & Moderation',
         items: [
             { to: '/streams', icon: Radio, label: 'Live Streams', desc: 'Active & ended' },
             { to: '/reels', icon: Film, label: 'Reels', desc: 'Content moderation' },
-            { to: '/stickers', icon: ImageIcon, label: 'Stickers & Gifts', desc: 'Economy items' },
+            { to: '/stickers', icon: ImageIcon, label: 'Stickers & Gifts', desc: 'Diamond gifts' },
         ]
     }
 ];
@@ -35,6 +41,7 @@ const pageMeta: Record<string, { title: string; section: string }> = {
     '/streams': { title: 'Live Streams', section: 'Content & Moderation' },
     '/reels': { title: 'Reels', section: 'Content & Moderation' },
     '/stickers': { title: 'Stickers & Gifts', section: 'Content & Moderation' },
+    '/billing': { title: 'Billing & Rates', section: 'Monetization' },
 };
 
 const AdminLayout = () => {

@@ -67,7 +67,7 @@ const Streams = () => {
         <div>
             <PageHeader
                 title="Live Streams"
-                description="Monitor active broadcasts and review ended sessions. Active streams auto-refresh every 30 seconds."
+                description="Monitor active broadcasts. Viewers host se baat karne ke liye request bhejte hain — rate admin Billing se set hoti hai."
                 breadcrumbs={[{ label: 'Dashboard', to: '/dashboard' }, { label: 'Streams' }]}
                 stats={statusFilter === 'active' ? [
                     { label: 'Live Now', value: activeCount, color: 'text-red-400' },
@@ -116,8 +116,15 @@ const Streams = () => {
                                         <Badge variant="neutral">Ended</Badge>
                                     </div>
                                 )}
-                                <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/50 backdrop-blur px-2 py-1 rounded-lg text-xs text-gray-300">
-                                    <Eye size={12} /> {stream.viewers_count}
+                                <div className="absolute top-3 right-3 flex flex-col items-end gap-1">
+                                    <div className="flex items-center gap-1 bg-black/50 backdrop-blur px-2 py-1 rounded-lg text-xs text-gray-300">
+                                        <Eye size={12} /> {stream.viewers_count}
+                                    </div>
+                                    {stream.talk_rate_per_min != null && (
+                                        <div className="bg-amber-500/20 border border-amber-500/30 backdrop-blur px-2 py-1 rounded-lg text-[10px] font-bold text-amber-300">
+                                            Talk ₹{stream.talk_rate_per_min}/min
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 

@@ -3,6 +3,44 @@ export interface DashboardStats {
     activeStreams: number;
     totalReels: number;
     totalDiamondsInCirculation: number;
+    totalWalletBalance?: number;
+    videoCallRevenue?: number;
+    videoCallSessions?: number;
+    liveTalkRevenue?: number;
+    liveTalkSessions?: number;
+    pendingTalkRequests?: number;
+    videoCallRatePerMin?: number;
+    liveTalkRatePerMin?: number;
+}
+
+export interface BillingSettings {
+    video_call_rate_per_min_inr: number;
+    live_talk_rate_per_min_inr: number;
+    video_call_billing_enabled: boolean;
+    live_talk_billing_enabled: boolean;
+    updated_at?: string;
+}
+
+export interface BillingStats {
+    videoCallRevenue: number;
+    videoCallMinutes: number;
+    videoCallSessions: number;
+    liveTalkRevenue: number;
+    liveTalkMinutes: number;
+    liveTalkSessions: number;
+    pendingTalkRequests: number;
+}
+
+export interface BillingSessionRow {
+    id: string;
+    type: string;
+    payer?: string;
+    talker?: string;
+    host?: string;
+    minutesCharged: number;
+    totalCharged: number;
+    ratePerMin: number;
+    status: string;
 }
 
 export interface ChartDataPoint {
@@ -35,6 +73,8 @@ export interface Stream {
     viewers_count: number;
     started_at: string;
     ended_at?: string;
+    talk_rate_per_min?: number;
+    talk_billing_enabled?: boolean;
 }
 
 export interface Reel {

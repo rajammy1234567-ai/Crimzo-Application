@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Radio, Film, Diamond, ArrowRight, TrendingUp } from 'lucide-react';
+import { Users, Radio, Film, Diamond, ArrowRight, TrendingUp, IndianRupee, Video, MessageCircle } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { api, authHeaders } from '../lib/api';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -15,7 +15,8 @@ const quickLinks = [
     { to: '/users', label: 'Manage Users', desc: 'Ban, search, adjust diamonds', color: 'text-blue-400' },
     { to: '/streams', label: 'Live Streams', desc: 'Monitor & terminate active streams', color: 'text-red-400' },
     { to: '/reels', label: 'Reels Moderation', desc: 'Review & remove content', color: 'text-purple-400' },
-    { to: '/stickers', label: 'Stickers Store', desc: 'Add & manage gift economy', color: 'text-amber-400' },
+    { to: '/stickers', label: 'Stickers Store', desc: 'Diamond gifts economy', color: 'text-amber-400' },
+    { to: '/billing', label: 'Billing & Rates', desc: 'Video call + live talk ₹/min', color: 'text-emerald-400' },
 ];
 
 const Dashboard = () => {
@@ -170,11 +171,26 @@ const Dashboard = () => {
                 </Card>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mt-6">
                 <Card padding className="border-l-4 border-l-red-500">
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Live Now</p>
                     <p className="text-2xl font-bold text-white mt-1">{formatNumber(stats.activeStreams)}</p>
-                    <p className="text-xs text-gray-600 mt-1">Active live streams</p>
+                    <p className="text-xs text-gray-600 mt-1">Talk rate: ₹{stats.liveTalkRatePerMin ?? 1}/min</p>
+                </Card>
+                <Card padding className="border-l-4 border-l-blue-500">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-1"><Video size={12} /> Video Call Revenue</p>
+                    <p className="text-2xl font-bold text-blue-400 mt-1">₹{formatNumber(stats.videoCallRevenue || 0)}</p>
+                    <p className="text-xs text-gray-600 mt-1">₹{stats.videoCallRatePerMin ?? 1}/min · {stats.videoCallSessions || 0} sessions</p>
+                </Card>
+                <Card padding className="border-l-4 border-l-amber-500">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-1"><MessageCircle size={12} /> Live Talk Revenue</p>
+                    <p className="text-2xl font-bold text-amber-400 mt-1">₹{formatNumber(stats.liveTalkRevenue || 0)}</p>
+                    <p className="text-xs text-gray-600 mt-1">{stats.pendingTalkRequests || 0} pending requests</p>
+                </Card>
+                <Card padding className="border-l-4 border-l-emerald-500">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-1"><IndianRupee size={12} /> Wallet Pool</p>
+                    <p className="text-2xl font-bold text-emerald-400 mt-1">₹{formatNumber(stats.totalWalletBalance || 0)}</p>
+                    <p className="text-xs text-gray-600 mt-1">Total user wallet balance</p>
                 </Card>
                 <Card padding className="border-l-4 border-l-purple-500">
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Content Library</p>
@@ -182,9 +198,9 @@ const Dashboard = () => {
                     <p className="text-xs text-gray-600 mt-1">Total reels published</p>
                 </Card>
                 <Card padding className="border-l-4 border-l-crimzo">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Economy</p>
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Diamond Economy</p>
                     <p className="text-2xl font-bold text-crimzo mt-1">{formatNumber(stats.totalDiamondsInCirculation)} 💎</p>
-                    <p className="text-xs text-gray-600 mt-1">Diamonds across all users</p>
+                    <p className="text-xs text-gray-600 mt-1">Gifts & stickers</p>
                 </Card>
             </div>
         </div>
