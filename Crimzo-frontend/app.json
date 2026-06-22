@@ -2,7 +2,7 @@
   "expo": {
     "name": "Crimzo",
     "slug": "crimzo",
-    "version": "4.0.1",
+    "version": "4.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/crimzo_logo1.png",
     "scheme": "crimzo",
@@ -24,7 +24,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.livestreamhub",
-      "versionCode": 20,
+      "versionCode": 22,
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",

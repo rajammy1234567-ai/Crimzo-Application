@@ -28,6 +28,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { apiGet, apiPost, apiDelete, apiFetch, resolveMediaUrl } from '../../lib/apiClient';
+import { getBuildLabel } from '../../lib/buildInfo';
 import FollowListModal from '../../components/profile/FollowListModal';
 import { useTabFocus } from '../../lib/useTabFocus';
 import { subscribe } from '../../lib/realtimeSync';
@@ -335,7 +336,7 @@ export default function ProfileScreen() {
           break;
         case 'Settings': router.push('/profile/settings' as any); break;
         case 'Help & Support':
-          Alert.alert('Help & Support', 'Email: support@crimzo.app\nVersion: 4.0.1');
+          Alert.alert('Help & Support', `Email: support@crimzo.app\n${getBuildLabel()}`);
           break;
         default: break;
       }

@@ -56,6 +56,8 @@ interface LiveChatProps {
     token: string;
     isHost?: boolean;
     hostUserId?: string | number;
+    canChat?: boolean;
+    talkRatePerMin?: number;
     onStickerPress: () => void;
 }
 
@@ -195,7 +197,10 @@ const msgS = StyleSheet.create({
 // ═══════════════════════════════════════════════════
 // ── Main LiveChat Component ──
 // ═══════════════════════════════════════════════════
-export default function LiveChat({ sessionId, userId, username, token, isHost = false, hostUserId, onStickerPress }: LiveChatProps) {
+export default function LiveChat({
+    sessionId, userId, username, token, isHost = false, hostUserId,
+    canChat = true, talkRatePerMin = 1, onStickerPress,
+}: LiveChatProps) {
     const insets = useSafeAreaInsets();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputText, setInputText] = useState('');
@@ -272,6 +277,18 @@ export default function LiveChat({ sessionId, userId, username, token, isHost = 
             }]);
         });
 
+        s.on('live_chat_error', (data?: { code?: string; message?: string }) => {
+            if (data?.message) {
+                setMessages(prev => [...prev.slice(-60), {
+                    id: `err_${Date.now()}`,
+                    type: 'system',
+                    message: data.message,
+                    username: 'System',
+                    timestamp: Date.now(),
+                }]);
+            }
+        });
+
         setSocket(s);
         return () => { 
             try { s.emit('leave_live', { sessionId }); } catch {}
@@ -280,10 +297,10 @@ export default function LiveChat({ sessionId, userId, username, token, isHost = 
     }, [sessionId, token, userId, username]);
 
     const sendMessage = useCallback(() => {
-        if (!inputText.trim() || !socket) return;
+        if (!inputText.trim() || !socket || (!isHost && !canChat)) return;
         socket.emit('live_chat_message', { sessionId, userId, username, message: inputText.trim() });
         setInputText('');
-    }, [inputText, socket, sessionId, userId, username]);
+    }, [inputText, socket, sessionId, userId, username, isHost, canChat]);
 
     // Visible messages with fade
     const visibleMessages = useMemo(() => {
@@ -328,7 +345,9 @@ export default function LiveChat({ sessionId, userId, username, token, isHost = 
                 ListEmptyComponent={
                     <View style={cs.empty}>
                         <Text style={cs.emptyText}>
-                            {isHost ? 'Welcome to your stream! 🎬' : 'Say hi to the streamer! 👋'}
+                            {isHost
+                                ? 'Welcome to your stream! 🎬'
+                                : (canChat ? 'Say hi to the streamer! 👋' : `Host se baat karne ke liye request bhejo — ₹${talkRatePerMin}/min`)}
                         </Text>
                     </View>
                 }
@@ -340,19 +359,20 @@ export default function LiveChat({ sessionId, userId, username, token, isHost = 
                     {/* Comment input */}
                     <View style={cs.inputField}>
                         <TextInput
-                            style={cs.textInput}
-                            placeholder="Add comment..."
+                            style={[cs.textInput, !isHost && !canChat && cs.textInputDisabled]}
+                            placeholder={isHost || canChat ? 'Add comment...' : `Request accept hone ke baad chat — ₹${talkRatePerMin}/min`}
                             placeholderTextColor="rgba(255,255,255,0.35)"
                             value={inputText}
                             onChangeText={setInputText}
                             onSubmitEditing={sendMessage}
                             returnKeyType="send"
                             maxLength={200}
+                            editable={isHost || canChat}
                         />
                     </View>
 
                     {/* Send button */}
-                    <TouchableOpacity onPress={sendMessage} disabled={!inputText.trim()} activeOpacity={0.7}>
+                    <TouchableOpacity onPress={sendMessage} disabled={!inputText.trim() || (!isHost && !canChat)} activeOpacity={0.7}>
                         <LinearGradient
                             colors={inputText.trim() ? ['#34D399', '#10B981'] : ['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.05)']}
                             style={cs.sendBtn}
@@ -391,6 +411,7 @@ const cs = StyleSheet.create({
         borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
     },
     textInput: { flex: 1, height: 42, paddingHorizontal: 16, color: '#FFF', fontSize: 14 },
+    textInputDisabled: { opacity: 0.45 },
     sendBtn: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
     giftBtn: {
         width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center',

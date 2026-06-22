@@ -3,7 +3,12 @@ import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import io, { Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
-import { API_URL } from '../lib/apiClient';
+import { API_URL, ApiError } from '../lib/apiClient';
+import {
+  checkVideoCallEligibility,
+  isInsufficientBalanceError,
+  VIDEO_CALL_RATE_PER_MIN,
+} from '../lib/videoCallBilling';
 
 export type IncomingCall = {
   callerId: string;
@@ -85,8 +90,26 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
       Alert.alert('Call Declined', 'The other person declined your call.');
     });
 
-    socket.on('video_call_ended', () => {
-      Alert.alert('Call Ended', 'The other person left the call.');
+    socket.on('video_call_ended', (data?: { reason?: string }) => {
+      const msg = data?.reason === 'balance_exhausted'
+        ? 'Call ended — wallet balance khatam ho gaya.'
+        : 'The other person left the call.';
+      Alert.alert('Call Ended', msg);
+    });
+
+    socket.on('video_call_error', (data?: { code?: string; message?: string; wallet_balance?: number }) => {
+      if (data?.code === 'INSUFFICIENT_BALANCE') {
+        Alert.alert(
+          'Recharge Required',
+          `${data.message || `Video call ₹${VIDEO_CALL_RATE_PER_MIN}/min hai.`}\n\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Add Money', onPress: () => router.push('/profile/wallet' as any) },
+          ],
+        );
+        return;
+      }
+      Alert.alert('Call Error', data?.message || 'Could not start video call.');
     });
 
     socketRef.current = socket;
@@ -96,11 +119,31 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
     };
   }, [token, user?.id, user?.username, router]);
 
-  const startCall = useCallback((peerId: string | number, peerName: string, peerAvatar?: string | null) => {
-    if (!user?.id || !socketRef.current) {
+  const startCall = useCallback(async (peerId: string | number, peerName: string, peerAvatar?: string | null) => {
+    if (!user?.id || !socketRef.current || !token) {
       Alert.alert('Error', 'Could not start call. Check your connection.');
       return;
     }
+
+    try {
+      await checkVideoCallEligibility(token);
+    } catch (e) {
+      if (isInsufficientBalanceError(e)) {
+        const data = e.data as { wallet_balance?: number; shortfall?: number };
+        Alert.alert(
+          'Recharge Required',
+          `Video call ke liye pehle wallet recharge karo.\n\nRate: ₹${VIDEO_CALL_RATE_PER_MIN}/min\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Add Money', onPress: () => router.push('/profile/wallet' as any) },
+          ],
+        );
+        return;
+      }
+      Alert.alert('Error', e instanceof ApiError ? e.message : 'Could not verify wallet balance');
+      return;
+    }
+
     const channelName = `vc_${Date.now()}_${user.id}_${peerId}`;
     socketRef.current.emit('video_call_invite', {
       calleeId: peerId,
@@ -119,7 +162,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
         peerAvatar: peerAvatar || '',
       },
     } as any);
-  }, [user?.id, user?.username, user?.avatar, router]);
+  }, [user?.id, user?.username, user?.avatar, token, router]);
 
   const acceptCall = useCallback(() => {
     if (!incomingCall || !socketRef.current || !user?.id) return;

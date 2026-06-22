@@ -17,6 +17,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
+import {
+  requestLiveTalk,
+  getLiveTalkStatus,
+  startLiveTalkBilling,
+  tickLiveTalkBilling,
+  endLiveTalkBilling,
+  isInsufficientBalanceError,
+  isBalanceExhaustedError,
+  LIVE_TALK_RATE_PER_MIN,
+} from '../../lib/liveTalkBilling';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import io from 'socket.io-client';
@@ -30,7 +40,7 @@ import {
   type IRtcEngine,
 } from '../../components/agoraImports';
 
-import { API_URL, apiGet, apiPost } from '../../lib/apiClient';
+import { API_URL, apiGet, apiPost, ApiError } from '../../lib/apiClient';
 const { width: SW, height: SH } = Dimensions.get('window');
 
 // ── Pulsing red LIVE indicator ──
@@ -67,8 +77,8 @@ function formatViewers(n: number): string {
 }
 
 export default function WatchScreen() {
-  const { sessionId } = useLocalSearchParams();
-  const { user, token } = useAuth();
+  const { sessionId, talk } = useLocalSearchParams<{ sessionId?: string; talk?: string }>();
+  const { user, token, updateUser } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [streamData, setStreamData] = useState<any>(null);
@@ -80,8 +90,18 @@ export default function WatchScreen() {
   const [hostFollowers, setHostFollowers] = useState(0);
   const socketRef = useRef<any>(null);
   const engineRef = useRef<IRtcEngine | null>(null);
+  const billingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const talkSessionIdRef = useRef<string | null>(null);
+  const talkPromptShownRef = useRef(false);
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
   const [hostCameraOff, setHostCameraOff] = useState(false);
+  const [canChat, setCanChat] = useState(false);
+  const [talkRequestId, setTalkRequestId] = useState<string | null>(null);
+  const [talkStatus, setTalkStatus] = useState<'idle' | 'pending' | 'active' | 'rejected'>('idle');
+  const [talkMinutes, setTalkMinutes] = useState(0);
+  const [talkCharged, setTalkCharged] = useState(0);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [requestingTalk, setRequestingTalk] = useState(false);
 
   // Entrance animation
   const headerFade = useRef(new Animated.Value(0)).current;
@@ -89,9 +109,161 @@ export default function WatchScreen() {
     Animated.timing(headerFade, { toValue: 1, duration: 600, useNativeDriver: true }).start();
   }, []);
 
+  const clearTalkBilling = useCallback(() => {
+    if (billingTimerRef.current) {
+      clearInterval(billingTimerRef.current);
+      billingTimerRef.current = null;
+    }
+  }, []);
+
+  const finalizeTalkBilling = useCallback(async () => {
+    if (!token || !sessionId || !talkSessionIdRef.current) return;
+    try {
+      await endLiveTalkBilling(token, {
+        sessionId: String(sessionId),
+        talkSessionId: talkSessionIdRef.current,
+      });
+    } catch {
+      // non-fatal
+    }
+    talkSessionIdRef.current = null;
+    setCanChat(false);
+    setTalkStatus('idle');
+  }, [token, sessionId]);
+
+  const startTalkBillingLoop = useCallback(() => {
+    if (!token || !sessionId || billingTimerRef.current) return;
+    billingTimerRef.current = setInterval(async () => {
+      if (!talkSessionIdRef.current) return;
+      try {
+        const tick = await tickLiveTalkBilling(token, {
+          sessionId: String(sessionId),
+          talkSessionId: talkSessionIdRef.current,
+        });
+        if (tick.wallet_balance != null) {
+          setWalletBalance(tick.wallet_balance);
+          updateUser({ wallet_balance: tick.wallet_balance });
+        }
+        if (tick.minutesCharged != null) setTalkMinutes(tick.minutesCharged);
+        if (tick.totalCharged != null) setTalkCharged(tick.totalCharged);
+        if (tick.canContinue === false) {
+          clearTalkBilling();
+          Alert.alert('Balance Low', 'Agla minute ke liye balance nahi hai. Chat band ho rahi hai.', [
+            { text: 'OK', onPress: () => void finalizeTalkBilling() },
+          ]);
+        }
+      } catch (e) {
+        if (isBalanceExhaustedError(e)) {
+          clearTalkBilling();
+          void finalizeTalkBilling();
+          Alert.alert('Balance Over', 'Wallet balance khatam — ab chat nahi kar sakte.');
+        }
+      }
+    }, 60000);
+  }, [token, sessionId, clearTalkBilling, finalizeTalkBilling, updateUser]);
+
+  const beginTalkBilling = useCallback(async (requestId: string) => {
+    if (!token || !sessionId) return;
+    try {
+      const billing = await startLiveTalkBilling(token, {
+        sessionId: String(sessionId),
+        requestId,
+      });
+      if (billing.talkSessionId) {
+        talkSessionIdRef.current = billing.talkSessionId;
+        setCanChat(true);
+        setTalkStatus('active');
+        if (billing.wallet_balance != null) {
+          setWalletBalance(billing.wallet_balance);
+          updateUser({ wallet_balance: billing.wallet_balance });
+        }
+        if (billing.minutesCharged != null) setTalkMinutes(billing.minutesCharged);
+        if (billing.totalCharged != null) setTalkCharged(billing.totalCharged);
+        startTalkBillingLoop();
+        Alert.alert('Connected!', `Ab host se baat kar sakte ho. ₹${LIVE_TALK_RATE_PER_MIN}/min charge ho raha hai.`);
+      }
+    } catch (e) {
+      Alert.alert('Billing Error', e instanceof ApiError ? e.message : 'Could not start talk billing');
+    }
+  }, [token, sessionId, startTalkBillingLoop, updateUser]);
+
+  const refreshTalkStatus = useCallback(async () => {
+    if (!token || !sessionId || !user?.id) return;
+    try {
+      const status = await getLiveTalkStatus(token, String(sessionId));
+      if (status.wallet_balance != null) setWalletBalance(status.wallet_balance);
+      if (status.canChat) {
+        setCanChat(true);
+        setTalkStatus('active');
+        if (status.activeTalk?.id) {
+          talkSessionIdRef.current = status.activeTalk.id;
+          setTalkMinutes(status.activeTalk.minutesCharged);
+          setTalkCharged(status.activeTalk.totalCharged);
+          startTalkBillingLoop();
+        }
+      } else if (status.pendingRequest?.id) {
+        setTalkRequestId(status.pendingRequest.id);
+        setTalkStatus('pending');
+      }
+    } catch {
+      // non-fatal
+    }
+  }, [token, sessionId, user?.id, startTalkBillingLoop]);
+
+  const sendTalkRequest = useCallback(async () => {
+    if (!token || !sessionId || requestingTalk) return;
+    setRequestingTalk(true);
+    try {
+      const res = await requestLiveTalk(token, String(sessionId));
+      if (res.alreadyActive && res.talkSessionId) {
+        talkSessionIdRef.current = res.talkSessionId;
+        setCanChat(true);
+        setTalkStatus('active');
+        startTalkBillingLoop();
+        return;
+      }
+      if (res.requestId) {
+        setTalkRequestId(res.requestId);
+        setTalkStatus('pending');
+        Alert.alert('Request Sent', `Host ko request bhej di. Accept hone ke baad ₹${LIVE_TALK_RATE_PER_MIN}/min se baat shuru hogi.`);
+      }
+    } catch (e) {
+      if (isInsufficientBalanceError(e)) {
+        const data = e.data as { wallet_balance?: number };
+        Alert.alert(
+          'Recharge Required',
+          `Live baat ke liye pehle wallet recharge karo.\n\nRate: ₹${LIVE_TALK_RATE_PER_MIN}/min\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Add Money', onPress: () => router.push('/profile/wallet' as any) },
+          ],
+        );
+      } else {
+        Alert.alert('Error', e instanceof ApiError ? e.message : 'Request failed');
+      }
+    } finally {
+      setRequestingTalk(false);
+    }
+  }, [token, sessionId, requestingTalk, router, startTalkBillingLoop]);
+
+  const promptTalkRequest = useCallback(() => {
+    if (talkPromptShownRef.current || canChat || talkStatus === 'pending') return;
+    talkPromptShownRef.current = true;
+    Alert.alert(
+      'Host se baat karo?',
+      `Is live host se baat karne ke liye request bhejni hogi.\n\nRate: ₹${LIVE_TALK_RATE_PER_MIN}/min (wallet se)\nHost accept karega tab chat khulegi.`,
+      [
+        { text: 'Sirf Dekho', style: 'cancel' },
+        { text: 'Request Bhejo', onPress: () => void sendTalkRequest() },
+      ],
+    );
+  }, [canChat, talkStatus, sendTalkRequest]);
+
   // Cleanup
   useEffect(() => {
     return () => {
+      clearTalkBilling();
+      void finalizeTalkBilling();
       if (socketRef.current) {
         socketRef.current.emit('leave_live', { sessionId });
         socketRef.current.disconnect();
@@ -102,7 +274,7 @@ export default function WatchScreen() {
         engineRef.current = null;
       }
     };
-  }, []);
+  }, [clearTalkBilling, finalizeTalkBilling, sessionId]);
 
   // Join stream
   useEffect(() => {
@@ -120,11 +292,23 @@ export default function WatchScreen() {
     s.on('viewer_count_update', (d: { count: number }) => setViewerCount(d.count));
     s.on('stream_ended', (data: { message?: string }) => {
       setStreamEnded(true);
+      clearTalkBilling();
+      void finalizeTalkBilling();
       Alert.alert(
         'Stream Ended',
         data?.message || 'The host has ended the live stream.',
         [{ text: 'OK', onPress: () => router.replace('/(tabs)/home') }],
       );
+    });
+    s.on('live_talk_accepted', (data: { requestId?: string }) => {
+      if (data?.requestId) {
+        void beginTalkBilling(data.requestId);
+      }
+    });
+    s.on('live_talk_rejected', () => {
+      setTalkStatus('rejected');
+      setTalkRequestId(null);
+      Alert.alert('Request Declined', 'Host ne abhi request accept nahi ki.');
     });
     socketRef.current = s;
     return () => { 
@@ -132,7 +316,19 @@ export default function WatchScreen() {
       s.disconnect(); 
       socketRef.current = null; 
     };
-  }, [sessionId, streamData, user?.id, user?.username, token]);
+  }, [sessionId, streamData, user?.id, user?.username, token, clearTalkBilling, finalizeTalkBilling, beginTalkBilling]);
+
+  useEffect(() => {
+    if (!loading && streamData && talk === '1' && streamData.hostId !== user?.id) {
+      promptTalkRequest();
+    }
+  }, [loading, streamData, talk, user?.id, promptTalkRequest]);
+
+  useEffect(() => {
+    if (!loading && streamData && token && sessionId) {
+      void refreshTalkStatus();
+    }
+  }, [loading, streamData, token, sessionId, refreshTalkStatus]);
 
   // Check follow status
   useEffect(() => {
@@ -207,6 +403,8 @@ export default function WatchScreen() {
   };
 
   const leaveStream = () => {
+    clearTalkBilling();
+    void finalizeTalkBilling();
     if (socketRef.current) { socketRef.current.emit('leave_live', { sessionId }); socketRef.current.disconnect(); socketRef.current = null; }
     if (engineRef.current) { engineRef.current.leaveChannel(); engineRef.current.release(); engineRef.current = null; }
     router.replace('/(tabs)/home');
@@ -376,6 +574,29 @@ export default function WatchScreen() {
         </Animated.View>
       </SafeAreaView>
 
+      {/* Talk request / billing banner */}
+      {streamData?.hostId !== user?.id && (
+        <View style={s.talkBanner}>
+          {talkStatus === 'active' ? (
+            <Text style={s.talkBannerText}>
+              Live chat active · ₹{talkCharged || LIVE_TALK_RATE_PER_MIN} charged · {talkMinutes} min
+              {walletBalance != null ? ` · Bal ₹${walletBalance}` : ''}
+            </Text>
+          ) : talkStatus === 'pending' ? (
+            <Text style={s.talkBannerText}>Request bheji — host accept kar raha hai...</Text>
+          ) : (
+            <TouchableOpacity onPress={() => void sendTalkRequest()} disabled={requestingTalk} activeOpacity={0.85}>
+              <LinearGradient colors={['#FFD700', '#FF9500']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.talkRequestBtn}>
+                <Ionicons name="chatbubbles" size={16} color="#FFF" />
+                <Text style={s.talkRequestText}>
+                  {requestingTalk ? 'Sending...' : `Host se baat karo · ₹${LIVE_TALK_RATE_PER_MIN}/min`}
+                </Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       {/* ═══ LIVE CHAT OVERLAY ═══ */}
       {sessionId && user && token && (
         <LiveChat
@@ -385,6 +606,8 @@ export default function WatchScreen() {
           token={token}
           isHost={false}
           hostUserId={streamData?.hostId}
+          canChat={canChat}
+          talkRatePerMin={LIVE_TALK_RATE_PER_MIN}
           onStickerPress={() => setShowStickers(true)}
         />
       )}
@@ -455,4 +678,32 @@ const s = StyleSheet.create({
 
   // Close
   closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+
+  talkBanner: {
+    position: 'absolute',
+    top: 120,
+    left: 14,
+    right: 14,
+    zIndex: 25,
+    alignItems: 'center',
+  },
+  talkBannerText: {
+    color: '#FFD700',
+    fontSize: 12,
+    fontWeight: '700',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  talkRequestBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 22,
+  },
+  talkRequestText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
 });

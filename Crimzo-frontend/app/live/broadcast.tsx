@@ -33,6 +33,7 @@ import {
 } from '../../components/agoraImports';
 
 import { API_URL, apiGet, apiPost, ApiError } from '../../lib/apiClient';
+import { respondLiveTalk, LIVE_TALK_RATE_PER_MIN } from '../../lib/liveTalkBilling';
 
 const LIVE_START_TIMEOUT_MS = 10000;
 const LOADING_SAFETY_MS = 15000;
@@ -224,6 +225,42 @@ export default function BroadcastScreen() {
       s.emit('join_live', { sessionId, userId: user?.id, username: user?.username });
     });
     s.on('viewer_count_update', (d: { count: number }) => setViewerCount(Math.max(0, d.count - 1)));
+    s.on('live_talk_incoming', (data: {
+      requestId?: string;
+      requesterName?: string;
+      requesterAvatar?: string | null;
+      ratePerMin?: number;
+    }) => {
+      if (!data?.requestId) return;
+      const rate = data.ratePerMin || LIVE_TALK_RATE_PER_MIN;
+      Alert.alert(
+        'Talk Request',
+        `${data.requesterName || 'Koi viewer'} live pe tumse baat karna chahta hai.\n\nViewer se ₹${rate}/min charge hoga.`,
+        [
+          {
+            text: 'Decline',
+            style: 'cancel',
+            onPress: async () => {
+              try {
+                await respondLiveTalk(token!, data.requestId!, 'reject');
+              } catch (e) {
+                Alert.alert('Error', e instanceof ApiError ? e.message : 'Could not decline');
+              }
+            },
+          },
+          {
+            text: 'Accept',
+            onPress: async () => {
+              try {
+                await respondLiveTalk(token!, data.requestId!, 'accept');
+              } catch (e) {
+                Alert.alert('Error', e instanceof ApiError ? e.message : 'Could not accept');
+              }
+            },
+          },
+        ],
+      );
+    });
     s.on('stream_ended', async (data: { message?: string }) => {
       setIsLive(false);
       if (engineRef.current) {
@@ -588,7 +625,17 @@ export default function BroadcastScreen() {
 
         {/* ── LIVE CHAT ── */}
         {isLive && sessionId && user && token && (
-          <LiveChat sessionId={sessionId} userId={user.id} username={user.username} token={token} isHost={true} hostUserId={user.id} onStickerPress={noopPress} />
+          <LiveChat
+            sessionId={sessionId}
+            userId={user.id}
+            username={user.username}
+            token={token}
+            isHost={true}
+            hostUserId={user.id}
+            canChat={true}
+            talkRatePerMin={LIVE_TALK_RATE_PER_MIN}
+            onStickerPress={noopPress}
+          />
         )}
 
         {/* ── PRE-BROADCAST BOTTOM ── */}

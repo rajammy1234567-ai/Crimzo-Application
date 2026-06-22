@@ -12,12 +12,14 @@ const { width: SW } = Dimensions.get('window');
 const CARD_W = (SW - 22) / 2;
 
 interface LiveStream {
-    id: number;
+    id: string | number;
     username: string;
     avatar: string | null;
     viewers_count: number;
+    followers_count?: number;
     location?: string;
     country?: string;
+    talk_rate_per_min?: number;
 }
 
 interface Props {
@@ -25,7 +27,7 @@ interface Props {
     loading: boolean;
     refreshing: boolean;
     onRefresh: () => void;
-    onWatchStream: (sessionId: number) => void;
+    onWatchStream: (sessionId: string | number) => void;
     onStartBroadcast: () => void;
 }
 
@@ -62,6 +64,7 @@ function formatViewers(n: number): string {
 // ── Premium Live Card with profile avatar ──
 const LiveStreamCard: React.FC<{ stream: LiveStream; onPress: () => void }> = ({ stream, onPress }) => {
     const initial = (stream.username || 'U').charAt(0).toUpperCase();
+    const rate = stream.talk_rate_per_min ?? 1;
 
     return (
         <TouchableOpacity style={s.card} onPress={onPress} activeOpacity={0.85}>
@@ -98,6 +101,12 @@ const LiveStreamCard: React.FC<{ stream: LiveStream; onPress: () => void }> = ({
                     <Text style={s.viewerText}>{formatViewers(stream.viewers_count || 0)}</Text>
                 </View>
 
+                {/* Talk rate */}
+                <View style={s.rateBadge}>
+                    <Ionicons name="wallet-outline" size={10} color="#FFD700" />
+                    <Text style={s.rateText}>₹{rate}/min</Text>
+                </View>
+
                 {/* Bottom: profile avatar + name + followers */}
                 <View style={s.cardBottom}>
                     <View style={s.bottomRow}>
@@ -114,8 +123,9 @@ const LiveStreamCard: React.FC<{ stream: LiveStream; onPress: () => void }> = ({
                             <Text style={s.cardUsername} numberOfLines={1}>{stream.username}</Text>
                             <View style={s.followersRow}>
                                 <Ionicons name="people" size={10} color="rgba(255,255,255,0.35)" />
-                                <Text style={s.followersText}>{formatViewers(stream.viewers_count || 0)} Followers</Text>
+                                <Text style={s.followersText}>{formatViewers(stream.followers_count || stream.viewers_count || 0)} watching</Text>
                             </View>
+                            <Text style={s.talkHint}>Baat karne ke liye ₹{rate}/min</Text>
                         </View>
                     </View>
                 </View>
@@ -249,6 +259,14 @@ const s = StyleSheet.create({
         borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
     },
     viewerText: { color: 'rgba(255,255,255,0.85)', fontSize: 10, fontWeight: '700' },
+    rateBadge: {
+        position: 'absolute', top: 42, left: 10,
+        flexDirection: 'row', alignItems: 'center', gap: 4,
+        backgroundColor: 'rgba(0,0,0,0.65)', paddingHorizontal: 8, paddingVertical: 4,
+        borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,215,0,0.25)',
+    },
+    rateText: { color: '#FFD700', fontSize: 10, fontWeight: '800' },
+    talkHint: { color: 'rgba(255,215,0,0.75)', fontSize: 9, fontWeight: '700', marginTop: 2 },
 
     // Card bottom – profile avatar + name
     cardBottom: {

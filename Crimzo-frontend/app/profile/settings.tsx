@@ -25,8 +25,7 @@ import {
   type AppSettings,
   DEFAULT_SETTINGS,
 } from '../../lib/appSettings';
-
-const APP_VERSION = '4.0.1';
+import { APP_VERSION, getBuildLabel } from '../../lib/buildInfo';
 const SUPPORT_EMAIL = 'support@crimzo.app';
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.livestreamhub';
 
@@ -470,6 +469,7 @@ export default function SettingsScreen() {
             <Text style={styles.aboutAppTitle}>Crimzo</Text>
             <Text style={styles.aboutTagline}>Connect. Create. Go Live.</Text>
             <Text style={styles.aboutVersionLine}>Version {APP_VERSION}</Text>
+            <Text style={styles.aboutBuildLine}>{getBuildLabel()}</Text>
 
             <Text style={styles.aboutIntro}>
               Crimzo is a next-generation social platform designed for live entertainment,
@@ -621,7 +621,10 @@ const styles = StyleSheet.create({
     marginTop: 4, marginHorizontal: 20, letterSpacing: 0.2,
   },
   aboutVersionLine: {
-    color: '#AEAEB2', fontSize: 13, marginTop: 8, marginHorizontal: 20, marginBottom: 16,
+    color: '#AEAEB2', fontSize: 13, marginTop: 8, marginHorizontal: 20,
+  },
+  aboutBuildLine: {
+    color: '#8E8E93', fontSize: 12, marginTop: 4, marginHorizontal: 20, marginBottom: 16,
   },
   aboutIntro: {
     color: '#3C3C43', fontSize: 15, lineHeight: 23,
