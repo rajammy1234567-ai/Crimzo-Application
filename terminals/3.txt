@@ -1,0 +1,59 @@
+---
+pid: 6312
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "cd \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\"; eas build --profile apk --platform android --clear-cache --non-interactive"
+started_at: 2026-06-16T11:24:22.668Z
+running_for_ms: 3270012  
+---
+★ eas-cli@20.2.0 is now available.
+To upgrade, run:
+npm install -g eas-cli
+Proceeding with outdated version.
+
+Resolved "preview" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
+No environment variables with visibility "Plain text" and "Sensitive" found for the "preview" environment on EAS.
+Environment variables loaded from the "apk" build profile "env" configuration: EXPO_PUBLIC_BACKEND_URL, EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID, EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID.
+
+
+
+✔ Using local Android credentials (credentials.json)
+
+Bumping expo.android.versionCode from 21 to 22
+
+Compressing project files and uploading to EAS Build. Learn more: https://expo.fyi/eas-build-archive
+- Compressing project files
+- Uploading to EAS Build (0 / 124 MB)
+✔ Uploaded to EAS 13s
+- Computing project fingerprint
+✔ Computed project fingerprint
+
+See logs: https://expo.dev/accounts/viz_eas001/projects/crimzo/builds/30523a33-ead4-46a6-ab0b-ef5e208ffee6
+
+Waiting for build to complete. You can press Ctrl+C to exit.
+- Waiting for build to complete.
+✔ Build finished
+
+  ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+  █ ▄▄▄▄▄ █   █▄ █▄█▄▄▀▄ ▄▄█▄▀▄ █ ▄▄▄▄▄ █
+  █ █   █ █ ▀▄ █▀ ▀▀▄ ▄▀▄▄▄▄▀▄  █ █   █ █
+  █ █▄▄▄█ █▀██▀▀ ▄▄ █▄▀▄ ▀▄█ ▀▄ █ █▄▄▄█ █
+  █▄▄▄▄▄▄▄█▄▀▄█ █ ▀▄▀ ▀▄▀▄▀▄█▄▀▄█▄▄▄▄▄▄▄█
+  █▄ ▀█▄▄▄███▀▄▀▀▄▀▀▄▀▄▀ █ ▄▀▄▀▀██▄▀▄  ▄█
+  ██ ▄▄█▄▄▀██▀ ▄▄█ █ ▀█▄▀█▄███▄█▄▀▄█ ▀▄▀█
+  █▀█▄▄▄▀▄█ ▀▄█▄▀▄ █▄▀▄▄▄▄▀█▀▄▄ ▄▄▄▀▀ ▀▄█
+  █▀▄▀▀▄▄▄ ████▀██▄  ▄▀▄▀ ▄▄█▀▄ ▄▀  ▀▀▀██
+  ██▀▀ ▄ ▄▀▀▀█▄▀█▄▀▀▄▄▄▀▄ ▀▄█   ▄▄ ▀▀ ▀▄█
+  █▄▀▄ ██▄▄█▀█ ▄██   ▄▀█ █▄ ▄  ▀█ ▀▄█▀▀██
+  ███   █▄█▀▄▄█▄▀▀▀▄  ▄▀ ▄  ▀█ ▀ ▄█▀▀▄ ▄█
+  █▄▄ ▄ ▄▄ █▄▄█▀▄▄▄   █  ▄▄▄██▄▄██ ██ ▀██
+  █▀█ ▀▄█▄▄ ▀▀▄▀▀▀▀▀▄▄▄▀ ▄▀█▀█▀ ▄▄▄▀▄  ▄█
+  █████  ▄█▀▄█ ▄▄▄ ▀ ▄██ ▀ ▀▄█▄█▀ ▀█▄ ▀██
+  █▄▄▄▄█▄▄█ ▄▀█▄▀▀▀▀▄▄▄▀▄▄▀██▀▄ ▄▄▄ ▄▄███
+  █ ▄▄▄▄▄ █▀█▄█▀█  █▀▄▀▄ ▀▄▄▄ ▀ █▄█ ▄ ▀██
+  █ █   █ █▄▄▀▄ ▀▀ █▄▀▄▀▄ ▀▄█▀▀    ▄▀ █▄█
+  █ █▄▄▄█ █▀▀▀▄▀█ ▄▄ ▀▀ ▀▄  ▄█▄▄█▄▄▀▀▀▀██
+  █▄▄▄▄▄▄▄█▄█████▄█▄▄▄█▄▄██▄██▄██▄███▄▄▄█
+
+
+🤖 Open this link on your Android devices (or scan the QR code) to install the app:
+https://expo.dev/accounts/viz_eas001/projects/crimzo/builds/30523a33-ead4-46a6-ab0b-ef5e208ffee6
