@@ -75,17 +75,20 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    minHeight: 64,
     borderBottomWidth: 0.5,
     borderBottomColor: 'rgba(255,255,255,0.05)',
   },
   left: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    marginRight: 8,
   },
   logo: {
-    width: 110,
-    height: 36,
+    width: 168,
+    height: 56,
   },
   right: {
     flexDirection: 'row',
