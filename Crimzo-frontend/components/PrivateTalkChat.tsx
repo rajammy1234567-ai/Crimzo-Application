@@ -17,17 +17,22 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { Socket } from 'socket.io-client';
 
-import { playMessageReceivePop, playMessageSendPop } from '../lib/uiSounds';
+import { playGiftPop, playMessageReceivePop, playMessageSendPop } from '../lib/uiSounds';
 import { KEYBOARD_BEHAVIOR } from './KeyboardAware';
 
 const { width: SW } = Dimensions.get('window');
 
 interface ChatMessage {
   id: string;
-  type: 'text' | 'system';
+  type: 'text' | 'sticker' | 'system';
   userId?: string | number;
   username?: string;
   message?: string;
+  emoji?: string;
+  stickerName?: string;
+  icon_name?: string;
+  icon_color?: string;
+  bg_color?: string;
   timestamp: number;
 }
 
@@ -41,6 +46,7 @@ interface PrivateTalkChatProps {
   peerUsername: string;
   isHost?: boolean;
   sharedSocket?: Socket | null;
+  onGiftPress?: () => void;
   onClose: () => void;
   onEnd?: () => void;
 }
@@ -73,6 +79,7 @@ export default function PrivateTalkChat({
   peerUsername,
   isHost = false,
   sharedSocket,
+  onGiftPress,
   onClose,
   onEnd,
 }: PrivateTalkChatProps) {
@@ -110,8 +117,9 @@ export default function PrivateTalkChat({
 
     const onMessage = (data: ChatMessage) => {
       setMessages((prev) => appendMessage(prev, data));
-      if (data.type === 'text' && String(data.userId) !== String(userId)) {
-        playMessageReceivePop();
+      if (String(data.userId) !== String(userId)) {
+        if (data.type === 'sticker') playGiftPop();
+        else if (data.type === 'text') playMessageReceivePop();
       }
       scrollToEnd();
     };
@@ -199,10 +207,32 @@ export default function PrivateTalkChat({
     }
     const isSelf = String(item.userId) === String(userId);
     const isPeer = String(item.userId) === String(peerUserId);
+    const displayName = isSelf ? 'You' : (isPeer ? peerUsername : item.username || 'User');
+
+    if (item.type === 'sticker') {
+      const iconName = ((item.icon_name || 'gift') in Ionicons.glyphMap
+        ? item.icon_name
+        : 'gift') as keyof typeof Ionicons.glyphMap;
+      const bgColor = item.bg_color || '#FF2D55';
+      return (
+        <View style={[ps.msgRow, isSelf && ps.msgRowSelf]}>
+          <View style={[ps.giftPill, { borderColor: `${bgColor}40` }, isSelf && ps.giftPillSelf]}>
+            <View style={[ps.giftIcon, { backgroundColor: bgColor }]}>
+              <Ionicons name={iconName} size={14} color={item.icon_color || '#FFF'} />
+            </View>
+            <View style={ps.giftTextCol}>
+              <Text style={[ps.giftUser, { color: bgColor }]}>{displayName}</Text>
+              <Text style={ps.giftAction}>sent {item.stickerName || 'a gift'}</Text>
+            </View>
+          </View>
+        </View>
+      );
+    }
+
     return (
       <View style={[ps.msgRow, isSelf && ps.msgRowSelf]}>
         <View style={[ps.bubble, isSelf ? ps.bubbleSelf : ps.bubblePeer]}>
-          <Text style={ps.name}>{isSelf ? 'You' : (isPeer ? peerUsername : item.username || 'User')}</Text>
+          <Text style={ps.name}>{displayName}</Text>
           <Text style={ps.text}>{item.message}</Text>
         </View>
       </View>
@@ -266,6 +296,13 @@ export default function PrivateTalkChat({
 
           <View style={[ps.inputWrap, { paddingBottom: Math.max(insets.bottom, 10) }]}>
             <View style={ps.inputRow}>
+              {!isHost && onGiftPress && (
+                <TouchableOpacity onPress={onGiftPress} activeOpacity={0.7}>
+                  <LinearGradient colors={['#FFD700', '#FF9500']} style={ps.giftBtn}>
+                    <Ionicons name="gift" size={18} color="#FFF" />
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
               <View style={ps.inputField}>
                 <TextInput
                   style={ps.textInput}
@@ -353,6 +390,37 @@ const ps = StyleSheet.create({
   },
   name: { color: 'rgba(167,139,250,0.9)', fontSize: 11, fontWeight: '800', marginBottom: 3 },
   text: { color: 'rgba(255,255,255,0.92)', fontSize: 15, lineHeight: 21 },
+  giftPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    maxWidth: SW * 0.82,
+    borderRadius: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderWidth: 1,
+  },
+  giftPillSelf: {
+    backgroundColor: 'rgba(255,215,0,0.08)',
+  },
+  giftIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  giftTextCol: { flex: 1 },
+  giftUser: { fontSize: 12, fontWeight: '800' },
+  giftAction: { color: 'rgba(255,255,255,0.55)', fontSize: 13, marginTop: 2 },
+  giftBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   inputWrap: {
     paddingTop: 10,
     paddingHorizontal: 12,

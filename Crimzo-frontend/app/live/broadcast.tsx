@@ -19,6 +19,7 @@ import {
   type IRtcEngine,
 } from '../../components/agoraImports';
 import { ensureRtcPermissions, configurePublisherAudio } from '../../lib/agoraRtcHelpers';
+import { toAgoraUid } from '../../lib/agoraUid';
 
 import { API_URL, apiGet, apiPost, ApiError } from '../../lib/apiClient';
 import {
@@ -142,7 +143,7 @@ function formatViewers(n: number): string {
 // ── Main Component ──
 // ═══════════════════════════════════════════════════
 export default function BroadcastScreen() {
-  const { user, token } = useAuth();
+  const { user, token, updateUser } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [isLive, setIsLive] = useState(false);
@@ -198,11 +199,9 @@ export default function BroadcastScreen() {
 
   useEffect(() => {
     requestPermissions().catch(() => {});
-    if (useExpoCamera) {
-      requestCameraPermission();
-      requestMicPermission();
-    }
-  }, [useExpoCamera]);
+    requestCameraPermission();
+    requestMicPermission();
+  }, []);
 
   useEffect(() => {
     if (token) {
@@ -396,6 +395,16 @@ export default function BroadcastScreen() {
         setHostChatBeansEarned((prev) => prev + data.beansEarned!);
       }
     });
+    s.on('bean_update', (data: { beans?: number }) => {
+      if (typeof data?.beans === 'number') {
+        updateUser({ beans: data.beans });
+      }
+    });
+    s.on('diamond_update', (data: { diamonds?: number }) => {
+      if (typeof data?.diamonds === 'number') {
+        updateUser({ diamonds: data.diamonds });
+      }
+    });
     s.on('stream_ended', async (data: { message?: string }) => {
       setIsLive(false);
       if (engineRef.current) {
@@ -421,7 +430,7 @@ export default function BroadcastScreen() {
       socketRef.current = null;
       setLiveSocket(null);
     };
-  }, [isLive, sessionId, user?.id, user?.username, token, router, promptTalkRequest]);
+  }, [isLive, sessionId, user?.id, user?.username, token, router, promptTalkRequest, updateUser]);
 
   const handleTimerExpired = useCallback(() => {
     if (timerExpired) return;
@@ -485,6 +494,7 @@ export default function BroadcastScreen() {
       engine.registerEventHandler({
         onJoinChannelSuccess: () => {
           configurePublisherAudio(engine);
+          setAgoraReady(true);
           console.log('[Broadcast] Host joined Agora channel');
         },
         onError: (err: unknown, msg: unknown) => { console.error('[Broadcast] Agora error:', err, msg); },
@@ -494,9 +504,7 @@ export default function BroadcastScreen() {
       engine.enableAudio();
       engine.startPreview();
 
-      const numericUid = typeof hostUid === 'number'
-        ? hostUid
-        : (parseInt(String(user?.id || 0).replace(/\D/g, '').slice(-9)) || 12345);
+      const numericUid = typeof hostUid === 'number' ? hostUid : toAgoraUid(user?.id);
       setLocalAgoraUid(numericUid);
       engine.joinChannel(agoraToken, channelName, numericUid, {
         clientRoleType: ClientRoleType.ClientRoleBroadcaster,
@@ -515,7 +523,6 @@ export default function BroadcastScreen() {
         engine.muteLocalVideoStream(true);
       }
 
-      setAgoraReady(true);
       return;
     }
 
@@ -543,6 +550,13 @@ export default function BroadcastScreen() {
     }
     if (!token) {
       appAlert('Login Required', 'Please log in to go live.');
+      return;
+    }
+    if (!isAgoraNativeLinked) {
+      appAlert(
+        'Production App Required',
+        'Viewers cannot watch your live stream in Expo Go. Build and install the production APK — only then your camera is broadcast to viewers.',
+      );
       return;
     }
     setLoading(true);
@@ -631,8 +645,8 @@ export default function BroadcastScreen() {
       {/* ═══ CAMERA VIEW ═══ */}
       <View style={st.cameraWrap}>
         {agoraReady ? (
-          <RtcSurfaceView style={{ flex: 1 }} canvas={{ uid: localAgoraUid }} />
-        ) : useExpoCamera && cameraPermission?.granted && cameraEnabled ? (
+          <RtcSurfaceView style={{ flex: 1 }} canvas={{ uid: 0 }} />
+        ) : cameraPermission?.granted && cameraEnabled ? (
           <CameraView style={{ flex: 1 }} facing={facing} mode="video" />
         ) : (
           <LinearGradient colors={['#1a0a1e', '#12121a', '#0a0a14']} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -643,7 +657,7 @@ export default function BroadcastScreen() {
           </LinearGradient>
         )}
 
-        {!cameraEnabled && (agoraReady || (useExpoCamera && isLive)) && (
+        {!cameraEnabled && (agoraReady || (cameraPermission?.granted && isLive)) && (
           <View style={st.cameraOffOverlay}>
             <LinearGradient colors={['#1a0a1e', '#12121a', '#0a0a14']} style={StyleSheet.absoluteFill} />
             <View style={st.cameraOffContent}>

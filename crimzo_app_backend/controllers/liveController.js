@@ -7,6 +7,7 @@ const User = require('../models/User');
 const { getBillingSettings } = require('../utils/billingSettings');
 const { resolveUserRates } = require('../utils/userRates');
 const { emitLiveStreamsUpdated } = require('../utils/socketEmitter');
+const { deriveAgoraUid } = require('../utils/agoraUid');
 
 const STALE_LIVE_MS = 6 * 60 * 60 * 1000; // 6 hours max live session
 const LIVE_JOIN_GRACE_MS = 30 * 1000; // allow brief window after go-live before socket joins
@@ -160,9 +161,7 @@ exports.startLive = async (req, res) => {
     const currentTimestamp = Math.floor(Date.now() / 1000);
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
 
-    // Agora requires numeric UIDs (uint32). Derive stable number from mongo id string.
-    const uidStr = String(userId).replace(/[^0-9]/g, '');
-    let uid = parseInt(uidStr.slice(-9) || '0', 10) || (Date.now() % 1000000 + 10000);
+    const uid = deriveAgoraUid(userId);
 
     const token = RtcTokenBuilder.buildTokenWithUid(
       appId, appCertificate, channelName, uid, RtcRole.PUBLISHER, privilegeExpiredTs
@@ -300,15 +299,13 @@ exports.joinLive = async (req, res) => {
     const currentTimestamp = Math.floor(Date.now() / 1000);
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
 
-    // Numeric UID for Agora
-    const uidStr = String(userId).replace(/[^0-9]/g, '');
-    let uid = parseInt(uidStr.slice(-9) || '0', 10) || (Date.now() % 1000000 + 10000);
+    const uid = deriveAgoraUid(userId);
+    const hostId = session.user_id?._id || session.user_id;
+    const hostUid = deriveAgoraUid(hostId);
 
     const token = RtcTokenBuilder.buildTokenWithUid(
       appId, appCertificate, channelName, uid, RtcRole.SUBSCRIBER, privilegeExpiredTs
     );
-
-    const hostId = session.user_id?._id || session.user_id;
     let viewersCount = session.viewers_count || 0;
 
     // Unique viewer per user per stream (re-joining should not inflate count)
@@ -334,7 +331,7 @@ exports.joinLive = async (req, res) => {
     const billingSettings = await getBillingSettings();
     const hostRates = resolveUserRates(host, billingSettings);
     res.json({
-      success: true, channelName, token, appId, uid,
+      success: true, channelName, token, appId, uid, hostUid,
       sessionId: session.id, hostId: hostIdStr, hostUsername: host.username,
       hostAvatar: host.avatar || null, hostFollowers: host.followers_count || 0,
       hostVoiceRatePerMin: hostRates.voiceRatePerMin,

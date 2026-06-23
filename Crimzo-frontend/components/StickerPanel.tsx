@@ -28,10 +28,11 @@ interface Sticker {
 interface StickerPanelProps {
     visible: boolean;
     onClose: () => void;
-    onSendSticker: (sticker: Sticker) => void;
+    onSendSticker?: (sticker: Sticker) => void;
     token: string;
-    receiverId?: number;
+    receiverId?: number | string;
     sessionId?: number | string;
+    talkSessionId?: string;
 }
 
 const CATEGORIES = [
@@ -96,9 +97,18 @@ function StickerIcon({ sticker, size = 36 }: { sticker: Sticker; size?: number }
     );
 }
 
-export default function StickerPanel({ visible, onClose, onSendSticker, token, receiverId, sessionId }: StickerPanelProps) {
+export default function StickerPanel({
+    visible,
+    onClose,
+    onSendSticker,
+    token,
+    receiverId,
+    sessionId,
+    talkSessionId,
+}: StickerPanelProps) {
     const router = useRouter();
     const { updateUser } = useAuth();
+
     const [stickers, setStickers] = useState<Sticker[]>([]);
     const [diamonds, setDiamonds] = useState(0);
     const [selectedCategory, setSelectedCategory] = useState('all');
@@ -152,6 +162,10 @@ export default function StickerPanel({ visible, onClose, onSendSticker, token, r
             );
             return;
         }
+        if (!receiverId) {
+            appAlert('Gift Failed', 'Could not find gift receiver. Please try again.');
+            return;
+        }
         try {
             setSending(sticker.id);
             const stickerId = sticker.id != null ? String(sticker.id) : '';
@@ -159,17 +173,26 @@ export default function StickerPanel({ visible, onClose, onSendSticker, token, r
                 appAlert('Error', 'Invalid gift. Please refresh and try again.');
                 return;
             }
-            const r = await axios.post(`${API_URL}/api/stickers/send`,
-                { stickerId, receiverId, sessionId },
-                { headers: { Authorization: `Bearer ${token}` } }
+            const r = await axios.post(
+                `${API_URL}/api/stickers/send`,
+                {
+                    stickerId,
+                    receiverId,
+                    sessionId,
+                    talkSessionId: talkSessionId || undefined,
+                },
+                { headers: { Authorization: `Bearer ${token}` } },
             );
-            setDiamonds(r.data.remainingDiamonds);
-            updateUser({ diamonds: r.data.remainingDiamonds });
+            if (typeof r.data?.remainingDiamonds === 'number') {
+                setDiamonds(r.data.remainingDiamonds);
+                updateUser({ diamonds: r.data.remainingDiamonds });
+            }
             playGiftPop();
-            onSendSticker(sticker);
+            onSendSticker?.(sticker);
             onClose();
-        } catch (e: any) {
-            appAlert('Error', e.response?.data?.error || 'Failed to send sticker');
+        } catch (e: unknown) {
+            const err = e as { response?: { data?: { error?: string } } };
+            appAlert('Gift Failed', err.response?.data?.error || 'Failed to send gift');
         } finally {
             setSending(null);
         }

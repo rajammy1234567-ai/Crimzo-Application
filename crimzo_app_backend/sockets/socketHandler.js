@@ -29,6 +29,34 @@ function isValidStickerObjectId(id) {
   return mongoose.Types.ObjectId.isValid(str) && str.length === 24;
 }
 
+async function processStickerGift({ senderId, receiverId, stickerId, sessionId }) {
+  if (!senderId || !receiverId) {
+    throw new Error('Sender and receiver required');
+  }
+  if (!isValidStickerObjectId(stickerId)) {
+    throw new Error('Invalid sticker');
+  }
+
+  const sticker = await Sticker.findById(stickerId).select('name price icon_name icon_color bg_color');
+  if (!sticker) throw new Error('Sticker not found');
+
+  const transfer = await transferGift(senderId, receiverId, sticker.price);
+
+  await GiftHistory.create({
+    sender_id: senderId,
+    receiver_id: receiverId,
+    sticker_id: stickerId,
+    diamonds_spent: sticker.price,
+    beans_earned: transfer.beansEarned,
+    session_id: sessionId || null,
+  });
+
+  emitBalanceUpdate(senderId, { diamonds: transfer.senderDiamonds });
+  emitBalanceUpdate(receiverId, { beans: transfer.receiverBeans });
+
+  return { sticker, transfer };
+}
+
 /** PK gifts use numeric ids (1–4); only real Mongo sticker ids are valid here */
 async function resolveStickerId(stickerId, giftValue) {
   if (isValidStickerObjectId(stickerId)) {
@@ -469,6 +497,74 @@ module.exports = (io) => {
       }
     });
 
+    socket.on('private_talk_send_sticker', async (data) => {
+      const {
+        talkSessionId,
+        sessionId,
+        stickerId,
+        emoji,
+        stickerName,
+      } = data || {};
+      const userId = socket.authenticatedUserId || data?.userId;
+      const username = socket.authenticatedUsername || data?.username;
+      if (!talkSessionId || !userId || !stickerId) return;
+
+      try {
+        const talk = await verifyPrivateTalkAccess(talkSessionId, userId);
+        if (!talk) {
+          socket.emit('private_talk_error', {
+            code: 'ACCESS_DENIED',
+            message: 'You do not have access to this private chat.',
+          });
+          return;
+        }
+
+        const hostId = String(talk.host_id);
+        if (String(userId) === hostId) {
+          socket.emit('private_talk_error', { code: 'INVALID_GIFT', message: 'Host cannot send gifts in private chat' });
+          return;
+        }
+
+        const { sticker, transfer } = await processStickerGift({
+          senderId: userId,
+          receiverId: hostId,
+          stickerId,
+          sessionId: sessionId || talk.session_id,
+        });
+
+        const room = privateTalkRoom(talkSessionId);
+        io.to(room).emit('private_talk_message', {
+          id: `pstk_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+          type: 'sticker',
+          talkSessionId: String(talkSessionId),
+          userId: String(userId),
+          username: username || 'User',
+          stickerId,
+          emoji,
+          stickerName: stickerName || sticker.name || 'Gift',
+          icon_name: sticker.icon_name || 'gift',
+          icon_color: sticker.icon_color || '#FFF',
+          bg_color: sticker.bg_color || '#FF2D55',
+          gift_diamonds: sticker.price,
+          timestamp: Date.now(),
+        });
+
+        socket.emit('diamond_update', { diamonds: transfer.senderDiamonds });
+        socket.emit('live_gift_sent', {
+          senderDiamonds: transfer.senderDiamonds,
+          receiverBeans: transfer.receiverBeans,
+          beansEarned: transfer.beansEarned,
+        });
+      } catch (err) {
+        console.error('private_talk_send_sticker error:', err.message);
+        const msg = err.message || 'Could not send gift';
+        socket.emit('private_talk_error', {
+          code: 'SEND_FAILED',
+          message: msg.includes('Insufficient') || msg.includes('Not enough') ? 'Not enough diamonds' : msg,
+        });
+      }
+    });
+
     socket.on('live_chat_message', async (data) => {
       const { sessionId, username, message } = data || {};
       const userId = socket.authenticatedUserId || data?.userId;
@@ -508,52 +604,58 @@ module.exports = (io) => {
       const { sessionId, stickerId, emoji, stickerName } = data || {};
       const userId = socket.authenticatedUserId;
       const username = socket.authenticatedUsername;
-      if (!sessionId || !userId) return;
+      if (!sessionId || !userId || !stickerId) return;
 
       try {
-        const allowed = await userCanChatOnLive(sessionId, userId);
-        if (!allowed) {
-          socket.emit('live_chat_error', {
-            code: 'TALK_NOT_ACTIVE',
-            message: 'Only the host can interact in public chat. Send a private chat request to talk 1-on-1.',
-          });
+        const session = await LiveSession.findById(sessionId).select('user_id status');
+        if (!session || session.status !== 'active') {
+          socket.emit('live_gift_error', { message: 'Live session is not active' });
           return;
         }
-      } catch (err) {
-        console.error('[Live Sticker] permission check failed:', err);
-        socket.emit('live_chat_error', { code: 'PERMISSION_CHECK_FAILED', message: 'Could not verify chat permission' });
-        return;
-      }
 
-      console.log(`[Live Sticker] ${username} sent ${stickerName}`);
-
-      let icon_name = 'gift', icon_color = '#FFF', bg_color = '#FF2D55';
-      try {
-        if (isValidStickerObjectId(stickerId)) {
-          const sticker = await Sticker.findById(stickerId).select('icon_name icon_color bg_color');
-          if (sticker) {
-            icon_name = sticker.icon_name || 'gift';
-            icon_color = sticker.icon_color || '#FFF';
-            bg_color = sticker.bg_color || '#FF2D55';
-          }
+        const hostId = String(session.user_id);
+        if (String(userId) === hostId) {
+          socket.emit('live_gift_error', { message: 'Host cannot send gifts to themselves' });
+          return;
         }
-      } catch (e) {
-        console.error('Fetch sticker icon error:', e);
-      }
 
-      io.to(`live_${sessionId}`).emit('live_chat_message', {
-        id: `stk_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-        type: 'sticker',
-        userId,
-        username,
-        stickerId,
-        emoji,
-        stickerName,
-        icon_name,
-        icon_color,
-        bg_color,
-        timestamp: Date.now()
-      });
+        const { sticker, transfer } = await processStickerGift({
+          senderId: userId,
+          receiverId: hostId,
+          stickerId,
+          sessionId,
+        });
+
+        console.log(`[Live Sticker] ${username} sent ${stickerName || sticker.name} (${sticker.price} diamonds)`);
+
+        io.to(`live_${sessionId}`).emit('live_chat_message', {
+          id: `stk_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+          type: 'sticker',
+          userId,
+          username,
+          stickerId,
+          emoji,
+          stickerName: stickerName || sticker.name,
+          icon_name: sticker.icon_name || 'gift',
+          icon_color: sticker.icon_color || '#FFF',
+          bg_color: sticker.bg_color || '#FF2D55',
+          gift_diamonds: sticker.price,
+          timestamp: Date.now(),
+        });
+
+        socket.emit('diamond_update', { diamonds: transfer.senderDiamonds });
+        socket.emit('live_gift_sent', {
+          senderDiamonds: transfer.senderDiamonds,
+          receiverBeans: transfer.receiverBeans,
+          beansEarned: transfer.beansEarned,
+        });
+      } catch (err) {
+        console.error('[Live Sticker] gift error:', err.message);
+        const msg = err.message || 'Gift failed';
+        socket.emit('live_gift_error', {
+          message: msg.includes('Insufficient') || msg.includes('Not enough') ? 'Not enough diamonds' : msg,
+        });
+      }
     });
 
     // Legacy viewer events (backward compat)

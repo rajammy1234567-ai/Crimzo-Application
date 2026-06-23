@@ -29,8 +29,10 @@ import {
   ChannelProfileType,
   ClientRoleType,
   RtcSurfaceView,
+  isAgoraNativeLinked,
   type IRtcEngine,
 } from '../../components/agoraImports';
+import { toAgoraUid } from '../../lib/agoraUid';
 
 import { API_URL, apiGet, apiPost, ApiError } from '../../lib/apiClient';
 const { width: SW, height: SH } = Dimensions.get('window');
@@ -90,6 +92,8 @@ export default function WatchScreen() {
   const talkSessionIdRef = useRef<string | null>(null);
   const talkPromptShownRef = useRef(false);
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
+  const [agoraReady, setAgoraReady] = useState(false);
+  const remoteUidRef = useRef<number | null>(null);
   const [hostCameraOff, setHostCameraOff] = useState(false);
   const [canChat, setCanChat] = useState(false);
   const [talkRequestId, setTalkRequestId] = useState<string | null>(null);
@@ -402,15 +406,30 @@ export default function WatchScreen() {
         token?: string;
         channelName?: string;
         uid?: number;
+        hostUid?: number;
         hostFollowers?: number;
         hostId?: string;
       }>(`/api/live/join/${sessionId}`, {}, token);
+      const hostId = r.hostId != null ? String(r.hostId) : r.hostId;
+      const hostAgoraUid = typeof r.hostUid === 'number'
+        ? r.hostUid
+        : toAgoraUid(hostId);
       setStreamData({
         ...r,
-        hostId: r.hostId != null ? String(r.hostId) : r.hostId,
+        hostId,
+        hostUid: hostAgoraUid,
       });
       setViewerCount(1);
       setHostFollowers(r.hostFollowers || 0);
+
+      if (!isAgoraNativeLinked) {
+        console.warn('[Watch] Agora native module not linked — video requires production/dev build');
+        return;
+      }
+
+      if (!r.appId || !r.token || !r.channelName) {
+        throw new Error('Stream connection details missing');
+      }
 
       // Initialize Agora for viewer
       try {
@@ -422,28 +441,64 @@ export default function WatchScreen() {
           appId: r.appId,
           channelProfile: ChannelProfileType.ChannelProfileLiveBroadcasting,
         });
+
+        const bindHostUid = (uid: number) => {
+          if (!uid || uid === remoteUidRef.current) return;
+          remoteUidRef.current = uid;
+          setRemoteUid(uid);
+          setHostCameraOff(false);
+        };
+
         engine.registerEventHandler({
-          onJoinChannelSuccess: () => { console.log('Viewer joined Agora channel'); },
-          onUserJoined: (_conn: any, uid: number) => { setRemoteUid(uid); setHostCameraOff(false); },
-          onUserOffline: (_conn: any, uid: number) => { if (uid === remoteUid) setRemoteUid(null); },
-          onUserMuteVideo: (_conn: any, uid: number, muted: boolean) => { setHostCameraOff(muted); },
-          onError: (err: any, msg: any) => { console.error('Agora viewer error:', err, msg); },
+          onJoinChannelSuccess: () => {
+            console.log('[Watch] Viewer joined Agora channel, subscribing to host uid', hostAgoraUid);
+            setAgoraReady(true);
+            bindHostUid(hostAgoraUid);
+            try {
+              const eng = engine as IRtcEngine & {
+                muteRemoteVideoStream?: (uid: number, mute: boolean) => void;
+                muteRemoteAudioStream?: (uid: number, mute: boolean) => void;
+              };
+              eng.muteRemoteVideoStream?.(hostAgoraUid, false);
+              eng.muteRemoteAudioStream?.(hostAgoraUid, false);
+            } catch { /* optional SDK APIs */ }
+          },
+          onUserJoined: (_conn: unknown, uid: number) => {
+            if (uid === hostAgoraUid) bindHostUid(uid);
+          },
+          onUserOffline: (_conn: unknown, uid: number) => {
+            if (uid === remoteUidRef.current) {
+              remoteUidRef.current = null;
+              setRemoteUid(null);
+            }
+          },
+          onRemoteVideoStateChanged: (_conn: unknown, uid: number, state: number) => {
+            if (uid === hostAgoraUid && state === 2) {
+              bindHostUid(uid);
+            }
+          },
+          onUserMuteVideo: (_conn: unknown, uid: number, muted: boolean) => {
+            if (uid === hostAgoraUid || uid === remoteUidRef.current) {
+              setHostCameraOff(muted);
+            }
+          },
+          onError: (err: unknown, msg: unknown) => {
+            console.error('[Watch] Agora viewer error:', err, msg);
+          },
         });
         engine.setClientRole(ClientRoleType.ClientRoleAudience);
         engine.enableVideo();
         engine.enableAudio();
 
-        // Use numeric uid returned from backend (or derive)
-        const viewerUid = r.uid;
-        const numericUid = typeof viewerUid === 'number' ? viewerUid : (parseInt(String(user?.id || 0).replace(/\D/g, '').slice(-9)) || 12345);
-        engine.joinChannel(r.token!, r.channelName!, numericUid, {
+        const viewerUid = typeof r.uid === 'number' ? r.uid : toAgoraUid(user?.id);
+        engine.joinChannel(r.token, r.channelName, viewerUid, {
           clientRoleType: ClientRoleType.ClientRoleAudience,
           autoSubscribeAudio: true,
           autoSubscribeVideo: true,
         });
         engineRef.current = engine;
       } catch (agoraErr) {
-        console.error('Agora init error for viewer:', agoraErr);
+        console.error('[Watch] Agora init error:', agoraErr);
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Failed to join stream';
@@ -484,15 +539,6 @@ export default function WatchScreen() {
     } catch { }
     setFollowLoading(false);
   }, [streamData?.hostId, followLoading, token]);
-
-  const handleSendSticker = (sticker: any) => {
-    if (!sessionId || !socketRef.current) return;
-    socketRef.current.emit('live_send_sticker', {
-      sessionId, userId: user?.id, username: user?.username,
-      stickerId: sticker.id != null ? String(sticker.id) : undefined, emoji: sticker.emoji, stickerName: sticker.name,
-      icon_name: sticker.icon_name, icon_color: sticker.icon_color, bg_color: sticker.bg_color,
-    });
-  };
 
   // ── Loading state ──
   if (loading) {
@@ -535,6 +581,8 @@ export default function WatchScreen() {
   const hostInitial = (streamData?.hostUsername || 'H').charAt(0).toUpperCase();
   const hostAvatar = streamData?.hostAvatar || streamData?.host_avatar;
   const isViewer = streamData?.hostId !== user?.id;
+  const hostAgoraUid = streamData?.hostUid ?? toAgoraUid(streamData?.hostId);
+  const showHostVideo = isAgoraNativeLinked && agoraReady && !!hostAgoraUid;
 
   const handleVoiceCall = () => {
     if (!streamData?.hostId) return;
@@ -566,11 +614,11 @@ export default function WatchScreen() {
 
       {/* ═══ STREAM VIDEO ═══ */}
       <View style={StyleSheet.absoluteFill}>
-        {remoteUid ? (
+        {showHostVideo ? (
           <>
             <RtcSurfaceView
               style={{ flex: 1 }}
-              canvas={{ uid: remoteUid }}
+              canvas={{ uid: remoteUid ?? hostAgoraUid }}
             />
             {/* Profile image overlay when host camera is OFF */}
             {hostCameraOff && (
@@ -594,9 +642,15 @@ export default function WatchScreen() {
             )}
           </>
         ) : (
-          <LinearGradient colors={['#1a0a1e', '#12121a', '#0a0a14']} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <LinearGradient colors={['#1a0a1e', '#12121a', '#0a0a14']} style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
             <ActivityIndicator size="large" color="#FF2D55" />
-            <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13, marginTop: 12 }}>Connecting to stream...</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13, marginTop: 12, textAlign: 'center' }}>
+              {!isAgoraNativeLinked
+                ? 'Live video requires the Crimzo app (not Expo Go). Install the production APK.'
+                : agoraReady
+                  ? 'Waiting for host video...'
+                  : 'Connecting to stream...'}
+            </Text>
           </LinearGradient>
         )}
       </View>
@@ -749,6 +803,7 @@ export default function WatchScreen() {
           peerUsername={streamData.hostUsername || 'Host'}
           isHost={false}
           sharedSocket={viewerSocket}
+          onGiftPress={() => setShowStickers(true)}
           onClose={() => setPrivateChatOpen(false)}
           onEnd={() => {
             setCanChat(false);
@@ -792,10 +847,10 @@ export default function WatchScreen() {
         <StickerPanel
           visible={showStickers}
           onClose={() => setShowStickers(false)}
-          onSendSticker={handleSendSticker}
           token={token}
           receiverId={streamData?.hostId}
           sessionId={sessionId as string}
+          talkSessionId={canChat && activeTalkSessionId ? activeTalkSessionId : undefined}
         />
       )}
     </View>

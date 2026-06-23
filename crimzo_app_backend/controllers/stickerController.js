@@ -4,7 +4,8 @@ const User = require('../models/User');
 const UserSticker = require('../models/UserSticker');
 const GiftHistory = require('../models/GiftHistory');
 const { transferGift } = require('../utils/diamondTransfer');
-const { emitBalanceUpdate } = require('../utils/socketEmitter');
+const { emitBalanceUpdate, getIo } = require('../utils/socketEmitter');
+const { privateTalkRoom, verifyPrivateTalkAccess } = require('./liveTalkController');
 
 function stickerPublicId(doc) {
   if (!doc) return null;
@@ -158,14 +159,58 @@ exports.getCollected = async (req, res) => {
   }
 };
 
+async function broadcastStickerGift({
+  senderId,
+  senderUsername,
+  sticker,
+  stickerId,
+  sessionId,
+  talkSessionId,
+}) {
+  const io = getIo();
+  if (!io) return;
+
+  const base = {
+    id: `stk_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+    type: 'sticker',
+    userId: String(senderId),
+    username: senderUsername || 'User',
+    stickerId: String(stickerId),
+    emoji: sticker.emoji,
+    stickerName: sticker.name,
+    icon_name: sticker.icon_name || 'gift',
+    icon_color: sticker.icon_color || '#FFF',
+    bg_color: sticker.bg_color || '#FF2D55',
+    gift_diamonds: sticker.price,
+    timestamp: Date.now(),
+  };
+
+  if (talkSessionId) {
+    const talk = await verifyPrivateTalkAccess(talkSessionId, senderId);
+    if (!talk) return;
+    io.to(privateTalkRoom(talkSessionId)).emit('private_talk_message', {
+      ...base,
+      talkSessionId: String(talkSessionId),
+    });
+    return;
+  }
+
+  if (sessionId) {
+    io.to(`live_${String(sessionId)}`).emit('live_chat_message', base);
+  }
+}
+
 exports.sendSticker = async (req, res) => {
   try {
     const senderId = req.user.id;
     const stickerId = req.body.stickerId || req.body.sticker_id;
-    const { receiverId, sessionId } = req.body;
+    const { receiverId, sessionId, talkSessionId } = req.body;
 
     if (!stickerId) {
       return res.status(400).json({ error: 'Sticker ID required' });
+    }
+    if (!receiverId) {
+      return res.status(400).json({ error: 'Receiver required to send gift' });
     }
 
     const sticker = await Sticker.findById(stickerId);
@@ -173,43 +218,36 @@ exports.sendSticker = async (req, res) => {
       return res.status(404).json({ error: 'Sticker not found' });
     }
 
-    let senderDiamonds;
-    let receiverBeans = 0;
-    let beansEarned = 0;
+    const transfer = await transferGift(senderId, receiverId, sticker.price);
+    const senderDiamonds = transfer.senderDiamonds;
+    const receiverBeans = transfer.receiverBeans;
+    const beansEarned = transfer.beansEarned;
+    emitBalanceUpdate(senderId, { diamonds: senderDiamonds });
+    emitBalanceUpdate(receiverId, { beans: receiverBeans });
 
-    if (receiverId) {
-      const transfer = await transferGift(senderId, receiverId, sticker.price);
-      senderDiamonds = transfer.senderDiamonds;
-      receiverBeans = transfer.receiverBeans;
-      beansEarned = transfer.beansEarned;
-      emitBalanceUpdate(senderId, { diamonds: senderDiamonds });
-      emitBalanceUpdate(receiverId, { beans: receiverBeans });
-    } else {
-      const user = await User.findOneAndUpdate(
-        { _id: senderId, diamonds: { $gte: sticker.price } },
-        { $inc: { diamonds: -sticker.price } },
-        { new: true },
-      ).select('diamonds');
-      if (!user) {
-        const current = await User.findById(senderId).select('diamonds');
-        return res.status(400).json({
-          error: 'Not enough diamonds',
-          required: sticker.price,
-          current: current?.diamonds || 0,
-        });
-      }
-      senderDiamonds = user.diamonds;
-      emitBalanceUpdate(senderId, { diamonds: senderDiamonds });
-    }
+    const sender = await User.findById(senderId).select('username').lean();
 
     await GiftHistory.create({
       sender_id: senderId,
-      receiver_id: receiverId || null,
+      receiver_id: receiverId,
       sticker_id: stickerId,
       diamonds_spent: sticker.price,
       beans_earned: beansEarned,
-      session_id: sessionId || null,
+      session_id: talkSessionId ? `talk_${talkSessionId}` : (sessionId || null),
     });
+
+    try {
+      await broadcastStickerGift({
+        senderId,
+        senderUsername: sender?.username,
+        sticker,
+        stickerId,
+        sessionId,
+        talkSessionId,
+      });
+    } catch (broadcastErr) {
+      console.error('Gift broadcast error (transfer ok):', broadcastErr.message);
+    }
 
     res.json({
       success: true,
