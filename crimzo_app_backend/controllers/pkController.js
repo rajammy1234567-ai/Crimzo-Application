@@ -4,8 +4,18 @@ const User = require('../models/User');
 const LiveSession = require('../models/LiveSession');
 const { toAgoraUid } = require('../utils/agoraUid');
 const { getIo } = require('../utils/socketEmitter');
+const { recordBattleStats, getRankingInfo } = require('../utils/pkRanking');
 
-const ALLOWED_DURATIONS = [180, 300, 600];
+const MIN_BATTLE_DURATION = 60;
+const MAX_BATTLE_DURATION = 3600;
+const DEFAULT_BATTLE_DURATION = 300;
+const PRESET_DURATIONS = [180, 300, 600];
+
+function normalizeBattleDuration(raw) {
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n)) return DEFAULT_BATTLE_DURATION;
+  return Math.min(MAX_BATTLE_DURATION, Math.max(MIN_BATTLE_DURATION, n));
+}
 
 function getRemainingSeconds(battle) {
   if (!battle) return 300;
@@ -72,8 +82,7 @@ exports.createBattle = async (req, res) => {
       { status: 'ended', ended_at: new Date() }
     );
 
-    const rawDuration = Number(req.body?.duration);
-    const duration = ALLOWED_DURATIONS.includes(rawDuration) ? rawDuration : 300;
+    const duration = normalizeBattleDuration(req.body?.duration);
 
     const battleId = uuidv4();
     const channelName = `pk_${battleId}`;
@@ -344,6 +353,12 @@ exports.endBattleInternal = async (battle) => {
   battle.ended_at = new Date();
   await battle.save();
 
+  try {
+    await recordBattleStats(battle);
+  } catch (statsErr) {
+    console.error('PK stats update error:', statsErr.message);
+  }
+
   const userIds = [battle.host1_id, battle.host2_id].filter(Boolean);
   if (userIds.length > 0) {
     await User.updateMany({ _id: { $in: userIds } }, { status: 'online' });
@@ -369,6 +384,17 @@ exports.endBattleInternal = async (battle) => {
   }
 
   return result;
+};
+
+exports.getLeaderboard = async (req, res) => {
+  try {
+    const month = typeof req.query?.month === 'string' ? req.query.month : undefined;
+    const info = await getRankingInfo(req.user?.id, month);
+    res.json({ success: true, ...info });
+  } catch (error) {
+    console.error('PK leaderboard error:', error);
+    res.status(500).json({ error: 'Failed to load PK leaderboard', details: error.message });
+  }
 };
 
 exports.endBattle = async (req, res) => {

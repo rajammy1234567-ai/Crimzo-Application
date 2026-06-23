@@ -45,6 +45,8 @@ async function initDatabase() {
     require('../models/User');
     require('../models/LiveSession');
     require('../models/PKBattle');
+    require('../models/PkMonthlyStats');
+    require('../models/PkMonthlyReward');
     require('../models/Reel');
     require('../models/ReelLike');
     require('../models/ReelComment');

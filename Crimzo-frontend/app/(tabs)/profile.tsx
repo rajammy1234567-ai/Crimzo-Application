@@ -15,6 +15,9 @@ import FollowListModal from '../../components/profile/FollowListModal';
 import { parseFollowResponse } from '../../lib/followHelpers';
 import { useTabFocus } from '../../lib/useTabFocus';
 import { subscribe } from '../../lib/realtimeSync';
+import { getDisplayBeans } from '../../lib/beanBalance';
+import { formatCount } from '../../lib/diamondPackages';
+import { BeanIcon, DiamondIcon } from '../../lib/currencyIcons';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const REEL_THUMB_W = (SW - 6) / 3;
@@ -62,7 +65,8 @@ export default function ProfileScreen() {
     longestStreak: number;
     checkedInToday: boolean;
     weekDots?: boolean[];
-    todayWeekday?: number;
+    weekLabels?: string[];
+    todaySlot?: number;
     atRisk?: boolean;
     milestoneDays?: number;
     milestoneDiamonds?: number;
@@ -92,6 +96,10 @@ export default function ProfileScreen() {
           crimzo_id?: string;
           diamonds?: number;
           beans?: number;
+          pendingTaskBeans?: number;
+          totalBeans?: number;
+          totalWithdrawableBeans?: number;
+          withdrawableInr?: number;
           wallet_balance?: number;
           followers_count?: number;
           following_count?: number;
@@ -113,6 +121,10 @@ export default function ProfileScreen() {
           crimzo_id: p.crimzo_id,
           diamonds: p.diamonds,
           beans: p.beans,
+          pendingTaskBeans: p.pendingTaskBeans,
+          totalBeans: p.totalBeans,
+          totalWithdrawableBeans: p.totalWithdrawableBeans,
+          withdrawableInr: p.withdrawableInr,
           wallet_balance: p.wallet_balance,
           followers_count: p.followers_count,
           following_count: p.following_count,
@@ -140,7 +152,8 @@ export default function ProfileScreen() {
           longestStreak: number;
           checkedInToday: boolean;
           weekDots?: boolean[];
-          todayWeekday?: number;
+          weekLabels?: string[];
+          todaySlot?: number;
           atRisk?: boolean;
         };
       }>('/api/tasks', token);
@@ -539,17 +552,20 @@ export default function ProfileScreen() {
                   </View>
                 ) : (
                   <View style={s.streakCtaPill}>
-                    <Text style={s.streakCtaText}>Start streak · +50 🪙</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <Text style={s.streakCtaText}>Start streak · +50</Text>
+                      <BeanIcon size={11} />
+                    </View>
                   </View>
                 )}
               </View>
             </LinearGradient>
             <View style={s.streakWeekRow}>
-              {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((label, i) => {
+              {(streak.weekLabels || ['M', 'T', 'W', 'T', 'F', 'S', 'S']).map((label, i) => {
                 const filled = !!streak.weekDots?.[i];
-                const isToday = streak.todayWeekday === i;
+                const isToday = (streak.todaySlot ?? 6) === i;
                 return (
-                  <View key={`${label}-${i}`} style={s.streakDayCol}>
+                  <View key={`streak-day-${i}`} style={s.streakDayCol}>
                     <View
                       style={[
                         s.streakDot,
@@ -580,7 +596,7 @@ export default function ProfileScreen() {
               <View style={s.streakMilestoneRow}>
                 <Ionicons name="diamond" size={12} color="#00BFFF" />
                 <Text style={s.streakMilestoneText}>
-                  {streak.milestoneDays} days → {streak.milestoneDiamonds.toLocaleString()} 💎
+                  {streak.milestoneDays} days → {streak.milestoneDiamonds.toLocaleString()}
                   {streak.currentStreak > 0
                     ? ` · ${streak.progressInBlock || 0}/${streak.milestoneDays}`
                     : ''}
@@ -603,21 +619,21 @@ export default function ProfileScreen() {
 
               <TouchableOpacity
                 style={s.engagementItem}
-                onPress={() => router.push('/profile/wallet' as any)}
+                onPress={() => router.push('/profile/wallet?tab=diamonds' as any)}
                 activeOpacity={0.7}
               >
-                <Text style={{ fontSize: 13 }}>💎</Text>
-                <Text style={s.engagementValue}>{formatNumber(user?.diamonds)}</Text>
+                <DiamondIcon size={14} />
+                <Text style={s.engagementValue}>{formatCount(user?.diamonds ?? 0)}</Text>
                 <Text style={s.engagementLabel}>Diamonds</Text>
               </TouchableOpacity>
               <View style={s.engagementDivider} />
               <TouchableOpacity
                 style={s.engagementItem}
-                onPress={() => router.push('/profile/wallet' as any)}
+                onPress={() => router.push('/profile/wallet?tab=beans' as any)}
                 activeOpacity={0.7}
               >
-                <Text style={{ fontSize: 13 }}>🟡</Text>
-                <Text style={s.engagementValue}>{formatNumber(user?.beans)}</Text>
+                <BeanIcon size={14} />
+                <Text style={s.engagementValue}>{formatCount(getDisplayBeans(user))}</Text>
                 <Text style={s.engagementLabel}>Beans</Text>
               </TouchableOpacity>
             </View>

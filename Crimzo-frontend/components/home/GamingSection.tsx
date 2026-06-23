@@ -125,9 +125,16 @@ const PKBattleCard: React.FC<{
                                 </View>
                             )}
                         </View>
-                        <Text style={[st.pkAvatarName, host1Won && st.pkWinnerName]} numberOfLines={1}>
-                            {battle.host1_username}
-                        </Text>
+                        <View style={st.pkNameRow}>
+                            <Text style={[st.pkAvatarName, host1Won && st.pkWinnerName]} numberOfLines={1}>
+                                {battle.host1_username}
+                            </Text>
+                            {host1Won && (
+                                <View style={st.pkWinnerNameTag}>
+                                    <Text style={st.pkWinnerNameTagText}>WINNER</Text>
+                                </View>
+                            )}
+                        </View>
                     </View>
 
                     <View style={st.pkVsWrap}>
@@ -156,9 +163,16 @@ const PKBattleCard: React.FC<{
                                 </View>
                             )}
                         </View>
-                        <Text style={[st.pkAvatarName, host2Won && st.pkWinnerName]} numberOfLines={1}>
-                            {battle.host2_username || 'Open Slot'}
-                        </Text>
+                        <View style={st.pkNameRow}>
+                            <Text style={[st.pkAvatarName, host2Won && st.pkWinnerName]} numberOfLines={1}>
+                                {battle.host2_username || 'Open Slot'}
+                            </Text>
+                            {host2Won && (
+                                <View style={st.pkWinnerNameTag}>
+                                    <Text style={st.pkWinnerNameTagText}>WINNER</Text>
+                                </View>
+                            )}
+                        </View>
                     </View>
                 </View>
 
@@ -401,8 +415,14 @@ const st = StyleSheet.create({
     pkAvatarFrame: { position: 'relative', alignItems: 'center' },
     pkAvatar: { width: 52, height: 52, borderRadius: 26, overflow: 'hidden' },
     pkAvatarText: { color: '#FFF', fontSize: 20, fontWeight: '900' },
+    pkNameRow: { flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: 100, flexWrap: 'wrap', justifyContent: 'center' },
     pkAvatarName: { color: '#CCC', fontSize: 12, fontWeight: '600', maxWidth: 80 },
     pkWinnerName: { color: '#FFD700' },
+    pkWinnerNameTag: {
+        backgroundColor: 'rgba(255,215,0,0.12)', paddingHorizontal: 5, paddingVertical: 1,
+        borderRadius: 6, borderWidth: 1, borderColor: 'rgba(255,215,0,0.35)',
+    },
+    pkWinnerNameTagText: { color: '#FFD700', fontSize: 8, fontWeight: '900', letterSpacing: 0.4 },
     pkWinnerTag: {
         position: 'absolute', bottom: -4, flexDirection: 'row', alignItems: 'center', gap: 2,
         backgroundColor: 'rgba(0,0,0,0.85)', paddingHorizontal: 6, paddingVertical: 2,

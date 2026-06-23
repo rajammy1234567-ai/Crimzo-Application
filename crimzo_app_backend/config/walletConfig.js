@@ -17,6 +17,11 @@ const CHAT_GIFT_PRESETS = [10, 50, 100, 500, 1000];
 const STREAK_MILESTONE_DAYS = 30;
 const STREAK_MILESTONE_DIAMONDS = 10000;
 
+/** PK monthly leaderboard — top player announced on this day (IST) */
+const PK_MONTHLY_REWARD_DAY = 3;
+const PK_MONTHLY_REWARD_DIAMONDS = 10000;
+const PK_LEADERBOARD_LIMIT = 50;
+
 /** 1-on-1 video call — caller pays from wallet (INR per minute) */
 const VIDEO_CALL_RATE_PER_MIN_INR = 1;
 
@@ -34,6 +39,9 @@ module.exports = {
   CHAT_GIFT_PRESETS,
   STREAK_MILESTONE_DAYS,
   STREAK_MILESTONE_DIAMONDS,
+  PK_MONTHLY_REWARD_DAY,
+  PK_MONTHLY_REWARD_DIAMONDS,
+  PK_LEADERBOARD_LIMIT,
   VIDEO_CALL_RATE_PER_MIN_INR,
   LIVE_TALK_RATE_PER_MIN_INR,
 };

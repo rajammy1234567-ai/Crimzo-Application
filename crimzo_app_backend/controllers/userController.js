@@ -174,6 +174,8 @@ exports.getFullProfile = async (req, res) => {
     const counts = await syncUserFollowCounts(userId);
     const billingSettings = await getBillingSettings();
     const userRates = buildRatesPayload(u, billingSettings);
+    const { getBeanBalanceSummary } = require('../utils/beanBalance');
+    const balance = await getBeanBalanceSummary(u);
     const canViewContent = canViewProfileContent(req.user.id, userId, {
       isPrivate: !!u.is_private,
       isFollowing: followState.isFollowing,
@@ -193,7 +195,12 @@ exports.getFullProfile = async (req, res) => {
         show_location: !!u.show_location,
         push_notifications_enabled: u.push_notifications_enabled !== false,
         is_private: !!u.is_private,
-        diamonds: u.diamonds, beans: u.beans,
+        diamonds: u.diamonds,
+        beans: balance.walletBeans,
+        pendingTaskBeans: balance.pendingTaskBeans,
+        totalBeans: balance.totalBeans,
+        totalWithdrawableBeans: balance.totalWithdrawableBeans,
+        withdrawableInr: balance.withdrawableInr,
         wallet_balance: u.wallet_balance || 0,
         followers_count: counts?.followers_count ?? u.followers_count,
         following_count: counts?.following_count ?? u.following_count,

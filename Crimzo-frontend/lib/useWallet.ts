@@ -3,6 +3,7 @@ import { appAlert } from './appAlert';
 import { Platform } from 'react-native';
 import { apiGet, apiPost, apiDelete, ApiError } from './apiClient';
 import { useAuth } from '../contexts/AuthContext';
+
 import type { PaymentMethodInfo } from '../components/payments/SetupPaymentModal';
 import type { WithdrawInfo } from '../components/payments/WithdrawModal';
 
@@ -90,11 +91,19 @@ export function useWallet() {
     wallet_balance?: number;
     diamonds?: number;
     beans?: number;
+    pendingTaskBeans?: number;
+    totalBeans?: number;
+    totalWithdrawableBeans?: number;
+    withdrawableInr?: number;
   }) => {
     updateUser({
       wallet_balance: data.wallet_balance,
       diamonds: data.diamonds,
       beans: data.beans,
+      pendingTaskBeans: data.pendingTaskBeans,
+      totalBeans: data.totalBeans,
+      totalWithdrawableBeans: data.totalWithdrawableBeans,
+      withdrawableInr: data.withdrawableInr,
     });
   }, [updateUser]);
 
@@ -458,13 +467,21 @@ export function useWallet() {
       const res = await apiGet<WithdrawInfo & { success?: boolean }>('/api/payments/withdraw/info', token);
       if (res.success) {
         setWithdrawInfo(res);
+        updateUser({
+          beans: res.beans,
+          pendingTaskBeans: res.pendingTaskBeans,
+          totalBeans: res.totalBeans,
+          totalWithdrawableBeans: res.totalWithdrawableBeans,
+          withdrawableInr: res.withdrawableInr,
+          diamonds: res.diamonds,
+        });
         return res;
       }
     } catch {
       // non-fatal
     }
     return null;
-  }, [token]);
+  }, [token, updateUser]);
 
   const withdrawMoney = useCallback(async (amountInr: number) => {
     if (!token) {

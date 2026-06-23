@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { appAlert } from '../../lib/appAlert';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Dimensions, Image, Animated, Easing, Modal } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   DIAMOND_PACKAGES,
@@ -11,8 +12,9 @@ import {
   formatCount as fmt,
   formatInr as price,
   beansToInr,
-  totalWithdrawableBeans,
 } from '../../lib/diamondPackages';
+import { getDisplayBeans, getWithdrawableInr } from '../../lib/beanBalance';
+import { DIAMOND_COLOR, BEAN_COLOR } from '../../lib/currencyIcons';
 import { useWallet } from '../../lib/useWallet';
 import RazorpayCheckout from '../../components/payments/RazorpayCheckout';
 import AddMoneyModal from '../../components/payments/AddMoneyModal';
@@ -57,6 +59,7 @@ function tierBg(t: string): [string, string] {
 export default function WalletScreen() {
   const { user, isGuest } = useAuth();
   const router = useRouter();
+  const params = useLocalSearchParams<{ tab?: string }>();
 
   useEffect(() => {
     if (isGuest) {
@@ -92,23 +95,31 @@ export default function WalletScreen() {
   const [showWithdraw, setShowWithdraw] = useState(false);
   const walletBalance = user?.wallet_balance ?? 0;
   const userDiamonds = user?.diamonds ?? 0;
-  const userBeans = user?.beans ?? 0;
-  const withdrawableBeans = totalWithdrawableBeans(userDiamonds, userBeans);
-  const withdrawableInr = beansToInr(withdrawableBeans);
+  const displayBeans = getDisplayBeans(user);
+  const withdrawableInr = withdrawInfo?.withdrawableInr ?? getWithdrawableInr(user);
   const handleWithdrawPress = async () => {
     await loadWithdrawInfo();
     setShowWithdraw(true);
   };
 
-  const [curTab, setCurTab] = useState<'diamonds' | 'beans'>('diamonds');
+  const initialTab = params.tab === 'beans' ? 'beans' : 'diamonds';
+  const [curTab, setCurTab] = useState<'diamonds' | 'beans'>(initialTab);
   const [subTab, setSubTab] = useState<'recommend' | 'helper'>('recommend');
   const [payMethod, setPayMethod] = useState('upi');
   const [showPayModal, setShowPayModal] = useState(false);
   const [selPkg, setSelPkg] = useState<number | null>(null);
 
   useEffect(() => {
-    loadWithdrawInfo();
-  }, []);
+    if (params.tab === 'beans' || params.tab === 'diamonds') {
+      setCurTab(params.tab);
+    }
+  }, [params.tab]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadWithdrawInfo();
+    }, [loadWithdrawInfo]),
+  );
 
   // animated tab indicator
   const tabAnim = useRef(new Animated.Value(0)).current;
@@ -213,12 +224,19 @@ export default function WalletScreen() {
 
         {/* balance */}
         <View style={s.bal}>
-          <Animated.View style={{ transform: [{ rotate: rot }, { scale: sc }] }}>
-            <Ionicons name="diamond" size={28} color="#FFD700" />
-          </Animated.View>
-          <Text style={s.balVal}>
-            {fmt(curTab === 'diamonds' ? (user?.diamonds ?? 0) : (user?.beans ?? 0))}
-          </Text>
+          <View style={s.balRow}>
+            <Animated.View style={{ transform: [{ rotate: rot }, { scale: sc }] }}>
+              <Ionicons
+                name={curTab === 'diamonds' ? 'diamond' : 'cafe'}
+                size={28}
+                color={curTab === 'diamonds' ? DIAMOND_COLOR : BEAN_COLOR}
+              />
+            </Animated.View>
+            <Text style={s.balVal}>
+              {fmt(curTab === 'diamonds' ? (user?.diamonds ?? 0) : displayBeans)}
+            </Text>
+          </View>
+          <Text style={s.balType}>{curTab === 'diamonds' ? 'Diamonds' : 'Beans'}</Text>
         </View>
 
         {/* currency toggle */}
@@ -233,7 +251,7 @@ export default function WalletScreen() {
               <Ionicons
                 name={t === 'diamonds' ? 'diamond' : 'cafe'}
                 size={15}
-                color={curTab === t ? (t === 'diamonds' ? '#FFD700' : '#FF9500') : 'rgba(255,255,255,0.45)'}
+                color={curTab === t ? (t === 'diamonds' ? DIAMOND_COLOR : BEAN_COLOR) : 'rgba(255,255,255,0.45)'}
               />
               <Text style={[s.curBtnTxt, curTab === t && s.curBtnTxtOn]}>
                 {t === 'diamonds' ? 'Diamonds' : 'Beans'}
@@ -328,7 +346,7 @@ export default function WalletScreen() {
                       <LinearGradient colors={bgC} style={s.cardIn}>
                         {/* icon */}
                         <View style={s.cardIcoW}>
-                          <Ionicons name={isDia ? 'diamond' : 'cafe'} size={30} color={isDia ? '#FFD700' : '#FF9500'} />
+                          <Ionicons name={isDia ? 'diamond' : 'cafe'} size={30} color={isDia ? DIAMOND_COLOR : BEAN_COLOR} />
                           {isDia && bonusPct > 0 && (
                             <View style={s.bonusBdg}>
                               <Text style={s.bonusBdgTxt}>+{bonusPct}%</Text>
@@ -362,8 +380,8 @@ export default function WalletScreen() {
                 {[
                   ['card', '#FF2D55', 'Diamonds/Beans — Pay via Razorpay (UPI, Card, Net Banking)'],
                   ['wallet', '#4CD964', 'Add Money — top up via Razorpay, then buy with wallet balance'],
-                  ['diamond', '#FFD700', 'Diamonds are used to send gifts to streamers'],
-                  ['cafe', '#FF9500', 'Beans convert to real money — payout credited on 7th of next month'],
+                  ['diamond', DIAMOND_COLOR, 'Diamonds are used to send gifts to streamers'],
+                  ['cafe', BEAN_COLOR, 'Beans convert to real money — payout credited on 7th of next month'],
                   ['shield-checkmark', '#4CD964', 'All payments secured by Razorpay'],
                 ].map(([ico, col, txt], i) => (
                   <View key={i} style={s.infoR}>
@@ -538,8 +556,10 @@ const s = StyleSheet.create({
   inrLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600' },
   inrVal: { color: '#FFF', fontSize: 16, fontWeight: '800', flex: 1 },
 
-  bal: { alignItems: 'center', marginBottom: 12, flexDirection: 'row', justifyContent: 'center', gap: 10 },
+  bal: { alignItems: 'center', marginBottom: 12, justifyContent: 'center', gap: 4 },
+  balRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   balVal: { color: '#FFF', fontSize: 38, fontWeight: '900', letterSpacing: -1, textShadowColor: 'rgba(0,0,0,0.2)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 },
+  balType: { color: 'rgba(255,255,255,0.75)', fontSize: 13, fontWeight: '700', letterSpacing: 0.5 },
 
   curTog: { flexDirection: 'row', marginHorizontal: 24, backgroundColor: 'rgba(0,0,0,0.15)', borderRadius: 14, padding: 3 },
   curBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 11 },

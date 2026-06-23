@@ -14,6 +14,7 @@ import {
   Platform,
   Image,
   Modal,
+  TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
@@ -155,9 +156,16 @@ const BattleCard = ({
                 </View>
               )}
             </View>
-            <Text style={[lobbyStyles.hostName, host1Won && { color: '#FFD700' }]} numberOfLines={1}>
-              {battle.host1_username || 'Host 1'}
-            </Text>
+            <View style={lobbyStyles.hostNameRow}>
+              <Text style={[lobbyStyles.hostName, host1Won && { color: '#FFD700' }]} numberOfLines={1}>
+                {battle.host1_username || 'Host 1'}
+              </Text>
+              {host1Won && (
+                <View style={lobbyStyles.winnerNameTag}>
+                  <Text style={lobbyStyles.winnerNameTagText}>WINNER</Text>
+                </View>
+              )}
+            </View>
             <View style={lobbyStyles.hostScorePill}>
               <Ionicons name="flame" size={10} color="#FF2D55" />
               <Text style={lobbyStyles.hostScoreText}>{battle.host1_score || 0}</Text>
@@ -188,9 +196,16 @@ const BattleCard = ({
                     </View>
                   )}
                 </View>
-                <Text style={[lobbyStyles.hostName, host2Won && { color: '#FFD700' }]} numberOfLines={1}>
-                  {battle.host2_username || 'Host 2'}
-                </Text>
+                <View style={lobbyStyles.hostNameRow}>
+                  <Text style={[lobbyStyles.hostName, host2Won && { color: '#FFD700' }]} numberOfLines={1}>
+                    {battle.host2_username || 'Host 2'}
+                  </Text>
+                  {host2Won && (
+                    <View style={lobbyStyles.winnerNameTag}>
+                      <Text style={lobbyStyles.winnerNameTagText}>WINNER</Text>
+                    </View>
+                  )}
+                </View>
                 <View style={[lobbyStyles.hostScorePill, { borderColor: 'rgba(48,209,88,0.3)' }]}>
                   <Ionicons name="flame" size={10} color="#30D158" />
                   <Text style={lobbyStyles.hostScoreText}>{battle.host2_score || 0}</Text>
@@ -268,6 +283,23 @@ export default function PKLobbyScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [durationModalVisible, setDurationModalVisible] = useState(false);
+  const [customMinutes, setCustomMinutes] = useState('5');
+  const [ranking, setRanking] = useState<{
+    monthLabel?: string;
+    rewardDiamonds?: number;
+    nextAnnouncementLabel?: string;
+    rankingNote?: string;
+    lastWinner?: { username?: string; monthLabel?: string; wins?: number; total_score?: number; diamonds?: number } | null;
+    myRank?: { rank: number | null; wins: number; total_score: number };
+    leaderboard?: Array<{
+      rank: number;
+      user_id: string;
+      username: string;
+      avatar?: string | null;
+      wins: number;
+      total_score: number;
+    }>;
+  } | null>(null);
 
   // Entrance animations
   const headerFade = useRef(new Animated.Value(0)).current;
@@ -275,11 +307,22 @@ export default function PKLobbyScreen() {
   const btnFade = useRef(new Animated.Value(0)).current;
   const btnScale = useRef(new Animated.Value(0.9)).current;
 
+  const fetchRanking = async () => {
+    try {
+      const data = await apiGet<typeof ranking & { success?: boolean }>('/api/pk/leaderboard', token);
+      setRanking(data);
+    } catch (error) {
+      console.error('Fetch PK ranking error:', error);
+    }
+  };
+
   useEffect(() => {
     fetchBattles();
+    fetchRanking();
     if (token && API_URL) {
       const sock = io(API_URL, { transports: ['websocket'], auth: { token } });
       sock.on('pk_battles_updated', () => { void fetchBattles(); });
+      sock.on('pk_monthly_winner', () => { void fetchRanking(); });
       return () => { sock.disconnect(); };
     }
   }, [token]);
@@ -315,6 +358,7 @@ export default function PKLobbyScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     fetchBattles();
+    fetchRanking();
   };
 
   const handleCreateBattle = () => {
@@ -324,6 +368,12 @@ export default function PKLobbyScreen() {
   const startBattleWithDuration = (duration: number) => {
     setDurationModalVisible(false);
     router.push(`/pk/battle?mode=create&duration=${duration}` as any);
+  };
+
+  const startCustomBattle = () => {
+    const mins = Math.floor(Number(customMinutes));
+    if (!Number.isFinite(mins) || mins < 1 || mins > 60) return;
+    startBattleWithDuration(mins * 60);
   };
 
   const handleJoinBattle = (battleId: string) => {
@@ -381,6 +431,72 @@ export default function PKLobbyScreen() {
           </LinearGradient>
         </TouchableOpacity>
       </Animated.View>
+
+      {/* ── Monthly Ranking ── */}
+      <View style={lobbyStyles.rankCard}>
+        <View style={lobbyStyles.rankHeader}>
+          <View style={lobbyStyles.rankHeaderLeft}>
+            <Ionicons name="trophy" size={18} color="#FFD700" />
+            <Text style={lobbyStyles.rankTitle}>PK Ranking — {ranking?.monthLabel || 'This Month'}</Text>
+          </View>
+          {ranking?.myRank?.rank ? (
+            <View style={lobbyStyles.myRankPill}>
+              <Text style={lobbyStyles.myRankText}>#{ranking.myRank.rank}</Text>
+            </View>
+          ) : null}
+        </View>
+        <Text style={lobbyStyles.rankSub}>
+          Top player announced on 3rd of every month · {(ranking?.rewardDiamonds || 10000).toLocaleString('en-IN')} diamonds reward
+        </Text>
+        {ranking?.nextAnnouncementLabel ? (
+          <Text style={lobbyStyles.rankMeta}>Next announcement: {ranking.nextAnnouncementLabel}</Text>
+        ) : null}
+        {ranking?.lastWinner?.username ? (
+          <View style={lobbyStyles.lastWinnerRow}>
+            <Ionicons name="ribbon" size={14} color="#FFD700" />
+            <Text style={lobbyStyles.lastWinnerText}>
+              Last winner: {ranking.lastWinner.username} ({ranking.lastWinner.monthLabel})
+            </Text>
+          </View>
+        ) : null}
+        {(ranking?.leaderboard?.length || 0) > 0 ? (
+          <View style={lobbyStyles.rankList}>
+            {ranking!.leaderboard!.slice(0, 5).map((entry) => {
+              const isMe = sameUserId(entry.user_id, user?.id);
+              const medal = entry.rank === 1 ? '#FFD700' : entry.rank === 2 ? '#C0C0C0' : entry.rank === 3 ? '#CD7F32' : '#666';
+              return (
+                <View key={entry.user_id} style={[lobbyStyles.rankRow, isMe && lobbyStyles.rankRowMe]}>
+                  <Text style={[lobbyStyles.rankNum, { color: medal }]}>#{entry.rank}</Text>
+                  {entry.avatar ? (
+                    <Image source={{ uri: resolveMediaUrl(entry.avatar) }} style={lobbyStyles.rankAvatar} />
+                  ) : (
+                    <LinearGradient colors={['#FF2D55', '#FF6B8A']} style={lobbyStyles.rankAvatar}>
+                      <Text style={lobbyStyles.rankAvatarText}>{(entry.username || '?').charAt(0).toUpperCase()}</Text>
+                    </LinearGradient>
+                  )}
+                  <View style={lobbyStyles.rankInfo}>
+                    <Text style={lobbyStyles.rankName} numberOfLines={1}>{entry.username}</Text>
+                    <Text style={lobbyStyles.rankStats}>{entry.wins} wins · {entry.total_score} score</Text>
+                  </View>
+                  {entry.rank === 1 ? (
+                    <View style={lobbyStyles.rankTopBadge}>
+                      <Text style={lobbyStyles.rankTopBadgeText}>TOP</Text>
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          <Text style={lobbyStyles.rankEmpty}>Win PK battles to climb the leaderboard</Text>
+        )}
+        {ranking?.myRank && (ranking.myRank.wins > 0 || ranking.myRank.total_score > 0) ? (
+          <Text style={lobbyStyles.rankYou}>
+            You: {ranking.myRank.wins} wins · {ranking.myRank.total_score} score
+            {ranking.myRank.rank ? ` · Rank #${ranking.myRank.rank}` : ''}
+          </Text>
+        ) : null}
+      </View>
 
       {/* ── Section Header ── */}
       <View style={lobbyStyles.sectionHeader}>
@@ -463,6 +579,25 @@ export default function PKLobbyScreen() {
                 <Ionicons name="chevron-forward" size={18} color="#FF2D55" />
               </TouchableOpacity>
             ))}
+            <View style={lobbyStyles.customDurationBox}>
+              <Text style={lobbyStyles.customDurationLabel}>Custom duration (1–60 min)</Text>
+              <View style={lobbyStyles.customDurationRow}>
+                <TextInput
+                  style={lobbyStyles.customDurationInput}
+                  value={customMinutes}
+                  onChangeText={(t) => setCustomMinutes(t.replace(/[^0-9]/g, ''))}
+                  keyboardType="number-pad"
+                  placeholder="5"
+                  placeholderTextColor="#666"
+                  maxLength={2}
+                />
+                <Text style={lobbyStyles.customDurationUnit}>min</Text>
+                <TouchableOpacity style={lobbyStyles.customDurationBtn} onPress={startCustomBattle}>
+                  <Text style={lobbyStyles.customDurationBtnText}>Start</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={lobbyStyles.customDurationHint}>Timer starts when opponent joins · viewers vote with gifts</Text>
+            </View>
             <TouchableOpacity style={lobbyStyles.modalCancel} onPress={() => setDurationModalVisible(false)}>
               <Text style={lobbyStyles.modalCancelText}>Cancel</Text>
             </TouchableOpacity>
@@ -510,6 +645,42 @@ const lobbyStyles = StyleSheet.create({
   createTitle: { color: '#FFF', fontSize: 18, fontWeight: '800' },
   createSub: { color: 'rgba(255,255,255,0.7)', fontSize: 13, marginTop: 2 },
 
+  rankCard: {
+    marginHorizontal: 16, marginBottom: 14, padding: 14, borderRadius: 18,
+    backgroundColor: 'rgba(28,28,30,0.85)', borderWidth: 1, borderColor: 'rgba(255,215,0,0.15)',
+  },
+  rankHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  rankHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  rankTitle: { color: '#FFF', fontSize: 15, fontWeight: '800' },
+  myRankPill: {
+    backgroundColor: 'rgba(255,45,85,0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10,
+    borderWidth: 1, borderColor: 'rgba(255,45,85,0.35)',
+  },
+  myRankText: { color: '#FF6B8A', fontSize: 12, fontWeight: '800' },
+  rankSub: { color: '#AAA', fontSize: 12, lineHeight: 17 },
+  rankMeta: { color: '#888', fontSize: 11, marginTop: 6 },
+  lastWinnerRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  lastWinnerText: { color: '#FFD700', fontSize: 12, fontWeight: '600', flex: 1 },
+  rankList: { marginTop: 12, gap: 8 },
+  rankRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: 10,
+  },
+  rankRowMe: { borderWidth: 1, borderColor: 'rgba(255,45,85,0.35)' },
+  rankNum: { width: 28, fontSize: 13, fontWeight: '900', textAlign: 'center' },
+  rankAvatar: { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center' },
+  rankAvatarText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
+  rankInfo: { flex: 1 },
+  rankName: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  rankStats: { color: '#888', fontSize: 11, marginTop: 2 },
+  rankTopBadge: {
+    backgroundColor: 'rgba(255,215,0,0.15)', paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,215,0,0.35)',
+  },
+  rankTopBadgeText: { color: '#FFD700', fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
+  rankEmpty: { color: '#666', fontSize: 12, marginTop: 12, textAlign: 'center' },
+  rankYou: { color: '#CCC', fontSize: 11, marginTop: 10, textAlign: 'center', fontWeight: '600' },
+
   // Section
   sectionHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -538,7 +709,13 @@ const lobbyStyles = StyleSheet.create({
 
   hostsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   hostCol: { flex: 1, alignItems: 'center', gap: 6 },
+  hostNameRow: { flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: 110, flexWrap: 'wrap', justifyContent: 'center' },
   hostName: { color: '#FFF', fontSize: 13, fontWeight: '600', maxWidth: 90 },
+  winnerNameTag: {
+    backgroundColor: 'rgba(255,215,0,0.15)', paddingHorizontal: 5, paddingVertical: 1,
+    borderRadius: 6, borderWidth: 1, borderColor: 'rgba(255,215,0,0.4)',
+  },
+  winnerNameTagText: { color: '#FFD700', fontSize: 8, fontWeight: '900', letterSpacing: 0.4 },
   hostScorePill: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
     borderWidth: 1, borderColor: 'rgba(255,45,85,0.3)',
@@ -623,4 +800,20 @@ const lobbyStyles = StyleSheet.create({
   durationSub: { color: '#888', fontSize: 12, marginTop: 2 },
   modalCancel: { alignItems: 'center', marginTop: 8, paddingVertical: 12 },
   modalCancelText: { color: '#888', fontSize: 15, fontWeight: '600' },
+  customDurationBox: {
+    marginTop: 8, padding: 14, borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+  },
+  customDurationLabel: { color: '#CCC', fontSize: 13, fontWeight: '700', marginBottom: 10 },
+  customDurationRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  customDurationInput: {
+    width: 56, height: 44, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.08)',
+    color: '#FFF', fontSize: 18, fontWeight: '800', textAlign: 'center',
+  },
+  customDurationUnit: { color: '#888', fontSize: 14, fontWeight: '600' },
+  customDurationBtn: {
+    marginLeft: 'auto', backgroundColor: '#FF2D55', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12,
+  },
+  customDurationBtnText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
+  customDurationHint: { color: '#666', fontSize: 11, marginTop: 10, lineHeight: 16 },
 });

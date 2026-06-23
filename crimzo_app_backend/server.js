@@ -205,6 +205,22 @@ async function connectWithRetry(attemptsLeft = 8, delayMs = 4000) {
       console.error("Story cleanup setup error:", err.message);
     }
 
+    // PK monthly top-player reward — announced on 3rd of every month (IST)
+    try {
+      const { processMonthlyPkRewardIfDue, backfillPkBattleStats } = require("./utils/pkRanking");
+      await backfillPkBattleStats();
+      await processMonthlyPkRewardIfDue();
+      setInterval(async () => {
+        try {
+          await processMonthlyPkRewardIfDue();
+        } catch (err) {
+          console.error("PK monthly reward error:", err.message);
+        }
+      }, 60 * 60 * 1000);
+    } catch (err) {
+      console.error("PK monthly reward setup error:", err.message);
+    }
+
     // Reset stale online flags from old sessions (presence is socket-based now)
     try {
       const User = require("./models/User");

@@ -3,6 +3,7 @@ import { appAlert } from '../lib/appAlert';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { API_URL, apiFetch, apiGet, apiPost, ApiError } from '../lib/apiClient';
+import { mergeBeanBalance } from '../lib/beanBalance';
 import { getApiUrlCandidates, setActiveApiUrl } from '../lib/apiConfig';
 if (typeof window !== 'undefined' || (typeof navigator !== 'undefined' && navigator.product === 'ReactNative')) {
   console.log('%c🔗 Crimzo using backend:', 'color:#0f0', API_URL);
@@ -45,6 +46,10 @@ interface User {
   country: string;
   diamonds: number;
   beans: number;
+  pendingTaskBeans?: number;
+  totalBeans?: number;
+  totalWithdrawableBeans?: number;
+  withdrawableInr?: number;
   wallet_balance?: number;
   followers_count: number;
   following_count: number;
@@ -339,7 +344,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateUser = (userData: Partial<User>) => {
     setUser((prev) => {
       if (!prev) return prev;
-      const updated = { ...prev, ...userData };
+      const updated = { ...prev, ...userData, ...mergeBeanBalance({ ...prev, ...userData }, userData) };
       AsyncStorage.setItem('cached_user', JSON.stringify(updated)).catch(() => { });
       return updated;
     });

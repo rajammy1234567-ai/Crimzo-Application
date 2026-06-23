@@ -9,6 +9,7 @@ import { loadAppSettings, onAppSettingsChange, type AppSettings } from '../lib/a
 import { attachAppTimeTracker } from '../lib/appTimeTracker';
 import { playGiftPop } from '../lib/uiSounds';
 
+
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const { user, token, updateUser, logout } = useAuth();
   const socketRef = useRef<Socket | null>(null);
@@ -127,6 +128,32 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       if (String(data?.receiverId) !== String(user.id)) return;
       playGiftPop();
       publish('gift_received', data);
+    });
+
+    socket.on('pk_monthly_winner', (data: {
+      winnerId?: string;
+      username?: string;
+      monthLabel?: string;
+      wins?: number;
+      totalScore?: number;
+      diamonds?: number;
+    }) => {
+      publish('pk_monthly_winner', data);
+      if (!appSettingsRef.current.notificationsEnabled) return;
+      const isWinner = data?.winnerId && String(data.winnerId) === String(user.id);
+      if (isWinner) {
+        appAlert(
+          'PK Champion!',
+          `You topped the ${data.monthLabel || 'monthly'} PK ranking with ${data.wins ?? 0} wins. `
+            + `${(data.diamonds ?? 10000).toLocaleString('en-IN')} diamonds have been credited!`,
+        );
+        return;
+      }
+      appAlert(
+        'PK Monthly Winner',
+        `${data.username || 'A player'} won ${data.monthLabel || 'last month'}'s PK crown `
+          + `(${data.wins ?? 0} wins, ${data.totalScore ?? 0} score)`,
+      );
     });
 
     socketRef.current = socket;

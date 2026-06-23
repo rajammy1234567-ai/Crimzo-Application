@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { apiGet } from '../../lib/apiClient';
+import { BEAN_COLOR } from '../../lib/currencyIcons';
 
 const { width } = Dimensions.get('window');
 const CARD_SIZE = (width - 60) / 3;
@@ -95,9 +96,9 @@ export default function CollectedStickersScreen() {
                         <Text style={styles.statLabel}>Total Gifts</Text>
                     </LinearGradient>
                     <LinearGradient colors={['rgba(255,215,0,0.15)', 'rgba(255,215,0,0.05)']} style={styles.statCard}>
-                        <Ionicons name="cafe" size={20} color="#FFD700" />
+                        <Ionicons name="cafe" size={20} color={BEAN_COLOR} />
                         <Text style={styles.statValue}>{totalBeans}</Text>
-                        <Text style={styles.statLabel}>Beans Earned</Text>
+                        <Text style={styles.statLabel}>Total Beans</Text>
                     </LinearGradient>
                     <LinearGradient colors={['rgba(48,209,88,0.15)', 'rgba(48,209,88,0.05)']} style={styles.statCard}>
                         <Ionicons name="sparkles" size={20} color="#30D158" />

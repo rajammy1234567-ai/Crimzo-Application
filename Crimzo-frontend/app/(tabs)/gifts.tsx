@@ -189,7 +189,7 @@ export default function GiftsScreen() {
                   style={s.cardInner}
                 >
                   <View style={s.cardBody}>
-                    <Ionicons name="diamond" size={32} color={isSelected ? '#FF2D55' : '#FFD700'} style={s.cardDiamondShape} />
+                    <Ionicons name="diamond" size={32} color={isSelected ? '#FF2D55' : '#00BFFF'} style={s.cardDiamondShape} />
                     {bonusPct > 0 && (
                       <View style={s.bonusBadge}>
                         <Text style={s.bonusTxt}>+{bonusPct}%</Text>

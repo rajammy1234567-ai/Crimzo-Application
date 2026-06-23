@@ -14,6 +14,7 @@ const pkBattleSchema = new mongoose.Schema({
   started_at: { type: Date },
   created_at: { type: Date, default: Date.now },
   ended_at: { type: Date },
+  stats_applied: { type: Boolean, default: false },
 }, { timestamps: false });
 
 pkBattleSchema.virtual('id').get(function() { return this._id.toString(); });

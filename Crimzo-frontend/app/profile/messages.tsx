@@ -380,7 +380,7 @@ export default function MessagesScreen() {
             <Ionicons name="videocam" size={22} color="#4CD964" />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setShowGift(true)} style={styles.giftHeaderBtn}>
-            <Ionicons name="diamond" size={22} color="#FFD700" />
+            <Ionicons name="diamond" size={22} color="#00BFFF" />
           </TouchableOpacity>
         </View>
 
@@ -426,8 +426,8 @@ export default function MessagesScreen() {
                     ]}>
                       {item.message_type === 'gift' && (
                         <View style={styles.giftTag}>
-                          <Ionicons name="diamond" size={14} color="#FFD700" />
-                          <Text style={styles.giftTagText}>{item.gift_diamonds?.toLocaleString()} 💎</Text>
+                          <Ionicons name="diamond" size={14} color="#00BFFF" />
+                          <Text style={styles.giftTagText}>{item.gift_diamonds?.toLocaleString()}</Text>
                         </View>
                       )}
                       <Text style={[styles.msgText, isMe && { color: '#FFF' }]}>{item.content}</Text>
@@ -471,7 +471,7 @@ export default function MessagesScreen() {
               <Text style={styles.giftTitle}>Send Diamonds 🎁</Text>
               <Text style={styles.giftSub}>
                 Diamonds will be transferred to {selectedChat.username}{'\n'}
-                Your balance: {(user?.diamonds ?? 0).toLocaleString()} 💎
+                Your balance: {(user?.diamonds ?? 0).toLocaleString()} diamonds
               </Text>
               <View style={styles.giftGrid}>
                 {GIFT_PRESETS.map((amt) => (
@@ -481,7 +481,7 @@ export default function MessagesScreen() {
                     onPress={() => sendGift(amt)}
                     disabled={gifting || (user?.diamonds ?? 0) < amt}
                   >
-                    <Ionicons name="diamond" size={16} color="#FFD700" />
+                    <Ionicons name="diamond" size={16} color="#00BFFF" />
                     <Text style={styles.giftBtnText}>{amt}</Text>
                   </TouchableOpacity>
                 ))}
@@ -971,7 +971,7 @@ const styles = StyleSheet.create({
   },
   giftBubble: { borderWidth: 1, borderColor: 'rgba(255,215,0,0.35)' },
   giftTag: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6 },
-  giftTagText: { color: '#FFD700', fontSize: 13, fontWeight: '800' },
+  giftTagText: { color: '#00BFFF', fontSize: 13, fontWeight: '800' },
   giftOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.7)' },
   giftSheet: {
     backgroundColor: '#1C1C1E', borderTopLeftRadius: 24, borderTopRightRadius: 24,
@@ -985,5 +985,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18, paddingVertical: 12, borderRadius: 14,
     backgroundColor: 'rgba(255,215,0,0.12)', borderWidth: 1, borderColor: 'rgba(255,215,0,0.3)',
   },
-  giftBtnText: { color: '#FFD700', fontSize: 16, fontWeight: '800' },
+  giftBtnText: { color: '#00BFFF', fontSize: 16, fontWeight: '800' },
 });

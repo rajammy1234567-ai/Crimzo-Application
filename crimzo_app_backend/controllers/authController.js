@@ -668,10 +668,18 @@ exports.getMe = async (req, res) => {
       await user.save();
     }
 
+    const { getBeanBalanceSummary } = require('../utils/beanBalance');
+    const balance = await getBeanBalanceSummary(user);
+
     res.json({
       id: user.id, crimzo_id: user.crimzo_id, email: user.email, username: user.username,
       avatar: user.avatar, bio: user.bio, country: user.country,
-      diamonds: user.diamonds, beans: user.beans,
+      diamonds: user.diamonds,
+      beans: balance.walletBeans,
+      pendingTaskBeans: balance.pendingTaskBeans,
+      totalBeans: balance.totalBeans,
+      totalWithdrawableBeans: balance.totalWithdrawableBeans,
+      withdrawableInr: balance.withdrawableInr,
       wallet_balance: user.wallet_balance || 0,
       followers_count: user.followers_count,
       following_count: user.following_count,

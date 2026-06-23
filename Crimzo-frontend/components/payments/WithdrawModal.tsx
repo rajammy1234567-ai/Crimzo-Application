@@ -13,12 +13,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { PaymentMethodInfo } from './SetupPaymentModal';
 import { BEAN_PACKAGES, formatCount, formatInr } from '../../lib/diamondPackages';
+import { DIAMOND_COLOR } from '../../lib/currencyIcons';
 
 export type WithdrawInfo = {
   diamonds?: number;
   beans?: number;
+  pendingTaskBeans?: number;
   diamondsAsBeans?: number;
   totalBeans?: number;
+  totalWithdrawableBeans?: number;
   withdrawableInr?: number;
   beansPerInr?: number;
   minWithdraw?: number;
@@ -55,8 +58,10 @@ export default function WithdrawModal({
 
   const diamonds = withdrawInfo?.diamonds ?? 0;
   const beans = withdrawInfo?.beans ?? 0;
+  const pendingTaskBeans = withdrawInfo?.pendingTaskBeans ?? 0;
   const diamondsAsBeans = withdrawInfo?.diamondsAsBeans ?? diamonds;
-  const totalBeans = withdrawInfo?.totalBeans ?? beans + diamondsAsBeans;
+  const earnedBeans = withdrawInfo?.totalBeans ?? beans + pendingTaskBeans;
+  const totalWithdrawable = withdrawInfo?.totalWithdrawableBeans ?? earnedBeans + diamondsAsBeans;
   const balance = withdrawInfo?.withdrawableInr ?? 0;
 
   const parsed = Number(amount) || 0;
@@ -94,7 +99,7 @@ export default function WithdrawModal({
 
           {diamonds > 0 && (
             <View style={s.convertRow}>
-              <Ionicons name="swap-horizontal" size={18} color="#FFD700" />
+              <Ionicons name="swap-horizontal" size={18} color={DIAMOND_COLOR} />
               <Text style={s.convertTxt}>
                 {formatCount(diamonds)} diamonds → {formatCount(diamondsAsBeans)} beans
               </Text>
@@ -104,7 +109,7 @@ export default function WithdrawModal({
           <View style={s.balanceRow}>
             <View>
               <Text style={s.balanceLabel}>Total Beans</Text>
-              <Text style={s.beansVal}>{formatCount(totalBeans)}</Text>
+              <Text style={s.beansVal}>{formatCount(earnedBeans)}</Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={s.balanceLabel}>Withdrawable</Text>
@@ -112,9 +117,14 @@ export default function WithdrawModal({
             </View>
           </View>
 
-          {beans > 0 && diamonds > 0 && (
+          {(beans > 0 || pendingTaskBeans > 0 || diamonds > 0) && (
             <Text style={s.breakdown}>
-              {formatCount(beans)} beans + {formatCount(diamondsAsBeans)} from diamonds
+              {[
+                beans > 0 ? `${formatCount(beans)} wallet` : '',
+                pendingTaskBeans > 0 ? `${formatCount(pendingTaskBeans)} pending tasks` : '',
+                diamonds > 0 ? `${formatCount(diamondsAsBeans)} from diamonds` : '',
+              ].filter(Boolean).join(' + ')}
+              {totalWithdrawable > earnedBeans ? ` · ${formatCount(totalWithdrawable)} withdrawable` : ''}
             </Text>
           )}
 
@@ -225,7 +235,7 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center',
     backgroundColor: 'rgba(255,215,0,0.1)', borderRadius: 12, padding: 10, marginBottom: 12,
   },
-  convertTxt: { color: '#FFD700', fontSize: 13, fontWeight: '700' },
+  convertTxt: { color: DIAMOND_COLOR, fontSize: 13, fontWeight: '700' },
   balanceRow: {
     flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8,
     padding: 14, backgroundColor: 'rgba(255,149,0,0.1)', borderRadius: 14,

@@ -264,6 +264,13 @@ module.exports = (io) => {
           return;
         }
 
+        const isParticipant = String(senderId) === String(battle.host1_id)
+          || (battle.host2_id && String(senderId) === String(battle.host2_id));
+        if (isParticipant) {
+          socket.emit('gift_error', { message: 'Only viewers can vote with gifts' });
+          return;
+        }
+
         const amount = Math.floor(Number(giftValue));
         if (!Number.isFinite(amount) || amount < 1) {
           socket.emit('gift_error', { message: 'Invalid gift amount' });

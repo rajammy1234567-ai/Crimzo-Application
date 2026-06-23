@@ -1,11 +1,8 @@
 const UserAppTimeDaily = require('../models/UserAppTimeDaily');
+const { todayKey } = require('./dateKeys');
 
 const DAILY_REQUIRED_SECONDS = 3600;
 const VALID_CATEGORIES = ['home', 'reels', 'live', 'messages', 'profile', 'pk', 'create', 'other'];
-
-function todayKey() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function normalizeCategory(category) {
   return VALID_CATEGORIES.includes(category) ? category : 'other';

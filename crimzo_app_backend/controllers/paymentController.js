@@ -33,6 +33,10 @@ const {
   deductBeansForWithdraw,
 } = require('../utils/beanConversion');
 const {
+  getBeanBalanceSummary,
+  deductBeansForWithdrawFull,
+} = require('../utils/beanBalance');
+const {
   isRazorpayConfigured,
   getRazorpayClient,
   getRazorpayStatus,
@@ -387,11 +391,16 @@ exports.getWallet = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('wallet_balance diamonds beans username email linked_bank');
     if (!user) return res.status(404).json({ error: 'User not found' });
+    const balance = await getBeanBalanceSummary(user);
     res.json({
       success: true,
       wallet_balance: user.wallet_balance || 0,
       diamonds: user.diamonds || 0,
-      beans: user.beans || 0,
+      beans: balance.walletBeans,
+      pendingTaskBeans: balance.pendingTaskBeans,
+      totalBeans: balance.totalBeans,
+      totalWithdrawableBeans: balance.totalWithdrawableBeans,
+      withdrawableInr: balance.withdrawableInr,
       topupPresets: TOPUP_PRESETS,
       razorpayEnabled: isRazorpayConfigured(),
       devMockEnabled: process.env.NODE_ENV !== 'production' && !isRazorpayConfigured(),
@@ -906,19 +915,18 @@ exports.getWithdrawInfo = async (req, res) => {
     const user = await User.findById(req.user.id).select('diamonds beans linked_bank');
     if (!user) return res.status(404).json({ error: 'User not found' });
     const method = formatPaymentMethod(user.linked_bank);
-    const diamonds = user.diamonds || 0;
-    const beans = user.beans || 0;
-    const diamondsAsBeans = diamondsToBeans(diamonds);
-    const totalBeans = totalWithdrawableBeans(diamonds, beans);
-    const withdrawableInr = beansToInr(totalBeans);
+    const balance = await getBeanBalanceSummary(user);
     const scheduledCreditDate = getScheduledCreditDate();
     res.json({
       success: true,
-      diamonds,
-      beans,
-      diamondsAsBeans,
-      totalBeans,
-      withdrawableInr,
+      diamonds: balance.diamonds,
+      beans: balance.walletBeans,
+      pendingTaskBeans: balance.pendingTaskBeans,
+      earnedBeans: balance.earnedBeans,
+      diamondsAsBeans: balance.diamondsAsBeans,
+      totalBeans: balance.totalBeans,
+      totalWithdrawableBeans: balance.totalWithdrawableBeans,
+      withdrawableInr: balance.withdrawableInr,
       beansPerInr: BEANS_PER_INR,
       minWithdraw: MIN_WITHDRAW_INR,
       minWithdrawBeans: MIN_WITHDRAW_BEANS,
@@ -930,7 +938,7 @@ exports.getWithdrawInfo = async (req, res) => {
       scheduledCreditLabel: formatScheduledCreditDate(scheduledCreditDate),
       creditMessage: `Amount will be credited on ${formatScheduledCreditDate(scheduledCreditDate)}.`,
       canWithdraw: isWithdrawablePayment(user.linked_bank)
-        && withdrawableInr >= MIN_WITHDRAW_INR,
+        && balance.withdrawableInr >= MIN_WITHDRAW_INR,
       paymentMethod: method,
       hasVerifiedPayment: isWithdrawablePayment(user.linked_bank),
       payoutEnabled: isPayoutConfigured(),
@@ -947,8 +955,10 @@ exports.requestWithdraw = async (req, res) => {
   let beansDeducted = false;
   let prevDiamonds = 0;
   let prevBeans = 0;
+  let prevPendingTaskBeans = 0;
   let newDiamonds = 0;
   let newBeans = 0;
+  let newPendingTaskBeans = 0;
 
   try {
     const userId = req.user.id;
@@ -974,12 +984,15 @@ exports.requestWithdraw = async (req, res) => {
       });
     }
 
-    const diamonds = user?.diamonds || 0;
-    const beans = user?.beans || 0;
+    const balance = await getBeanBalanceSummary(user);
+    const diamonds = balance.diamonds;
+    const beans = balance.walletBeans;
+    const pendingTaskBeans = balance.pendingTaskBeans;
     prevDiamonds = diamonds;
     prevBeans = beans;
-    const totalBeans = totalWithdrawableBeans(diamonds, beans);
-    const availableInr = beansToInr(totalBeans);
+    prevPendingTaskBeans = pendingTaskBeans;
+    const totalBeans = balance.totalWithdrawableBeans;
+    const availableInr = balance.withdrawableInr;
 
     if (totalBeans < beansNeeded) {
       return res.status(400).json({
@@ -988,14 +1001,20 @@ exports.requestWithdraw = async (req, res) => {
         availableInr,
         availableBeans: totalBeans,
         beansNeeded,
-        diamondsConverted: diamondsToBeans(diamonds),
+        diamondsConverted: balance.diamondsAsBeans,
+        earnedBeans: balance.earnedBeans,
       });
     }
 
     const method = formatPaymentMethod(user.linked_bank);
-    ({ diamonds: newDiamonds, beans: newBeans } = deductBeansForWithdraw(
+    ({
+      diamonds: newDiamonds,
+      beans: newBeans,
+      pendingTaskBeans: newPendingTaskBeans,
+    } = deductBeansForWithdrawFull(
       diamonds,
       beans,
+      pendingTaskBeans,
       beansNeeded,
     ));
 
@@ -1004,6 +1023,13 @@ exports.requestWithdraw = async (req, res) => {
       { diamonds: newDiamonds, beans: newBeans },
       { new: true },
     ).select('diamonds beans linked_bank email username');
+
+    const { getOrCreateState } = require('../utils/taskProgress');
+    const taskState = await getOrCreateState(userId);
+    taskState.pending_reward = newPendingTaskBeans;
+    taskState.updated_at = new Date();
+    await taskState.save();
+
     beansDeducted = true;
 
     const idempotencyKey = uuidv4();
@@ -1015,7 +1041,7 @@ exports.requestWithdraw = async (req, res) => {
       amount_inr: amountInr,
       beans_used: beansNeeded,
       diamonds_deducted: Math.max(0, prevDiamonds - newDiamonds),
-      beans_deducted: Math.max(0, prevBeans - newBeans),
+      beans_deducted: Math.max(0, (prevBeans - newBeans) + (prevPendingTaskBeans - newPendingTaskBeans)),
       status: 'pending',
       payout_method: user.linked_bank.type,
       payout_display: method?.display,
@@ -1039,11 +1065,15 @@ exports.requestWithdraw = async (req, res) => {
     const payoutMessage = `${creditMessage} Payout will be sent to ${method?.display}. Our admin team has your account details.`;
 
     const finalUser = await User.findById(userId).select('diamonds beans');
+    const finalBalance = await getBeanBalanceSummary(finalUser);
 
     res.json({
       success: payoutStatus !== 'failed',
       diamonds: finalUser.diamonds,
       beans: finalUser.beans,
+      pendingTaskBeans: newPendingTaskBeans,
+      totalBeans: finalBalance.totalBeans,
+      totalWithdrawableBeans: finalBalance.totalWithdrawableBeans,
       diamondsConverted: diamondsToBeans(prevDiamonds),
       beansUsed: beansNeeded,
       withdrawn: amountInr,
@@ -1072,6 +1102,11 @@ exports.requestWithdraw = async (req, res) => {
       await refundWithdrawalBalance(withdrawal);
     } else if (beansDeducted && req.user?.id) {
       await User.findByIdAndUpdate(req.user.id, { diamonds: prevDiamonds, beans: prevBeans });
+      const { getOrCreateState } = require('../utils/taskProgress');
+      const taskState = await getOrCreateState(req.user.id);
+      taskState.pending_reward = prevPendingTaskBeans;
+      taskState.updated_at = new Date();
+      await taskState.save();
     }
 
     const statusCode = error.statusCode && error.statusCode < 500 ? error.statusCode : 500;

@@ -322,7 +322,7 @@ export default function HomeScreen() {
           onWatchBattle={(battleId) => router.push(`/pk/watch?battleId=${battleId}`)}
           onJoinBattle={(battleId) => router.push(`/pk/battle?mode=join&battleId=${battleId}`)}
           onResumeBattle={(battleId) => router.push(`/pk/battle?mode=host&battleId=${battleId}`)}
-          onCreateBattle={() => router.push('/pk/battle?mode=create')}
+          onCreateBattle={() => router.push('/pk/lobby' as any)}
           onWatchStream={(id) => router.push(`/live/watch?sessionId=${id}&talk=1`)}
           onStartBroadcast={openBroadcast}
           liveStreams={[]}

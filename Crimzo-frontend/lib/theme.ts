@@ -13,6 +13,8 @@ export const colors = {
   textSubtle: 'rgba(255,255,255,0.28)',
   success: '#4CD964',
   gold: '#FFD700',
+  diamond: '#00BFFF',
+  bean: '#FF9500',
 };
 
 export const gradients = {

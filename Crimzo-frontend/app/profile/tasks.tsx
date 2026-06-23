@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiGet, apiPost, ApiError } from '../../lib/apiClient';
+import { BeanIcon, DiamondIcon, BeanAmount, DiamondAmount } from '../../lib/currencyIcons';
 
 interface Task {
   key: string;
@@ -40,7 +41,8 @@ type StreakInfo = {
   longestStreak: number;
   checkedInToday: boolean;
   weekDots?: boolean[];
-  todayWeekday?: number;
+  weekLabels?: string[];
+  todaySlot?: number;
   atRisk?: boolean;
   milestoneDays?: number;
   milestoneDiamonds?: number;
@@ -48,8 +50,6 @@ type StreakInfo = {
   daysToNextMilestone?: number;
   progressInBlock?: number;
 };
-
-const WEEK_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 export default function TasksScreen() {
   const { user, token, updateUser } = useAuth();
@@ -179,7 +179,28 @@ export default function TasksScreen() {
         if (typeof res.pendingDiamonds === 'number') {
           setPendingDiamonds(res.pendingDiamonds);
         }
-        if (res.streak) setStreak(res.streak);
+        if (res.streak) {
+          setStreak(res.streak);
+        } else if (!res.alreadyCheckedIn) {
+          setStreak((prev) => {
+            if (!prev) return prev;
+            const nextStreak = prev.atRisk || prev.currentStreak > 0
+              ? prev.currentStreak + 1
+              : 1;
+            const nextSlot = prev.todaySlot ?? 6;
+            const nextDots = [...(prev.weekDots || Array(7).fill(false))];
+            nextDots[nextSlot] = true;
+            return {
+              ...prev,
+              currentStreak: nextStreak,
+              longestStreak: Math.max(prev.longestStreak, nextStreak),
+              checkedInToday: true,
+              atRisk: false,
+              weekDots: nextDots,
+              progressInBlock: nextStreak % (prev.milestoneDays || 30) || (prev.milestoneDays || 30),
+            };
+          });
+        }
         if (!res.alreadyCheckedIn) {
           const milestone = res.streakMilestoneReward || 0;
           if (milestone > 0) {
@@ -227,6 +248,7 @@ export default function TasksScreen() {
           updateUser({
             beans: res.beans ?? user?.beans,
             diamonds: res.diamonds ?? user?.diamonds,
+            pendingTaskBeans: 0,
           } as Parameters<typeof updateUser>[0]);
         }
       }
@@ -294,7 +316,11 @@ export default function TasksScreen() {
         <View style={styles.taskInfo}>
           <Text style={[styles.taskTitle, isComplete && styles.taskTitleDone]}>{task.title}</Text>
           <View style={styles.taskRewardRow}>
-            <Text style={styles.coinIcon}>{task.rewardType === 'diamonds' ? '💎' : '🪙'}</Text>
+            {task.rewardType === 'diamonds' ? (
+              <DiamondIcon size={14} style={{ marginRight: 2 }} />
+            ) : (
+              <BeanIcon size={14} style={{ marginRight: 2 }} />
+            )}
             <Text style={styles.taskReward}>{task.reward}</Text>
             <Text style={styles.taskMultiplier}>x{task.maxCount}</Text>
           </View>
@@ -333,10 +359,11 @@ export default function TasksScreen() {
       <View style={styles.taskSection}>
         <View style={styles.taskSectionHeader}>
           <Text style={styles.taskSectionTitle}>{title}</Text>
-          <Text style={styles.taskSectionProgress}>
-            (<Text style={styles.coinIconSmall}>🪙</Text>
-            {earned}/{possible})
-          </Text>
+          <View style={[styles.taskSectionProgress, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+            <Text style={styles.taskSectionProgress}>(</Text>
+            <BeanIcon size={12} />
+            <Text style={styles.taskSectionProgress}>{earned}/{possible})</Text>
+          </View>
         </View>
         {timer}
         {tasks.length === 0 ? (
@@ -404,13 +431,11 @@ export default function TasksScreen() {
         </Text>
 
         <View style={styles.rewardBar}>
-          <View style={styles.rewardLeft}>
-            <Text style={styles.rewardCount}>
-              {pendingReward > 0 ? `🪙${pendingReward}` : ''}
-              {pendingReward > 0 && pendingDiamonds > 0 ? ' · ' : ''}
-              {pendingDiamonds > 0 ? `💎${pendingDiamonds}` : ''}
-              {!hasPending ? '—' : ''}
-            </Text>
+          <View style={[styles.rewardLeft, { flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
+            {pendingReward > 0 ? <BeanAmount amount={pendingReward} size={14} textStyle={styles.rewardCount} /> : null}
+            {pendingReward > 0 && pendingDiamonds > 0 ? <Text style={styles.rewardCount}>·</Text> : null}
+            {pendingDiamonds > 0 ? <DiamondAmount amount={pendingDiamonds} size={14} textStyle={styles.rewardCount} /> : null}
+            {!hasPending ? <Text style={styles.rewardCount}>—</Text> : null}
           </View>
           <TouchableOpacity
             style={[styles.getRewardBtn, (!hasPending || claiming) && styles.getRewardBtnDisabled]}
@@ -430,12 +455,11 @@ export default function TasksScreen() {
         {activeTab === 'rewards' ? (
           <View style={styles.rewardsPanel}>
             <Text style={styles.rewardsTitle}>Pending Rewards</Text>
-            <Text style={styles.rewardsAmount}>
-              {pendingReward > 0 ? `🪙 ${pendingReward}` : ''}
-              {pendingReward > 0 && pendingDiamonds > 0 ? '   ' : ''}
-              {pendingDiamonds > 0 ? `💎 ${pendingDiamonds}` : ''}
-              {!hasPending ? '—' : ''}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+              {pendingReward > 0 ? <BeanAmount amount={pendingReward} size={22} textStyle={styles.rewardsAmount} /> : null}
+              {pendingDiamonds > 0 ? <DiamondAmount amount={pendingDiamonds} size={22} textStyle={styles.rewardsAmount} /> : null}
+              {!hasPending ? <Text style={styles.rewardsAmount}>—</Text> : null}
+            </View>
             <Text style={styles.rewardsHint}>
               Claim beans & diamonds to your wallet. Total progress: {totalEarned}/{totalPossible}
             </Text>
@@ -489,11 +513,11 @@ export default function TasksScreen() {
                   ) : null}
                 </View>
                 <View style={styles.streakWeekRow}>
-                  {WEEK_LABELS.map((label, i) => {
+                  {(streak.weekLabels || ['M', 'T', 'W', 'T', 'F', 'S', 'S']).map((label, i) => {
                     const filled = !!streak.weekDots?.[i];
-                    const isToday = streak.todayWeekday === i;
+                    const isToday = (streak.todaySlot ?? 6) === i;
                     return (
-                      <View key={`${label}-${i}`} style={styles.streakDayCol}>
+                      <View key={`streak-day-${i}`} style={styles.streakDayCol}>
                         <View
                           style={[
                             styles.streakDot,
@@ -515,7 +539,7 @@ export default function TasksScreen() {
                     <View style={styles.streakMilestoneTop}>
                       <Ionicons name="diamond" size={14} color="#00BFFF" />
                       <Text style={styles.streakMilestoneTitle}>
-                        {streak.milestoneDays}-day streak → {streak.milestoneDiamonds.toLocaleString()} 💎 from Crimzo
+                        {streak.milestoneDays}-day streak → {streak.milestoneDiamonds.toLocaleString()} diamonds from Crimzo
                       </Text>
                     </View>
                     <View style={styles.streakMilestoneBarBg}>
@@ -580,7 +604,7 @@ export default function TasksScreen() {
                   {checkingIn ? 'Checking…' : 'Check in'}
                 </Text>
                 <View style={styles.quickActionReward}>
-                  <Text style={styles.coinIconSmall}>🪙</Text>
+                  <BeanIcon size={14} />
                   <Text style={styles.quickActionValue}>+50</Text>
                 </View>
               </TouchableOpacity>
@@ -588,7 +612,7 @@ export default function TasksScreen() {
               <TouchableOpacity style={styles.quickActionItem} onPress={handleInviteShare}>
                 <Text style={styles.quickActionLabel}>Invitation</Text>
                 <View style={styles.quickActionReward}>
-                  <Text style={styles.coinIconSmall}>🪙</Text>
+                  <BeanIcon size={14} />
                   <Text style={styles.quickActionValue}>200</Text>
                 </View>
               </TouchableOpacity>
@@ -596,7 +620,7 @@ export default function TasksScreen() {
               <TouchableOpacity style={styles.quickActionItem} onPress={() => router.push('/(tabs)/reels' as any)}>
                 <Text style={styles.quickActionLabel}>Video</Text>
                 <View style={styles.quickActionReward}>
-                  <Text style={styles.diamondIcon}>💎</Text>
+                  <DiamondIcon size={14} />
                   <Text style={styles.quickActionValue}>Free</Text>
                 </View>
               </TouchableOpacity>
@@ -604,7 +628,7 @@ export default function TasksScreen() {
               <TouchableOpacity style={styles.quickActionItem} onPress={() => router.push('/profile/wallet' as any)}>
                 <Text style={styles.quickActionLabel}>Wallet</Text>
                 <View style={styles.quickActionReward}>
-                  <Text style={styles.coinIconSmall}>🪙</Text>
+                  <BeanIcon size={14} />
                   <Text style={styles.quickActionValue}>Top up</Text>
                 </View>
               </TouchableOpacity>

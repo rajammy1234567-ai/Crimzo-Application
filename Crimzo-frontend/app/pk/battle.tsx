@@ -20,12 +20,11 @@ import {
 
 import { API_URL, apiGet, apiPost, ApiError, resolveMediaUrl } from '../../lib/apiClient';
 import { toAgoraUid, sameUserId } from '../../lib/agoraUid';
-import { PK_GIFTS, findPkGiftByValue } from '../../lib/pkGifts';
+import { findPkGiftByValue } from '../../lib/pkGifts';
 import { playMessageReceivePop, playMessageSendPop } from '../../lib/uiSounds';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const DEFAULT_BATTLE_DURATION = 300;
-const GIFTS = PK_GIFTS;
 
 // ── Pulsing VS Badge ──
 const PulsingVS = React.memo(() => {
@@ -164,7 +163,6 @@ export default function PKBattleScreen() {
   const [winnerData, setWinnerData] = useState<any>(null);
   const [winnerId, setWinnerId] = useState<string | null>(null);
   const [floatingGifts, setFloatingGifts] = useState<any[]>([]);
-  const [selectedHost, setSelectedHost] = useState<'host1' | 'host2' | null>(null);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [showChat, setShowChat] = useState(true);
@@ -511,19 +509,6 @@ export default function PKBattleScreen() {
     }
   };
 
-  const sendGift = (gift: typeof GIFTS[number], targetHost: 'host1' | 'host2') => {
-    if (!battleData?.battleId || !isActive || showWinner) return;
-    const hostId = targetHost === 'host1' ? host1Info?.id : host2Info?.id;
-    if (!hostId) return;
-
-    socketRef.current?.emit('send_gift', {
-      battleId: battleData.battleId,
-      hostId,
-      giftValue: gift.value,
-      senderId: user?.id,
-    });
-  };
-
   const removeFloatingGift = useCallback((id: number) => {
     setFloatingGifts((prev) => prev.filter((g) => g.id !== id));
   }, []);
@@ -690,15 +675,6 @@ export default function PKBattleScreen() {
               </View>
             )}
           </View>
-          {/* Tap target for gifts */}
-          {isActive && selectedHost === 'host1' && (
-            <View style={[styles.selectedOverlay, { borderColor: '#FF2D55' }]} />
-          )}
-          <TouchableOpacity
-            style={StyleSheet.absoluteFill}
-            activeOpacity={0.8}
-            onPress={() => setSelectedHost('host1')}
-          />
         </View>
 
         {/* VS Badge - center */}
@@ -725,14 +701,6 @@ export default function PKBattleScreen() {
               </View>
             )}
           </View>
-          {isActive && selectedHost === 'host2' && (
-            <View style={[styles.selectedOverlay, { borderColor: '#30D158' }]} />
-          )}
-          <TouchableOpacity
-            style={StyleSheet.absoluteFill}
-            activeOpacity={0.8}
-            onPress={() => setSelectedHost('host2')}
-          />
         </View>
       </View>
 
@@ -817,38 +785,12 @@ export default function PKBattleScreen() {
             </TouchableOpacity>
           </View>
 
-          {selectedHost && (
-            <Text style={styles.giftTargetText}>
-              Sending to: <Text style={{ color: selectedHost === 'host1' ? '#FF2D55' : '#30D158', fontWeight: '700' }}>
-                {selectedHost === 'host1' ? host1Info?.username : host2Info?.username}
-              </Text>
+          <View style={styles.viewerVoteBanner}>
+            <Ionicons name="eye" size={14} color="#FFD700" />
+            <Text style={styles.viewerVoteText}>
+              Viewers vote with gifts — highest total wins when timer ends
             </Text>
-          )}
-          <View style={styles.giftsRow}>
-            {GIFTS.map((gift) => (
-              <TouchableOpacity
-                key={gift.id}
-                style={[
-                  styles.giftBtn,
-                  !selectedHost && styles.giftBtnDisabled,
-                ]}
-                onPress={() => selectedHost && sendGift(gift, selectedHost)}
-                activeOpacity={selectedHost ? 0.7 : 1}
-              >
-                <View style={[styles.giftIconWrap, { backgroundColor: gift.color + '20' }]}>
-                  <Ionicons name={gift.icon as any} size={20} color={gift.color} />
-                </View>
-                <Text style={styles.giftName}>{gift.name}</Text>
-                <View style={styles.giftCoinRow}>
-                  <Ionicons name="diamond" size={10} color="#FFD700" />
-                  <Text style={styles.giftCoinText}>{gift.value}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
           </View>
-          {!selectedHost && (
-            <Text style={styles.tapHint}>Tap a host to send them gifts</Text>
-          )}
         </KeyboardAvoidingView>
       )}
 
@@ -1053,6 +995,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center', justifyContent: 'center',
   },
+  viewerVoteBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center',
+    backgroundColor: 'rgba(255,215,0,0.1)', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12,
+    borderWidth: 1, borderColor: 'rgba(255,215,0,0.2)',
+  },
+  viewerVoteText: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '600', flex: 1, textAlign: 'center' },
   giftTargetText: { color: '#AAA', fontSize: 12, textAlign: 'center', marginBottom: 8 },
   giftsRow: { flexDirection: 'row', justifyContent: 'space-around' },
   giftBtn: { alignItems: 'center', gap: 4, paddingVertical: 8, paddingHorizontal: 12 },
@@ -1062,7 +1010,7 @@ const styles = StyleSheet.create({
   },
   giftName: { color: '#FFF', fontSize: 11, fontWeight: '600' },
   giftCoinRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  giftCoinText: { color: '#FFD700', fontSize: 10, fontWeight: '700' },
+  giftCoinText: { color: '#00BFFF', fontSize: 10, fontWeight: '700' },
   tapHint: { color: '#666', fontSize: 11, textAlign: 'center', marginTop: 6 },
 
   // Floating gift

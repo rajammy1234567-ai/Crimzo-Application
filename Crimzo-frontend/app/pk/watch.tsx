@@ -26,6 +26,13 @@ const { width: SW, height: SH } = Dimensions.get('window');
 
 const GIFTS = PK_GIFTS;
 
+function formatBattleTime(seconds: number) {
+  const s = Math.max(0, Math.floor(seconds));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, '0')}`;
+}
+
 // ── Pulsing VS Badge ──
 const PulsingVS = React.memo(() => {
   const scale = useRef(new Animated.Value(1)).current;
@@ -120,6 +127,8 @@ export default function PKWatchScreen() {
   const [winnerData, setWinnerData] = useState<any>(null);
 
   const [viewerCount, setViewerCount] = useState(0);
+  const [timeRemaining, setTimeRemaining] = useState(0);
+  const [isBattleActive, setIsBattleActive] = useState(false);
 
   // Agora
   const engineRef = useRef<IRtcEngine | null>(null);
@@ -130,6 +139,14 @@ export default function PKWatchScreen() {
     if (paramBattleId) fetchBattle();
     return () => cleanup();
   }, []);
+
+  useEffect(() => {
+    if (!isBattleActive || ended) return;
+    const timer = setInterval(() => {
+      setTimeRemaining((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isBattleActive, ended]);
 
   const cleanup = () => {
     if (engineRef.current) {
@@ -154,12 +171,17 @@ export default function PKWatchScreen() {
         host2_score?: number;
         host1?: { id: string; username?: string; avatar?: string; agoraUid?: number };
         host2?: { id: string; username?: string; avatar?: string; agoraUid?: number } | null;
+        status?: string;
+        remainingSeconds?: number;
+        duration?: number;
       }>(`/api/pk/watch/${paramBattleId}`, token);
       setBattleData(data);
       setHost1Info(data.host1);
       setHost2Info(data.host2);
       setHost1Score(data.host1_score || 0);
       setHost2Score(data.host2_score || 0);
+      setIsBattleActive(data.status === 'active');
+      setTimeRemaining(data.remainingSeconds ?? data.duration ?? 300);
 
       if (isAgoraNativeLinked && data.appId && data.token) {
         const agoraUid = data.uid ?? toAgoraUid(user?.id);
@@ -210,6 +232,10 @@ export default function PKWatchScreen() {
     const sock = io(API_URL, { transports: ['websocket'], auth: { token } });
     sock.on('connect', () => {
       sock.emit('join_battle', { battleId });
+    });
+    sock.on('pk_battle_started', (data: any) => {
+      setIsBattleActive(true);
+      if (typeof data?.remainingSeconds === 'number') setTimeRemaining(data.remainingSeconds);
     });
     sock.on('score_update', (data: any) => {
       if (data?.host1_score != null) setHost1Score(data.host1_score);
@@ -393,6 +419,12 @@ export default function PKWatchScreen() {
             <View style={s.liveDot} />
             <Text style={s.liveText}>PK BATTLE</Text>
           </View>
+          {isBattleActive ? (
+            <View style={s.timerBadge}>
+              <Ionicons name="timer-outline" size={12} color="#FFD700" />
+              <Text style={s.timerText}>{formatBattleTime(timeRemaining)}</Text>
+            </View>
+          ) : null}
           <View style={s.viewerBadge}>
             <Ionicons name="eye" size={12} color="rgba(255,255,255,0.6)" />
             <Text style={s.viewerText}>{viewerCount} watching</Text>
@@ -459,22 +491,29 @@ export default function PKWatchScreen() {
           {GIFTS.map(gift => (
             <TouchableOpacity
               key={gift.id}
-              style={[s.giftBtn, !selectedHost && s.giftBtnOff]}
-              onPress={() => selectedHost && sendGift(gift, selectedHost)}
-              activeOpacity={selectedHost ? 0.7 : 1}
+              style={[s.giftBtn, (!selectedHost || !isBattleActive || ended) && s.giftBtnOff]}
+              onPress={() => selectedHost && isBattleActive && !ended && sendGift(gift, selectedHost)}
+              activeOpacity={selectedHost && isBattleActive && !ended ? 0.7 : 1}
             >
               <View style={[s.giftIcon, { backgroundColor: gift.color + '20' }]}>
                 <Ionicons name={gift.icon as any} size={20} color={gift.color} />
               </View>
               <Text style={s.giftLabel}>{gift.name}</Text>
               <View style={s.giftCost}>
-                <Ionicons name="diamond" size={10} color="#FFD700" />
+                <Ionicons name="diamond" size={10} color="#00BFFF" />
                 <Text style={s.giftCostText}>{gift.value}</Text>
               </View>
             </TouchableOpacity>
           ))}
         </View>
-        {!selectedHost && <Text style={s.tapHint}>Tap a host to send them gifts</Text>}
+        {!selectedHost && isBattleActive && !ended && (
+          <Text style={s.tapHint}>Vote with gifts — tap a host you support</Text>
+        )}
+        {(!isBattleActive || ended) && (
+          <Text style={s.tapHint}>
+            {ended ? 'Battle ended — voting closed' : 'Waiting for battle to start…'}
+          </Text>
+        )}
       </KeyboardAvoidingView>
 
       {/* ── Ended Overlay ── */}
@@ -571,6 +610,12 @@ const s = StyleSheet.create({
   },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FF2D55' },
   liveText: { color: '#FF2D55', fontSize: 12, fontWeight: '800', letterSpacing: 1 },
+  timerBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(255,215,0,0.15)', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10,
+    borderWidth: 1, borderColor: 'rgba(255,215,0,0.25)',
+  },
+  timerText: { color: '#FFD700', fontSize: 12, fontWeight: '800', fontVariant: ['tabular-nums'] },
   viewerBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
@@ -622,7 +667,7 @@ const s = StyleSheet.create({
   giftIcon: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
   giftLabel: { color: '#FFF', fontSize: 11, fontWeight: '600' },
   giftCost: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  giftCostText: { color: '#FFD700', fontSize: 10, fontWeight: '700' },
+  giftCostText: { color: '#00BFFF', fontSize: 10, fontWeight: '700' },
   tapHint: { color: '#666', fontSize: 11, textAlign: 'center', marginTop: 4 },
 
   // Floating gift

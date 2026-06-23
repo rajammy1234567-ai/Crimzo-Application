@@ -4,49 +4,34 @@ const {
   STREAK_MILESTONE_DAYS,
   STREAK_MILESTONE_DIAMONDS,
 } = require('../config/walletConfig');
+const {
+  todayKey,
+  yesterdayKey,
+  shiftDateKey,
+  weekdayLabel,
+  monthKey,
+} = require('./dateKeys');
 
-function todayKey() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function yesterdayKey() {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
-
-/** Monday = 0 … Sunday = 6 (matches profile week row) */
-function weekdayIndexMon0(dateKey) {
-  const day = new Date(`${dateKey}T12:00:00.000Z`).getUTCDay();
-  return day === 0 ? 6 : day - 1;
-}
-
-function weekStartKey(dateKey) {
-  const idx = weekdayIndexMon0(dateKey);
-  const d = new Date(`${dateKey}T12:00:00.000Z`);
-  d.setUTCDate(d.getUTCDate() - idx);
-  return d.toISOString().slice(0, 10);
-}
-
-function shiftDateKey(dateKey, deltaDays) {
-  const d = new Date(`${dateKey}T12:00:00.000Z`);
-  d.setUTCDate(d.getUTCDate() + deltaDays);
-  return d.toISOString().slice(0, 10);
-}
-
-function buildWeekDots(currentStreak, anchorDay, today) {
+/** Rolling last 7 days: slot 0 = 6 days ago, slot 6 = today */
+function buildRollingWeekView(currentStreak, anchorDay, today) {
   const weekDots = Array(7).fill(false);
-  if (!anchorDay || currentStreak <= 0) {
-    return weekDots;
+  const weekLabels = [];
+
+  for (let slot = 0; slot < 7; slot += 1) {
+    const dayKey = shiftDateKey(today, slot - 6);
+    weekLabels.push(weekdayLabel(dayKey));
+
+    if (!anchorDay || currentStreak <= 0) continue;
+
+    for (let i = 0; i < currentStreak; i += 1) {
+      if (shiftDateKey(anchorDay, -i) === dayKey) {
+        weekDots[slot] = true;
+        break;
+      }
+    }
   }
 
-  const currentWeekStart = weekStartKey(today);
-  for (let i = 0; i < currentStreak; i += 1) {
-    const dayKey = shiftDateKey(anchorDay, -i);
-    if (weekStartKey(dayKey) !== currentWeekStart) continue;
-    weekDots[weekdayIndexMon0(dayKey)] = true;
-  }
-  return weekDots;
+  return { weekDots, weekLabels, todaySlot: 6 };
 }
 
 function getStreakSnapshot(state) {
@@ -58,8 +43,7 @@ function getStreakSnapshot(state) {
   const currentStreak = active ? stored : 0;
   const checkedInToday = last === today;
   const anchorDay = checkedInToday ? today : (last === yesterday ? yesterday : null);
-  const weekDots = buildWeekDots(currentStreak, anchorDay, today);
-  const todayWeekday = weekdayIndexMon0(today);
+  const { weekDots, weekLabels, todaySlot } = buildRollingWeekView(currentStreak, anchorDay, today);
 
   const milestoneDays = STREAK_MILESTONE_DAYS;
   const milestoneDiamonds = STREAK_MILESTONE_DIAMONDS;
@@ -79,7 +63,8 @@ function getStreakSnapshot(state) {
     checkedInToday,
     lastCheckin: last,
     weekDots,
-    todayWeekday,
+    weekLabels,
+    todaySlot,
     atRisk: !checkedInToday && last === yesterday && currentStreak > 0,
     milestoneDays,
     milestoneDiamonds,
@@ -138,11 +123,6 @@ function applyStreakMilestoneReward(state, streak) {
     milestoneDays: STREAK_MILESTONE_DAYS,
     milestoneDiamonds: STREAK_MILESTONE_DIAMONDS,
   };
-}
-
-function monthKey() {
-  const d = new Date();
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
 async function getOrCreateState(userId) {

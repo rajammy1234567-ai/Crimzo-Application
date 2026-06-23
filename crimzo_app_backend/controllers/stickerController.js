@@ -145,14 +145,20 @@ exports.getCollected = async (req, res) => {
 
     const totals = await GiftHistory.aggregate([
       { $match: { receiver_id: uid } },
-      { $group: { _id: null, total_gifts: { $sum: 1 }, total_beans: { $sum: '$beans_earned' } } },
+      { $group: { _id: null, total_gifts: { $sum: 1 }, gift_beans_earned: { $sum: '$beans_earned' } } },
     ]);
+
+    const { getBeanBalanceSummary } = require('../utils/beanBalance');
+    const balance = await getBeanBalanceSummary(targetId);
 
     res.json({
       success: true,
       stickers,
       totalGifts: totals[0]?.total_gifts || 0,
-      totalBeans: totals[0]?.total_beans || 0,
+      giftBeansEarned: totals[0]?.gift_beans_earned || 0,
+      totalBeans: balance.totalBeans,
+      walletBeans: balance.walletBeans,
+      pendingTaskBeans: balance.pendingTaskBeans,
     });
   } catch (error) {
     console.error('Get collected stickers error:', error);
