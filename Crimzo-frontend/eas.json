@@ -20,9 +20,8 @@
       },
        "env": {
     "EXPO_PUBLIC_BACKEND_URL": "https://crimzo-application-backend.onrender.com",
-    "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "776581850135-3vku9v480fmfe4ur922eg8f1p9bv52vg.apps.googleusercontent.com",
-    "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "776581850135-tc55ga2unc3736p9o5s9au4g7t2cuai6.apps.googleusercontent.com",
-    "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "776581850135-8u47utp9e714rdflot9mnde3j0bf9k8i.apps.googleusercontent.com"
+    "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "822879223763-91agghanm59425oqnipive1hta375itd.apps.googleusercontent.com",
+    "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "822879223763-e7gg32oel0jbc20e6or486pq0f4pojn6.apps.googleusercontent.com"
   }
     },
     "production": {
@@ -30,9 +29,8 @@
       "credentialsSource": "local",
       "env": {
     "EXPO_PUBLIC_BACKEND_URL": "https://crimzo-application-backend.onrender.com",
-    "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "776581850135-3vku9v480fmfe4ur922eg8f1p9bv52vg.apps.googleusercontent.com",
-    "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "776581850135-tc55ga2unc3736p9o5s9au4g7t2cuai6.apps.googleusercontent.com",
-    "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "776581850135-8u47utp9e714rdflot9mnde3j0bf9k8i.apps.googleusercontent.com"
+    "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "822879223763-91agghanm59425oqnipive1hta375itd.apps.googleusercontent.com",
+    "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "822879223763-e7gg32oel0jbc20e6or486pq0f4pojn6.apps.googleusercontent.com"
   }
     }
   },

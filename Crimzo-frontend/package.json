@@ -24,6 +24,7 @@
     "@shopify/flash-list": "2.0.2",
     "axios": "^1.13.5",
     "expo": "^54.0.33",
+    "expo-application": "^56.0.3",
     "expo-auth-session": "~7.0.10",
     "expo-av": "~16.0.8",
     "expo-blur": "~15.0.8",

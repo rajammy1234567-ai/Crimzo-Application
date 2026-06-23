@@ -1,16 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import {
-  TouchableOpacity, Text, StyleSheet, ActivityIndicator, Alert, View,
+  TouchableOpacity, Text, StyleSheet, ActivityIndicator, Alert, View, Platform,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
-import { makeRedirectUri } from 'expo-auth-session';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import {
-  GOOGLE_ANDROID_CLIENT_ID,
-  GOOGLE_IOS_CLIENT_ID,
-  GOOGLE_WEB_CLIENT_ID,
+  getGoogleAuthRequestConfig,
+  getGoogleWebClientRedirectUris,
+  isExpoGo,
   isGoogleSignInAvailable,
 } from '../../lib/googleAuthConfig';
 
@@ -70,6 +69,38 @@ async function fetchGoogleProfile(
   return null;
 }
 
+function formatGoogleAuthError(message?: string): string {
+  const lower = (message || '').toLowerCase();
+  if (
+    lower.includes('access blocked')
+    || lower.includes('authorization error')
+    || lower.includes('invalid_request')
+    || lower.includes('redirect_uri')
+  ) {
+    const webRedirects = getGoogleWebClientRedirectUris().join('\n• ');
+    const lines = [
+      'Google OAuth setup check:',
+      '',
+      'Web client → Authorized redirect URIs (sirf https):',
+      `• ${webRedirects}`,
+      '',
+      'OAuth consent screen → Test users mein apna Gmail add karo (Testing mode)',
+    ];
+    if (!isExpoGo() && Platform.OS === 'android') {
+      lines.push(
+        '',
+        'APK ke liye Android client check karo:',
+        '• Package: com.livestreamhub',
+        '• SHA-1: APK jis keystore se sign hua uska fingerprint',
+        '(com.livestreamhub:/oauthredirect Web client pe mat dalo — Google reject karta hai)',
+      );
+    }
+    lines.push('', `Details: ${message || 'Authorization error'}`);
+    return lines.join('\n');
+  }
+  return message || 'Could not sign in with Google.';
+}
+
 type Props = {
   onSuccess?: () => void;
   disabled?: boolean;
@@ -78,19 +109,26 @@ type Props = {
 export default function GoogleSignInButton({ onSuccess, disabled }: Props) {
   const { signInWithGoogle } = useAuth();
   const [busy, setBusy] = useState(false);
+  const authConfig = getGoogleAuthRequestConfig();
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    webClientId: GOOGLE_WEB_CLIENT_ID || undefined,
-    androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
-    iosClientId: GOOGLE_IOS_CLIENT_ID || undefined,
-    redirectUri: makeRedirectUri({ scheme: 'crimzo' }),
-  });
+  const [request, response, promptAsync] = Google.useAuthRequest(authConfig);
+
+  useEffect(() => {
+    if (__DEV__) {
+      console.log('[Google Auth] redirectUri:', authConfig.redirectUri);
+      console.log('[Google Auth] mode:', isExpoGo() ? 'Expo Go' : 'standalone');
+      console.log('[Google Auth] Web client redirect (https only):', getGoogleWebClientRedirectUris());
+    }
+  }, [authConfig.redirectUri]);
 
   useEffect(() => {
     if (!response || response.type !== 'success') {
       if (response?.type === 'error') {
         setBusy(false);
-        Alert.alert('Google Sign-In Failed', response.error?.message || 'Could not sign in with Google.');
+        Alert.alert(
+          'Google Sign-In Failed',
+          formatGoogleAuthError(response.error?.message),
+        );
       } else if (response?.type === 'dismiss' || response?.type === 'cancel') {
         setBusy(false);
       }
@@ -113,7 +151,7 @@ export default function GoogleSignInButton({ onSuccess, disabled }: Props) {
         onSuccess?.();
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Google sign-in failed';
-        Alert.alert('Google Sign-In Failed', message);
+        Alert.alert('Google Sign-In Failed', formatGoogleAuthError(message));
       } finally {
         setBusy(false);
       }
@@ -133,7 +171,7 @@ export default function GoogleSignInButton({ onSuccess, disabled }: Props) {
     } catch (err: unknown) {
       setBusy(false);
       const message = err instanceof Error ? err.message : 'Could not open Google sign-in';
-      Alert.alert('Google Sign-In Failed', message);
+      Alert.alert('Google Sign-In Failed', formatGoogleAuthError(message));
     }
   };
 
