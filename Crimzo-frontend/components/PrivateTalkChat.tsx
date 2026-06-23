@@ -39,6 +39,7 @@ interface PrivateTalkChatProps {
   isHost?: boolean;
   sharedSocket?: Socket | null;
   onEnd?: () => void;
+  bottomOffset?: number;
 }
 
 function appendMessage(prev: ChatMessage[], data: ChatMessage): ChatMessage[] {
@@ -69,6 +70,7 @@ export default function PrivateTalkChat({
   isHost = false,
   sharedSocket,
   onEnd,
+  bottomOffset = 0,
 }: PrivateTalkChatProps) {
   const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -198,7 +200,11 @@ export default function PrivateTalkChat({
   const bottomPad = keyboardVisible ? 0 : Math.max(insets.bottom, 8);
 
   return (
-    <KeyboardAvoidingView behavior={KEYBOARD_BEHAVIOR} style={ps.container} keyboardVerticalOffset={0}>
+    <KeyboardAvoidingView
+      behavior={KEYBOARD_BEHAVIOR}
+      style={[ps.container, bottomOffset > 0 && { bottom: bottomOffset }]}
+      keyboardVerticalOffset={0}
+    >
       <View style={ps.header}>
         <View style={ps.headerLeft}>
           <Ionicons name="lock-closed" size={14} color="#A78BFA" />

@@ -833,6 +833,7 @@ export default function BroadcastScreen() {
               peerUsername={pc.talkerName}
               isHost
               sharedSocket={liveSocket}
+              bottomOffset={200}
               onEnd={() => {
                 setPrivateChats((prev) => prev.filter((p) => p.talkSessionId !== pc.talkSessionId));
                 setSelectedPrivateTalkId(null);

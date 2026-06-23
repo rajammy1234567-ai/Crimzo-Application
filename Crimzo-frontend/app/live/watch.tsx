@@ -312,6 +312,7 @@ export default function WatchScreen() {
     const s = io(API_URL, { transports: ['websocket'], auth: { token } });
     s.on('connect', () => {
       console.log('[Watch] viewer socket connected, joining live');
+      if (user?.id) s.emit('join_user', { userId: user.id });
       s.emit('join_live', { sessionId: String(sessionId), userId: user?.id, username: user?.username });
     });
     s.on('viewer_count_update', (d: { count: number }) => setViewerCount(d.count));
