@@ -19,6 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import io, { type Socket } from 'socket.io-client';
 
 import { API_URL } from '../lib/apiClient';
+import { playGiftPop, playMessageReceivePop, playMessageSendPop } from '../lib/uiSounds';
 import { KEYBOARD_BEHAVIOR } from './KeyboardAware';
 const { width: SW } = Dimensions.get('window');
 const MAX_VISIBLE = 8;
@@ -292,6 +293,11 @@ export default function LiveChat({
         const attachListeners = (s: Socket) => {
             const onChat = (data: ChatMessage) => {
                 setMessages((prev) => appendChatMessage(prev, data));
+                const fromSelf = String(data.userId) === String(userId);
+                if (!fromSelf) {
+                    if (data.type === 'sticker') playGiftPop();
+                    else if (data.type === 'text') playMessageReceivePop();
+                }
                 if (data.type === 'sticker') addFloatingGift(data);
             };
             const onSystem = (data: { message?: string; username?: string }) => {
@@ -370,6 +376,7 @@ export default function LiveChat({
             timestamp: Date.now(),
         };
         setMessages((prev) => appendChatMessage(prev, optimistic));
+        playMessageSendPop();
         socket.emit('live_chat_message', {
             sessionId: normalizeSessionId(sessionId),
             userId,

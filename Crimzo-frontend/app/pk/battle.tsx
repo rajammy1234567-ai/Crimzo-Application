@@ -21,6 +21,7 @@ import {
 import { API_URL, apiGet, apiPost, ApiError, resolveMediaUrl } from '../../lib/apiClient';
 import { toAgoraUid, sameUserId } from '../../lib/agoraUid';
 import { PK_GIFTS, findPkGiftByValue } from '../../lib/pkGifts';
+import { playGiftPop, playMessageReceivePop, playMessageSendPop } from '../../lib/uiSounds';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const DEFAULT_BATTLE_DURATION = 300;
@@ -285,6 +286,7 @@ export default function PKBattleScreen() {
       showWinnerModal(data.winner ?? null, data.host1Score, data.host2Score);
     });
     s.on('pk_chat_message', (data: any) => {
+      if (String(data?.userId) !== String(user?.id)) playMessageReceivePop();
       setChatMessages((prev) => [...prev.slice(-40), data]);
     });
     s.on('gift_error', (data: any) => {
@@ -520,6 +522,7 @@ export default function PKBattleScreen() {
       giftValue: gift.value,
       senderId: user?.id,
     });
+    playGiftPop();
   };
 
   const removeFloatingGift = useCallback((id: number) => {
@@ -534,6 +537,7 @@ export default function PKBattleScreen() {
       username: user?.username,
       message: chatInput.trim(),
     });
+    playMessageSendPop();
     setChatInput('');
     Keyboard.dismiss();
   }, [chatInput, battleData?.battleId, user]);

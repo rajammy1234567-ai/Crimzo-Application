@@ -825,6 +825,8 @@ export default function BroadcastScreen() {
           if (!pc) return null;
           return (
             <PrivateTalkChat
+              key={pc.talkSessionId}
+              visible
               talkSessionId={pc.talkSessionId}
               sessionId={String(sessionId)}
               userId={user.id}
@@ -833,7 +835,7 @@ export default function BroadcastScreen() {
               peerUsername={pc.talkerName}
               isHost
               sharedSocket={liveSocket}
-              bottomOffset={200}
+              onClose={() => setSelectedPrivateTalkId(null)}
               onEnd={() => {
                 setPrivateChats((prev) => prev.filter((p) => p.talkSessionId !== pc.talkSessionId));
                 setSelectedPrivateTalkId(null);
@@ -841,6 +843,19 @@ export default function BroadcastScreen() {
             />
           );
         })()}
+
+        {isLive && privateChats.length > 0 && !selectedPrivateTalkId && (
+          <TouchableOpacity
+            style={st.privateChatFab}
+            onPress={() => setSelectedPrivateTalkId(privateChats[privateChats.length - 1]?.talkSessionId || null)}
+            activeOpacity={0.9}
+          >
+            <Ionicons name="lock-closed" size={14} color="#E9D5FF" />
+            <Text style={st.privateChatFabText}>
+              Private chat{privateChats.length > 1 ? ` (${privateChats.length})` : ''}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* ── PUBLIC LIVE CHAT (host broadcast to all viewers) ── */}
         {isLive && sessionId && user && token && (
@@ -1058,6 +1073,22 @@ const st = StyleSheet.create({
     borderColor: 'rgba(167,139,250,0.5)',
   },
   privateChatTabText: { color: '#E9D5FF', fontSize: 11, fontWeight: '700' },
+  privateChatFab: {
+    position: 'absolute',
+    bottom: 200,
+    alignSelf: 'center',
+    zIndex: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 22,
+    backgroundColor: 'rgba(109,40,217,0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(167,139,250,0.4)',
+  },
+  privateChatFabText: { color: '#F5F3FF', fontSize: 13, fontWeight: '800' },
 
   // Side actions
   sideActions: { position: 'absolute', right: 12, top: '28%', zIndex: 15, gap: 14, alignItems: 'center' },

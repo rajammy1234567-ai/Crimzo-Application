@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { API_URL } from '../lib/apiClient';
 import { subscribe } from '../lib/realtimeSync';
 import { useAuth } from '../contexts/AuthContext';
+import { playGiftPop } from '../lib/uiSounds';
 const { width: SW } = Dimensions.get('window');
 
 interface Sticker {
@@ -164,6 +165,7 @@ export default function StickerPanel({ visible, onClose, onSendSticker, token, r
             );
             setDiamonds(r.data.remainingDiamonds);
             updateUser({ diamonds: r.data.remainingDiamonds });
+            playGiftPop();
             onSendSticker(sticker);
             onClose();
         } catch (e: any) {

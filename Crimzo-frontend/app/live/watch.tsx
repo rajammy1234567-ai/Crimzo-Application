@@ -15,6 +15,7 @@ import {
   isBalanceExhaustedError,
 } from '../../lib/liveTalkBilling';
 import { resolveRates } from '../../lib/userRates';
+
 import { parseFollowResponse } from '../../lib/followHelpers';
 import { subscribe } from '../../lib/realtimeSync';
 import { Ionicons } from '@expo/vector-icons';
@@ -98,6 +99,7 @@ export default function WatchScreen() {
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [requestingTalk, setRequestingTalk] = useState(false);
   const [activeTalkSessionId, setActiveTalkSessionId] = useState<string | null>(null);
+  const [privateChatOpen, setPrivateChatOpen] = useState(false);
 
   const hostRates = useMemo(
     () => resolveRates(streamData?.hostVoiceRatePerMin, streamData?.hostChatRatePerMin),
@@ -138,6 +140,7 @@ export default function WatchScreen() {
     }
     talkSessionIdRef.current = null;
     setActiveTalkSessionId(null);
+    setPrivateChatOpen(false);
     setCanChat(false);
     setTalkStatus('idle');
   }, [token, sessionId]);
@@ -187,6 +190,7 @@ export default function WatchScreen() {
       if (billing.talkSessionId) {
         talkSessionIdRef.current = billing.talkSessionId;
         setActiveTalkSessionId(billing.talkSessionId);
+        setPrivateChatOpen(true);
         setCanChat(true);
         setTalkStatus('active');
         if (billing.wallet_balance != null) {
@@ -219,6 +223,7 @@ export default function WatchScreen() {
         if (status.activeTalk?.id) {
           talkSessionIdRef.current = status.activeTalk.id;
           setActiveTalkSessionId(status.activeTalk.id);
+          setPrivateChatOpen(true);
           setTalkMinutes(status.activeTalk.minutesCharged);
           setTalkCharged(status.activeTalk.totalCharged);
           startTalkBillingLoop();
@@ -240,6 +245,7 @@ export default function WatchScreen() {
       if (res.alreadyActive && res.talkSessionId) {
         talkSessionIdRef.current = res.talkSessionId;
         setActiveTalkSessionId(res.talkSessionId);
+        setPrivateChatOpen(true);
         setCanChat(true);
         setTalkStatus('active');
         startTalkBillingLoop();
@@ -345,6 +351,7 @@ export default function WatchScreen() {
     s.on('talk_private_ended', () => {
       talkSessionIdRef.current = null;
       setActiveTalkSessionId(null);
+      setPrivateChatOpen(false);
       setCanChat(false);
       setTalkStatus('idle');
       clearTalkBilling();
@@ -545,7 +552,11 @@ export default function WatchScreen() {
   };
 
   const handleChatRequest = () => {
-    if (canChat || talkStatus === 'pending') return;
+    if (canChat && activeTalkSessionId) {
+      setPrivateChatOpen(true);
+      return;
+    }
+    if (talkStatus === 'pending') return;
     void sendTalkRequest();
   };
 
@@ -682,7 +693,7 @@ export default function WatchScreen() {
               shadowColor: talkStatus === 'active' ? '#F59E0B' : talkStatus === 'pending' ? '#64748B' : '#3B82F6',
             }]}
             onPress={handleChatRequest}
-            disabled={requestingTalk || talkStatus === 'pending' || canChat}
+            disabled={requestingTalk || talkStatus === 'pending'}
             activeOpacity={0.88}
           >
             <LinearGradient
@@ -695,7 +706,7 @@ export default function WatchScreen() {
               }
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={[s.actionBarBtn, (requestingTalk || talkStatus === 'pending' || canChat) && s.actionBarBtnDisabled]}
+              style={[s.actionBarBtn, (requestingTalk || talkStatus === 'pending') && s.actionBarBtnDisabled]}
             >
               <View style={s.actionBarIcon}>
                 <Ionicons
@@ -729,6 +740,7 @@ export default function WatchScreen() {
       {/* ═══ PRIVATE 1-ON-1 CHAT (paid talk — invisible to other viewers) ═══ */}
       {canChat && activeTalkSessionId && sessionId && user && streamData?.hostId && (
         <PrivateTalkChat
+          visible={privateChatOpen}
           talkSessionId={activeTalkSessionId}
           sessionId={String(sessionId)}
           userId={user.id}
@@ -737,13 +749,26 @@ export default function WatchScreen() {
           peerUsername={streamData.hostUsername || 'Host'}
           isHost={false}
           sharedSocket={viewerSocket}
+          onClose={() => setPrivateChatOpen(false)}
           onEnd={() => {
             setCanChat(false);
             setTalkStatus('idle');
             setActiveTalkSessionId(null);
+            setPrivateChatOpen(false);
             talkSessionIdRef.current = null;
           }}
         />
+      )}
+
+      {canChat && !privateChatOpen && (
+        <TouchableOpacity
+          style={[s.privateChatFab, { bottom: 130 + Math.max(insets.bottom, 8) }]}
+          onPress={() => setPrivateChatOpen(true)}
+          activeOpacity={0.9}
+        >
+          <Ionicons name="lock-closed" size={14} color="#E9D5FF" />
+          <Text style={s.privateChatFabText}>Private chat</Text>
+        </TouchableOpacity>
       )}
 
       {/* ═══ PUBLIC LIVE CHAT (read-only for viewers; host broadcast only) ═══ */}
@@ -856,6 +881,21 @@ const s = StyleSheet.create({
     borderRadius: 22,
   },
   talkRequestText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
+  privateChatFab: {
+    position: 'absolute',
+    alignSelf: 'center',
+    zIndex: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 22,
+    backgroundColor: 'rgba(109,40,217,0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(167,139,250,0.4)',
+  },
+  privateChatFabText: { color: '#F5F3FF', fontSize: 13, fontWeight: '800' },
 
   actionBar: {
     position: 'absolute',

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,14 +8,16 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  Keyboard,
+  Modal,
+  StatusBar,
   Dimensions,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { Socket } from 'socket.io-client';
 
+import { playMessageReceivePop, playMessageSendPop } from '../lib/uiSounds';
 import { KEYBOARD_BEHAVIOR } from './KeyboardAware';
 
 const { width: SW } = Dimensions.get('window');
@@ -30,6 +32,7 @@ interface ChatMessage {
 }
 
 interface PrivateTalkChatProps {
+  visible: boolean;
   talkSessionId: string;
   sessionId: string;
   userId: string | number;
@@ -38,8 +41,8 @@ interface PrivateTalkChatProps {
   peerUsername: string;
   isHost?: boolean;
   sharedSocket?: Socket | null;
+  onClose: () => void;
   onEnd?: () => void;
-  bottomOffset?: number;
 }
 
 function appendMessage(prev: ChatMessage[], data: ChatMessage): ChatMessage[] {
@@ -57,10 +60,11 @@ function appendMessage(prev: ChatMessage[], data: ChatMessage): ChatMessage[] {
       return next;
     }
   }
-  return [...prev.slice(-80), data];
+  return [...prev.slice(-200), data];
 }
 
 export default function PrivateTalkChat({
+  visible,
   talkSessionId,
   sessionId,
   userId,
@@ -69,21 +73,20 @@ export default function PrivateTalkChat({
   peerUsername,
   isHost = false,
   sharedSocket,
+  onClose,
   onEnd,
-  bottomOffset = 0,
 }: PrivateTalkChatProps) {
   const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [socket, setSocket] = useState<Socket | null>(null);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const flatListRef = useRef<FlatList>(null);
+  const flatListRef = useRef<FlatList<ChatMessage>>(null);
   const joinedRef = useRef(false);
 
-  useEffect(() => {
-    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardVisible(true));
-    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardVisible(false));
-    return () => { show.remove(); hide.remove(); };
+  const scrollToEnd = useCallback(() => {
+    requestAnimationFrame(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    });
   }, []);
 
   const joinPrivateRoom = useCallback((s: Socket) => {
@@ -102,10 +105,15 @@ export default function PrivateTalkChat({
         message: `Private room opened — only you and @${peerUsername} can see this chat.`,
         timestamp: Date.now(),
       }));
+      scrollToEnd();
     };
 
     const onMessage = (data: ChatMessage) => {
       setMessages((prev) => appendMessage(prev, data));
+      if (data.type === 'text' && String(data.userId) !== String(userId)) {
+        playMessageReceivePop();
+      }
+      scrollToEnd();
     };
 
     const onError = (data?: { message?: string }) => {
@@ -150,7 +158,11 @@ export default function PrivateTalkChat({
       } catch { /* ignore */ }
       joinedRef.current = false;
     };
-  }, [sharedSocket, talkSessionId, sessionId, peerUsername, joinPrivateRoom, onEnd]);
+  }, [sharedSocket, talkSessionId, sessionId, peerUsername, joinPrivateRoom, onEnd, scrollToEnd]);
+
+  useEffect(() => {
+    if (visible) scrollToEnd();
+  }, [visible, scrollToEnd]);
 
   const sendMessage = useCallback(() => {
     const text = inputText.trim();
@@ -165,6 +177,7 @@ export default function PrivateTalkChat({
       timestamp: Date.now(),
     };
     setMessages((prev) => appendMessage(prev, optimistic));
+    playMessageSendPop();
     socket.emit('private_talk_message', {
       talkSessionId,
       sessionId,
@@ -173,9 +186,8 @@ export default function PrivateTalkChat({
       message: text,
     });
     setInputText('');
-  }, [inputText, socket, talkSessionId, sessionId, userId, username]);
-
-  const visibleMessages = useMemo(() => messages.slice(-12), [messages]);
+    scrollToEnd();
+  }, [inputText, socket, talkSessionId, sessionId, userId, username, scrollToEnd]);
 
   const renderMessage = useCallback(({ item }: { item: ChatMessage }) => {
     if (item.type === 'system') {
@@ -197,125 +209,179 @@ export default function PrivateTalkChat({
     );
   }, [userId, peerUserId, peerUsername]);
 
-  const bottomPad = keyboardVisible ? 0 : Math.max(insets.bottom, 8);
-
   return (
-    <KeyboardAvoidingView
-      behavior={KEYBOARD_BEHAVIOR}
-      style={[ps.container, bottomOffset > 0 && { bottom: bottomOffset }]}
-      keyboardVerticalOffset={0}
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      onRequestClose={onClose}
+      statusBarTranslucent
     >
-      <View style={ps.header}>
-        <View style={ps.headerLeft}>
-          <Ionicons name="lock-closed" size={14} color="#A78BFA" />
-          <Text style={ps.headerTitle}>Private with @{peerUsername}</Text>
-        </View>
-        <Text style={ps.headerSub}>{isHost ? 'Only you & this viewer' : 'Only you & host'}</Text>
-      </View>
-
-      <FlatList
-        ref={flatListRef}
-        data={visibleMessages}
-        renderItem={renderMessage}
-        keyExtractor={(item) => item.id}
-        style={ps.list}
-        contentContainerStyle={ps.listContent}
-        showsVerticalScrollIndicator={false}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-        ListEmptyComponent={
-          <Text style={ps.empty}>Private 1-on-1 chat — invisible to other viewers.</Text>
-        }
-      />
-
-      <View style={[ps.inputWrap, { paddingBottom: bottomPad }]}>
-        <View style={ps.inputRow}>
-          <View style={ps.inputField}>
-            <TextInput
-              style={ps.textInput}
-              placeholder={`Message @${peerUsername}...`}
-              placeholderTextColor="rgba(255,255,255,0.35)"
-              value={inputText}
-              onChangeText={setInputText}
-              onSubmitEditing={sendMessage}
-              returnKeyType="send"
-              maxLength={200}
-            />
+      <StatusBar barStyle="light-content" backgroundColor="#0a0814" />
+      <SafeAreaView style={ps.safe} edges={['top', 'bottom']}>
+        <KeyboardAvoidingView
+          style={ps.flex}
+          behavior={KEYBOARD_BEHAVIOR}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        >
+          <View style={ps.header}>
+            <TouchableOpacity onPress={onClose} style={ps.closeBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <Ionicons name="chevron-down" size={22} color="#E9D5FF" />
+            </TouchableOpacity>
+            <View style={ps.headerCenter}>
+              <View style={ps.headerTitleRow}>
+                <Ionicons name="lock-closed" size={14} color="#A78BFA" />
+                <Text style={ps.headerTitle}>@{peerUsername}</Text>
+              </View>
+              <Text style={ps.headerSub}>
+                {isHost ? 'Private chat · only you & this viewer' : 'Private chat · only you & host'}
+              </Text>
+            </View>
+            <View style={ps.closeBtn} />
           </View>
-          <TouchableOpacity onPress={sendMessage} disabled={!inputText.trim()} activeOpacity={0.7}>
-            <LinearGradient
-              colors={inputText.trim() ? ['#8B5CF6', '#6D28D9'] : ['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.05)']}
-              style={ps.sendBtn}
-            >
-              <Ionicons name="send" size={16} color={inputText.trim() ? '#FFF' : 'rgba(255,255,255,0.3)'} />
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </KeyboardAvoidingView>
+
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            renderItem={renderMessage}
+            keyExtractor={(item) => item.id}
+            style={ps.list}
+            contentContainerStyle={[
+              ps.listContent,
+              messages.length === 0 && ps.listContentEmpty,
+            ]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            automaticallyAdjustKeyboardInsets
+            onContentSizeChange={scrollToEnd}
+            ListEmptyComponent={
+              <View style={ps.emptyWrap}>
+                <Ionicons name="lock-closed" size={36} color="rgba(167,139,250,0.35)" />
+                <Text style={ps.emptyTitle}>Private 1-on-1 room</Text>
+                <Text style={ps.empty}>Messages here are invisible to other viewers.</Text>
+              </View>
+            }
+          />
+
+          <View style={[ps.inputWrap, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+            <View style={ps.inputRow}>
+              <View style={ps.inputField}>
+                <TextInput
+                  style={ps.textInput}
+                  placeholder={`Message @${peerUsername}...`}
+                  placeholderTextColor="rgba(255,255,255,0.35)"
+                  value={inputText}
+                  onChangeText={setInputText}
+                  onSubmitEditing={sendMessage}
+                  returnKeyType="send"
+                  maxLength={200}
+                  multiline={false}
+                />
+              </View>
+              <TouchableOpacity onPress={sendMessage} disabled={!inputText.trim()} activeOpacity={0.7}>
+                <LinearGradient
+                  colors={inputText.trim() ? ['#8B5CF6', '#6D28D9'] : ['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.05)']}
+                  style={ps.sendBtn}
+                >
+                  <Ionicons name="send" size={16} color={inputText.trim() ? '#FFF' : 'rgba(255,255,255,0.3)'} />
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>
   );
 }
 
 const ps = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    maxHeight: '48%',
-    zIndex: 15,
-    backgroundColor: 'rgba(10,8,20,0.92)',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(167,139,250,0.25)',
+  safe: {
+    flex: 1,
+    backgroundColor: '#0a0814',
   },
+  flex: { flex: 1 },
   header: {
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(167,139,250,0.12)',
+    borderBottomColor: 'rgba(167,139,250,0.15)',
+    backgroundColor: 'rgba(15,12,28,0.98)',
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  headerTitle: { color: '#E9D5FF', fontSize: 13, fontWeight: '800' },
-  headerSub: { color: 'rgba(167,139,250,0.65)', fontSize: 10, marginTop: 2, marginLeft: 20 },
-  list: { flex: 1, maxHeight: 180 },
-  listContent: { paddingVertical: 8, paddingHorizontal: 10 },
-  empty: { color: 'rgba(255,255,255,0.3)', fontSize: 12, padding: 12 },
-  systemRow: { alignItems: 'center', marginBottom: 8 },
-  systemText: { color: 'rgba(167,139,250,0.8)', fontSize: 11, textAlign: 'center', lineHeight: 16 },
-  msgRow: { marginBottom: 6, alignItems: 'flex-start' },
+  closeBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerCenter: { flex: 1, alignItems: 'center' },
+  headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  headerTitle: { color: '#E9D5FF', fontSize: 16, fontWeight: '800' },
+  headerSub: { color: 'rgba(167,139,250,0.65)', fontSize: 11, marginTop: 3, textAlign: 'center' },
+  list: { flex: 1 },
+  listContent: {
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    paddingBottom: 8,
+  },
+  listContentEmpty: { flexGrow: 1, justifyContent: 'center' },
+  emptyWrap: { alignItems: 'center', paddingHorizontal: 24, gap: 8 },
+  emptyTitle: { color: 'rgba(233,213,255,0.9)', fontSize: 16, fontWeight: '800', marginTop: 4 },
+  empty: { color: 'rgba(255,255,255,0.35)', fontSize: 13, textAlign: 'center', lineHeight: 20 },
+  systemRow: { alignItems: 'center', marginBottom: 12 },
+  systemText: { color: 'rgba(167,139,250,0.8)', fontSize: 12, textAlign: 'center', lineHeight: 18 },
+  msgRow: { marginBottom: 10, alignItems: 'flex-start' },
   msgRowSelf: { alignItems: 'flex-end' },
   bubble: {
-    maxWidth: SW * 0.72,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    maxWidth: SW * 0.78,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
   },
   bubbleSelf: {
-    backgroundColor: 'rgba(139,92,246,0.2)',
-    borderColor: 'rgba(167,139,250,0.3)',
+    backgroundColor: 'rgba(139,92,246,0.22)',
+    borderColor: 'rgba(167,139,250,0.35)',
   },
   bubblePeer: {
     backgroundColor: 'rgba(0,0,0,0.35)',
     borderColor: 'rgba(255,255,255,0.08)',
   },
-  name: { color: 'rgba(167,139,250,0.9)', fontSize: 10, fontWeight: '800', marginBottom: 2 },
-  text: { color: 'rgba(255,255,255,0.92)', fontSize: 13, lineHeight: 18 },
-  inputWrap: { paddingTop: 6, paddingHorizontal: 10 },
-  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  name: { color: 'rgba(167,139,250,0.9)', fontSize: 11, fontWeight: '800', marginBottom: 3 },
+  text: { color: 'rgba(255,255,255,0.92)', fontSize: 15, lineHeight: 21 },
+  inputWrap: {
+    paddingTop: 10,
+    paddingHorizontal: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(167,139,250,0.12)',
+    backgroundColor: 'rgba(15,12,28,0.98)',
+  },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   inputField: {
     flex: 1,
-    height: 40,
+    minHeight: 44,
     backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: 'rgba(167,139,250,0.15)',
+    borderColor: 'rgba(167,139,250,0.2)',
     justifyContent: 'center',
   },
-  textInput: { flex: 1, height: 40, paddingHorizontal: 14, color: '#FFF', fontSize: 14 },
-  sendBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  textInput: {
+    minHeight: 44,
+    paddingHorizontal: 16,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 10,
+    color: '#FFF',
+    fontSize: 15,
+  },
+  sendBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

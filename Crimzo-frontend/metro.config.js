@@ -5,6 +5,11 @@ const { FileStore } = require('metro-cache');
 
 const config = getDefaultConfig(__dirname);
 
+// Ensure audio assets resolve on all platforms
+if (!config.resolver.assetExts.includes('wav')) {
+  config.resolver.assetExts.push('wav');
+}
+
 // Use a stable on-disk store (shared across web/android)
 const root = process.env.METRO_CACHE_ROOT || path.join(__dirname, '.metro-cache');
 config.cacheStores = [
