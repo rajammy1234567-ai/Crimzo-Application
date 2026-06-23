@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import io from 'socket.io-client';
 import LiveChat from '../../components/LiveChat';
+import PrivateTalkChat from '../../components/PrivateTalkChat';
 import StickerPanel from '../../components/StickerPanel';
 import {
   createAgoraRtcEngine,
@@ -96,6 +97,7 @@ export default function WatchScreen() {
   const [talkCharged, setTalkCharged] = useState(0);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [requestingTalk, setRequestingTalk] = useState(false);
+  const [activeTalkSessionId, setActiveTalkSessionId] = useState<string | null>(null);
 
   const hostRates = useMemo(
     () => resolveRates(streamData?.hostVoiceRatePerMin, streamData?.hostChatRatePerMin),
@@ -135,6 +137,7 @@ export default function WatchScreen() {
       // non-fatal
     }
     talkSessionIdRef.current = null;
+    setActiveTalkSessionId(null);
     setCanChat(false);
     setTalkStatus('idle');
   }, [token, sessionId]);
@@ -183,6 +186,7 @@ export default function WatchScreen() {
       });
       if (billing.talkSessionId) {
         talkSessionIdRef.current = billing.talkSessionId;
+        setActiveTalkSessionId(billing.talkSessionId);
         setCanChat(true);
         setTalkStatus('active');
         if (billing.wallet_balance != null) {
@@ -194,7 +198,10 @@ export default function WatchScreen() {
         startTalkBillingLoop();
         const chatRate = streamData?.hostChatRatePerMin ?? 1;
         const chatBeans = streamData?.hostChatBeansPerMin ?? hostRates.chatBeansPerMin;
-        appAlert('Connected!', `You can now chat with the host. ₹${chatRate}/min is being charged. Host earns ${chatBeans} beans/min.`);
+        appAlert(
+          'Private Chat Started',
+          `You are now in a private 1-on-1 room with the host. Only you two can see messages.\n\n₹${chatRate}/min · Host earns ${chatBeans} beans/min`,
+        );
       }
     } catch (e) {
       appAlert('Billing Error', e instanceof ApiError ? e.message : 'Could not start talk billing');
@@ -211,6 +218,7 @@ export default function WatchScreen() {
         setTalkStatus('active');
         if (status.activeTalk?.id) {
           talkSessionIdRef.current = status.activeTalk.id;
+          setActiveTalkSessionId(status.activeTalk.id);
           setTalkMinutes(status.activeTalk.minutesCharged);
           setTalkCharged(status.activeTalk.totalCharged);
           startTalkBillingLoop();
@@ -231,6 +239,7 @@ export default function WatchScreen() {
       const res = await requestLiveTalk(token, String(sessionId));
       if (res.alreadyActive && res.talkSessionId) {
         talkSessionIdRef.current = res.talkSessionId;
+        setActiveTalkSessionId(res.talkSessionId);
         setCanChat(true);
         setTalkStatus('active');
         startTalkBillingLoop();
@@ -325,6 +334,19 @@ export default function WatchScreen() {
       setTalkStatus('rejected');
       setTalkRequestId(null);
       appAlert('Request Declined', 'The host declined your chat request.');
+    });
+    s.on('talk_private_ready', (data: { talkSessionId?: string }) => {
+      if (data?.talkSessionId) {
+        talkSessionIdRef.current = data.talkSessionId;
+        setActiveTalkSessionId(data.talkSessionId);
+      }
+    });
+    s.on('talk_private_ended', () => {
+      talkSessionIdRef.current = null;
+      setActiveTalkSessionId(null);
+      setCanChat(false);
+      setTalkStatus('idle');
+      clearTalkBilling();
     });
     socketRef.current = s;
     setViewerSocket(s);
@@ -703,8 +725,28 @@ export default function WatchScreen() {
         </View>
       )}
 
-      {/* ═══ LIVE CHAT OVERLAY ═══ */}
-      {sessionId && user && token && (
+      {/* ═══ PRIVATE 1-ON-1 CHAT (paid talk — invisible to other viewers) ═══ */}
+      {canChat && activeTalkSessionId && sessionId && user && streamData?.hostId && (
+        <PrivateTalkChat
+          talkSessionId={activeTalkSessionId}
+          sessionId={String(sessionId)}
+          userId={user.id}
+          username={user.username}
+          peerUserId={String(streamData.hostId)}
+          peerUsername={streamData.hostUsername || 'Host'}
+          isHost={false}
+          sharedSocket={viewerSocket}
+          onEnd={() => {
+            setCanChat(false);
+            setTalkStatus('idle');
+            setActiveTalkSessionId(null);
+            talkSessionIdRef.current = null;
+          }}
+        />
+      )}
+
+      {/* ═══ PUBLIC LIVE CHAT (read-only for viewers; host broadcast only) ═══ */}
+      {sessionId && user && token && !canChat && (
         <LiveChat
           sessionId={sessionId as string}
           userId={user.id}
@@ -712,7 +754,7 @@ export default function WatchScreen() {
           token={token}
           isHost={false}
           hostUserId={streamData?.hostId ? String(streamData.hostId) : undefined}
-          canChat={canChat}
+          canChat={false}
           talkRatePerMin={hostRates.chatRatePerMin}
           sharedSocket={viewerSocket}
           onStickerPress={() => setShowStickers(true)}

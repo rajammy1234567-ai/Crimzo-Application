@@ -11,11 +11,47 @@ const { chargeLiveTalkMinute, InsufficientWalletError } = require('../utils/live
 const { getIo, userRoom } = require('../utils/socketEmitter');
 const { resolveUserRates } = require('../utils/userRates');
 
+function privateTalkRoom(talkSessionId) {
+  return `talk_private_${String(talkSessionId)}`;
+}
+
 async function getHostChatRate(hostId, settings) {
   const host = await User.findById(hostId).select('chat_rate_per_min_inr voice_rate_per_min_inr');
   if (!host) return settings.liveTalkRatePerMin;
   return resolveUserRates(host, settings).chatRatePerMin;
 }
+
+async function emitTalkPrivateReady(io, talkSession) {
+  if (!io || !talkSession) return;
+  const talker = await User.findById(talkSession.talker_id).select('username avatar').lean();
+  const host = await User.findById(talkSession.host_id).select('username avatar').lean();
+  const payload = {
+    talkSessionId: talkSession._id.toString(),
+    sessionId: String(talkSession.session_id),
+    talkerId: String(talkSession.talker_id),
+    talkerName: talker?.username || 'Viewer',
+    talkerAvatar: talker?.avatar || null,
+    hostId: String(talkSession.host_id),
+    hostName: host?.username || 'Host',
+    hostAvatar: host?.avatar || null,
+  };
+  io.to(userRoom(talkSession.talker_id)).emit('talk_private_ready', payload);
+  io.to(userRoom(talkSession.host_id)).emit('talk_private_ready', payload);
+}
+
+exports.privateTalkRoom = privateTalkRoom;
+
+exports.verifyPrivateTalkAccess = async (talkSessionId, userId) => {
+  if (!talkSessionId || !userId) return null;
+  const talk = await LiveTalkSession.findOne({
+    _id: talkSessionId,
+    status: 'active',
+  }).select('host_id talker_id session_id');
+  if (!talk) return null;
+  const uid = String(userId);
+  if (String(talk.host_id) !== uid && String(talk.talker_id) !== uid) return null;
+  return talk;
+};
 
 exports.checkTalkEligibility = async (req, res) => {
   try {
@@ -115,7 +151,6 @@ exports.requestTalk = async (req, res) => {
         billingEnabled: settings.liveTalkBillingEnabled,
       };
       io.to(userRoom(hostId)).emit('live_talk_incoming', incomingPayload);
-      io.to(`live_${sessionId}`).emit('live_talk_incoming', incomingPayload);
     }
 
     res.json({
@@ -165,21 +200,14 @@ exports.respondTalk = async (req, res) => {
     };
 
     if (io) {
-      const liveRoom = `live_${request.session_id}`;
       if (action === 'accept') {
         io.to(userRoom(request.requester_id)).emit('live_talk_accepted', payload);
-        io.to(liveRoom).emit('live_talk_accepted', payload);
-        const beansPerMin = hostRates.chatBeansPerMin;
-        io.to(liveRoom).emit('live_system_message', {
-          type: 'talk_accepted',
-          username: 'System',
-          message: beansPerMin > 0
-            ? `Viewer granted permission to chat — host earns ${beansPerMin} beans/min`
-            : 'Viewer granted permission to chat',
+        io.to(userRoom(hostId)).emit('live_talk_accepted', {
+          ...payload,
+          requesterId: String(request.requester_id),
         });
       } else {
         io.to(userRoom(request.requester_id)).emit('live_talk_rejected', payload);
-        io.to(liveRoom).emit('live_talk_rejected', payload);
       }
     }
 
@@ -250,6 +278,7 @@ exports.getTalkStatus = async (req, res) => {
         activeChats: activeTalks.length,
         activeViewers: activeTalks.map((t) => ({
           talkSessionId: t._id.toString(),
+          talkerId: t.talker_id?._id?.toString() || String(t.talker_id),
           requesterName: t.talker_id?.username || 'Viewer',
           minutesCharged: t.minutes_charged,
           beansEarned: t.host_beans_earned || 0,
@@ -314,6 +343,8 @@ exports.startTalkBilling = async (req, res) => {
     });
     if (existing) {
       const user = await User.findById(talkerId).select('wallet_balance');
+      const io = getIo();
+      await emitTalkPrivateReady(io, existing);
       return res.json({
         success: true,
         talkSessionId: existing._id.toString(),
@@ -338,6 +369,8 @@ exports.startTalkBilling = async (req, res) => {
         status: 'active',
       });
       const user = await User.findById(talkerId).select('wallet_balance');
+      const io = getIo();
+      await emitTalkPrivateReady(io, talkSession);
       return res.json({
         success: true,
         talkSessionId: talkSession._id.toString(),
@@ -383,8 +416,9 @@ exports.startTalkBilling = async (req, res) => {
     });
 
     const io = getIo();
+    await emitTalkPrivateReady(io, talkSession);
     if (io && chargeResult.beansEarned > 0) {
-      io.to(`live_${sessionId}`).emit('live_talk_host_earning', {
+      io.to(userRoom(request.host_id)).emit('live_talk_host_earning', {
         sessionId: String(sessionId),
         hostId: String(request.host_id),
         beansEarned: chargeResult.beansEarned,
@@ -473,7 +507,7 @@ exports.tickTalkBilling = async (req, res) => {
 
     const io = getIo();
     if (io && chargeResult.beansEarned > 0) {
-      io.to(`live_${sessionId}`).emit('live_talk_host_earning', {
+      io.to(userRoom(talkSession.host_id)).emit('live_talk_host_earning', {
         sessionId: String(sessionId),
         hostId: String(talkSession.host_id),
         beansEarned: chargeResult.beansEarned,
@@ -511,6 +545,19 @@ exports.endTalkBilling = async (req, res) => {
       { new: true },
     );
 
+    if (talkSession) {
+      const io = getIo();
+      if (io) {
+        const payload = {
+          talkSessionId: talkSession._id.toString(),
+          sessionId: String(talkSession.session_id),
+        };
+        io.to(userRoom(talkSession.talker_id)).emit('talk_private_ended', payload);
+        io.to(userRoom(talkSession.host_id)).emit('talk_private_ended', payload);
+        io.to(privateTalkRoom(talkSession._id)).emit('talk_private_ended', payload);
+      }
+    }
+
     res.json({
       success: true,
       ended: !!talkSession,
@@ -523,26 +570,9 @@ exports.endTalkBilling = async (req, res) => {
   }
 };
 
-/** Used by socket handler to verify chat permission */
+/** Public live chat: host broadcast only. Paid viewers use private talk room. */
 exports.userCanChatOnLive = async (sessionId, userId) => {
-  const settings = await getBillingSettings();
   const session = await LiveSession.findById(sessionId).select('user_id status');
   if (!session || session.status !== 'active') return false;
-  if (String(session.user_id) === String(userId)) return true;
-
-  const accepted = await LiveTalkRequest.findOne({
-    session_id: sessionId,
-    requester_id: userId,
-    status: 'accepted',
-  }).select('_id');
-  if (!accepted) return false;
-
-  if (!settings.liveTalkBillingEnabled) return true;
-
-  const active = await LiveTalkSession.findOne({
-    session_id: sessionId,
-    talker_id: userId,
-    status: 'active',
-  }).select('_id');
-  return !!active;
+  return String(session.user_id) === String(userId);
 };

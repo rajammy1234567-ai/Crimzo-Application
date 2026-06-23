@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import io from 'socket.io-client';
 import LiveChat from '../../components/LiveChat';
+import PrivateTalkChat from '../../components/PrivateTalkChat';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import {
   createAgoraRtcEngine,
@@ -175,6 +176,12 @@ export default function BroadcastScreen() {
   }>>([]);
   const [hostChatBeansEarned, setHostChatBeansEarned] = useState(0);
   const [activeChatCount, setActiveChatCount] = useState(0);
+  const [privateChats, setPrivateChats] = useState<Array<{
+    talkSessionId: string;
+    talkerId: string;
+    talkerName: string;
+  }>>([]);
+  const [selectedPrivateTalkId, setSelectedPrivateTalkId] = useState<string | null>(null);
   const [myRates, setMyRates] = useState(() => resolveRates(1, 1));
   const handledTalkRequestIds = useRef<Set<string>>(new Set());
   const promptedTalkRequestIds = useRef<Set<string>>(new Set());
@@ -238,7 +245,7 @@ export default function BroadcastScreen() {
       promptedTalkRequestIds.current.add(requestId);
       setPendingTalkRequests((prev) => prev.filter((r) => r.id !== requestId));
       if (action === 'accept') {
-        appAlert('Request Accepted', 'The viewer can now chat on your live stream.');
+        appAlert('Request Accepted', 'A private 1-on-1 chat room will open once billing starts. Only you and this viewer can access it.');
       }
     } catch (e) {
       appAlert('Error', e instanceof ApiError ? e.message : `Could not ${action} request`);
@@ -290,6 +297,23 @@ export default function BroadcastScreen() {
         if (status.hostChatEarnings) {
           setHostChatBeansEarned(status.hostChatEarnings.sessionBeansEarned);
           setActiveChatCount(status.hostChatEarnings.activeChats);
+          const actives = (status.hostChatEarnings.activeViewers || []).map((v) => ({
+            talkSessionId: v.talkSessionId,
+            talkerId: (v as { talkerId?: string }).talkerId || '',
+            talkerName: v.requesterName || 'Viewer',
+          }));
+          if (actives.length) {
+            setPrivateChats((prev) => {
+              const merged = [...prev];
+              for (const a of actives) {
+                if (!merged.some((m) => m.talkSessionId === a.talkSessionId)) {
+                  merged.push(a);
+                }
+              }
+              return merged;
+            });
+            setSelectedPrivateTalkId((cur) => cur || actives[0]?.talkSessionId || null);
+          }
         }
         const pending = status.pendingRequests || [];
         setPendingTalkRequests(pending.map((r) => ({
@@ -341,6 +365,29 @@ export default function BroadcastScreen() {
       ratePerMin?: number;
     }) => {
       promptTalkRequest(data);
+    });
+    s.on('talk_private_ready', (data: {
+      talkSessionId?: string;
+      talkerId?: string;
+      talkerName?: string;
+    }) => {
+      if (!data?.talkSessionId) return;
+      setPrivateChats((prev) => {
+        if (prev.some((p) => p.talkSessionId === data.talkSessionId)) return prev;
+        return [...prev, {
+          talkSessionId: data.talkSessionId!,
+          talkerId: data.talkerId || '',
+          talkerName: data.talkerName || 'Viewer',
+        }];
+      });
+      setSelectedPrivateTalkId(data.talkSessionId);
+      setActiveChatCount((c) => c + 1);
+    });
+    s.on('talk_private_ended', (data: { talkSessionId?: string }) => {
+      if (!data?.talkSessionId) return;
+      setPrivateChats((prev) => prev.filter((p) => p.talkSessionId !== data.talkSessionId));
+      setSelectedPrivateTalkId((cur) => (cur === data.talkSessionId ? null : cur));
+      setActiveChatCount((c) => Math.max(0, c - 1));
     });
     s.on('live_talk_host_earning', (data: { sessionBeansEarned?: number; beansEarned?: number }) => {
       if (typeof data?.sessionBeansEarned === 'number') {
@@ -757,7 +804,44 @@ export default function BroadcastScreen() {
           </View>
         )}
 
-        {/* ── LIVE CHAT ── */}
+        {/* ── PRIVATE 1-ON-1 CHATS (per paid viewer) ── */}
+        {isLive && privateChats.length > 1 && (
+          <View style={st.privateChatTabs}>
+            {privateChats.map((pc) => (
+              <TouchableOpacity
+                key={pc.talkSessionId}
+                style={[st.privateChatTab, selectedPrivateTalkId === pc.talkSessionId && st.privateChatTabActive]}
+                onPress={() => setSelectedPrivateTalkId(pc.talkSessionId)}
+              >
+                <Ionicons name="lock-closed" size={10} color="#C4B5FD" />
+                <Text style={st.privateChatTabText}>@{pc.talkerName}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {isLive && selectedPrivateTalkId && sessionId && user && token && (() => {
+          const pc = privateChats.find((p) => p.talkSessionId === selectedPrivateTalkId);
+          if (!pc) return null;
+          return (
+            <PrivateTalkChat
+              talkSessionId={pc.talkSessionId}
+              sessionId={String(sessionId)}
+              userId={user.id}
+              username={user.username}
+              peerUserId={pc.talkerId || 'viewer'}
+              peerUsername={pc.talkerName}
+              isHost
+              sharedSocket={liveSocket}
+              onEnd={() => {
+                setPrivateChats((prev) => prev.filter((p) => p.talkSessionId !== pc.talkSessionId));
+                setSelectedPrivateTalkId(null);
+              }}
+            />
+          );
+        })()}
+
+        {/* ── PUBLIC LIVE CHAT (host broadcast to all viewers) ── */}
         {isLive && sessionId && user && token && (
           <LiveChat
             sessionId={sessionId}
@@ -947,6 +1031,32 @@ const st = StyleSheet.create({
     alignItems: 'center',
   },
   talkAcceptText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
+  privateChatTabs: {
+    position: 'absolute',
+    bottom: 280,
+    left: 12,
+    right: 12,
+    zIndex: 16,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  privateChatTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(139,92,246,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(167,139,250,0.2)',
+  },
+  privateChatTabActive: {
+    backgroundColor: 'rgba(139,92,246,0.35)',
+    borderColor: 'rgba(167,139,250,0.5)',
+  },
+  privateChatTabText: { color: '#E9D5FF', fontSize: 11, fontWeight: '700' },
 
   // Side actions
   sideActions: { position: 'absolute', right: 12, top: '28%', zIndex: 15, gap: 14, alignItems: 'center' },

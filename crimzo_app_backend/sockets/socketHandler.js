@@ -3,7 +3,11 @@ const User = require('../models/User');
 const LiveSession = require('../models/LiveSession');
 const { getBillingSettings } = require('../utils/billingSettings');
 const { resolveUserRates } = require('../utils/userRates');
-const { userCanChatOnLive } = require('../controllers/liveTalkController');
+const {
+  userCanChatOnLive,
+  verifyPrivateTalkAccess,
+  privateTalkRoom,
+} = require('../controllers/liveTalkController');
 const { finalizeLiveSessionEnd } = require('../controllers/liveController');
 const PKBattle = require('../models/PKBattle');
 const Sticker = require('../models/Sticker');
@@ -401,6 +405,70 @@ module.exports = (io) => {
       }
     });
 
+    socket.on('join_talk_private', async (data) => {
+      const { talkSessionId } = data || {};
+      const userId = socket.authenticatedUserId || data?.userId;
+      if (!talkSessionId || !userId) return;
+      try {
+        const talk = await verifyPrivateTalkAccess(talkSessionId, userId);
+        if (!talk) {
+          socket.emit('private_talk_error', {
+            code: 'ACCESS_DENIED',
+            message: 'You do not have access to this private chat.',
+          });
+          return;
+        }
+        const room = privateTalkRoom(talkSessionId);
+        socket.join(room);
+        socket.privateTalkSessionId = String(talkSessionId);
+        socket.emit('talk_private_joined', {
+          talkSessionId: String(talkSessionId),
+          sessionId: String(talk.session_id),
+        });
+      } catch (err) {
+        console.error('join_talk_private error:', err.message);
+        socket.emit('private_talk_error', { code: 'JOIN_FAILED', message: 'Could not join private chat' });
+      }
+    });
+
+    socket.on('leave_talk_private', (data) => {
+      const talkSessionId = data?.talkSessionId || socket.privateTalkSessionId;
+      if (!talkSessionId) return;
+      socket.leave(privateTalkRoom(talkSessionId));
+      if (String(socket.privateTalkSessionId) === String(talkSessionId)) {
+        socket.privateTalkSessionId = undefined;
+      }
+    });
+
+    socket.on('private_talk_message', async (data) => {
+      const { talkSessionId, username, message } = data || {};
+      const userId = socket.authenticatedUserId || data?.userId;
+      if (!talkSessionId || !userId || !message?.trim()) return;
+      try {
+        const talk = await verifyPrivateTalkAccess(talkSessionId, userId);
+        if (!talk) {
+          socket.emit('private_talk_error', {
+            code: 'ACCESS_DENIED',
+            message: 'You do not have access to this private chat.',
+          });
+          return;
+        }
+        const room = privateTalkRoom(talkSessionId);
+        io.to(room).emit('private_talk_message', {
+          id: `pmsg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+          type: 'text',
+          talkSessionId: String(talkSessionId),
+          userId: String(userId),
+          username: username || socket.authenticatedUsername || 'User',
+          message: message.trim(),
+          timestamp: Date.now(),
+        });
+      } catch (err) {
+        console.error('private_talk_message error:', err.message);
+        socket.emit('private_talk_error', { code: 'SEND_FAILED', message: 'Could not send private message' });
+      }
+    });
+
     socket.on('live_chat_message', async (data) => {
       const { sessionId, username, message } = data || {};
       const userId = socket.authenticatedUserId || data?.userId;
@@ -411,7 +479,7 @@ module.exports = (io) => {
         if (!allowed) {
           socket.emit('live_chat_error', {
             code: 'TALK_NOT_ACTIVE',
-            message: 'Please send a request to the host and recharge your wallet first. Then you can chat.',
+            message: 'Public chat is for the host only. Request a private chat with the host to talk 1-on-1.',
           });
           return;
         }
@@ -447,7 +515,7 @@ module.exports = (io) => {
         if (!allowed) {
           socket.emit('live_chat_error', {
             code: 'TALK_NOT_ACTIVE',
-            message: 'Please send a request to the host and recharge your wallet first. Then you can chat.',
+            message: 'Only the host can interact in public chat. Send a private chat request to talk 1-on-1.',
           });
           return;
         }

@@ -960,7 +960,7 @@ exports.requestWithdraw = async (req, res) => {
     if (!isWithdrawalDayAllowed()) {
       const nextDay = getNextWithdrawalDate();
       return res.status(400).json({
-        error: `Withdraw sirf har mahine ki ${WITHDRAW_DAY_OF_MONTH} tareekh ko hi ho sakta hai.`,
+        error: `Withdrawals are only available on the ${WITHDRAW_DAY_OF_MONTH}th of every month.`,
         code: 'WITHDRAW_DAY_RESTRICTED',
         withdrawDayOfMonth: WITHDRAW_DAY_OF_MONTH,
         nextWithdrawDay: nextDay.toISOString(),

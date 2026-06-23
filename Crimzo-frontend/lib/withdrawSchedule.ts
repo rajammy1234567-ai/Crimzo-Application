@@ -22,9 +22,9 @@ export function formatWithdrawDate(date: Date): string {
 }
 
 export const WITHDRAW_DAY_MESSAGE =
-  'Withdraw sirf har mahine ki 7 tareekh ko hi ho sakta hai.';
+  'Withdrawals are only available on the 7th of every month.';
 
 export function withdrawUnavailableMessage(from: Date = new Date()): string {
   const next = nextWithdrawDate(from);
-  return `${WITHDRAW_DAY_MESSAGE}\n\nAgla withdraw: ${formatWithdrawDate(next)}`;
+  return `${WITHDRAW_DAY_MESSAGE}\n\nNext withdrawal date: ${formatWithdrawDate(next)}`;
 }
