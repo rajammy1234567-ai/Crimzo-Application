@@ -18,8 +18,15 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { apiGet, resolveMediaUrl } from '../../lib/apiClient';
+import io from 'socket.io-client';
+import { API_URL, apiGet, resolveMediaUrl } from '../../lib/apiClient';
 import { sameUserId } from '../../lib/agoraUid';
+
+function isPkWinner(battle: any, side: 'host1' | 'host2'): boolean {
+  if (battle.status !== 'ended' || !battle.winner_id) return false;
+  const hostId = side === 'host1' ? battle.host1_id : battle.host2_id;
+  return !!hostId && sameUserId(battle.winner_id, hostId);
+}
 const { width: SW } = Dimensions.get('window');
 
 // ── Animated PK Logo ──
@@ -81,6 +88,9 @@ const BattleCard = ({
   index: number;
 }) => {
   const isWaiting = battle.status === 'waiting';
+  const isEnded = battle.status === 'ended';
+  const host1Won = isPkWinner(battle, 'host1');
+  const host2Won = isPkWinner(battle, 'host2');
   const fadeIn = useRef(new Animated.Value(0)).current;
   const slideUp = useRef(new Animated.Value(30)).current;
 
@@ -101,7 +111,13 @@ const BattleCard = ({
             <Text style={lobbyStyles.statusText}>LOOKING FOR OPPONENT</Text>
           </LinearGradient>
         )}
-        {!isWaiting && (
+        {isEnded && (
+          <View style={[lobbyStyles.statusBadge, { backgroundColor: 'rgba(255,215,0,0.15)' }]}>
+            <Ionicons name="trophy" size={10} color="#FFD700" />
+            <Text style={[lobbyStyles.statusText, { color: '#FFD700' }]}>BATTLE ENDED</Text>
+          </View>
+        )}
+        {!isWaiting && !isEnded && (
           <View style={[lobbyStyles.statusBadge, { backgroundColor: 'rgba(48,209,88,0.2)' }]}>
             <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#30D158' }} />
             <Text style={[lobbyStyles.statusText, { color: '#30D158' }]}>LIVE BATTLE</Text>
@@ -112,13 +128,20 @@ const BattleCard = ({
         <View style={lobbyStyles.hostsRow}>
           {/* Host 1 */}
           <View style={lobbyStyles.hostCol}>
-            <UserAvatar
-              uri={battle.host1_avatar}
-              name={battle.host1_username || 'Host'}
-              size={52}
-              colors={['#FF2D55', '#FF6B8A']}
-            />
-            <Text style={lobbyStyles.hostName} numberOfLines={1}>
+            <View style={{ position: 'relative' }}>
+              <UserAvatar
+                uri={battle.host1_avatar}
+                name={battle.host1_username || 'Host'}
+                size={52}
+                colors={['#FF2D55', '#FF6B8A']}
+              />
+              {host1Won && (
+                <View style={lobbyStyles.winnerTag}>
+                  <Text style={lobbyStyles.winnerTagText}>WINNER</Text>
+                </View>
+              )}
+            </View>
+            <Text style={[lobbyStyles.hostName, host1Won && { color: '#FFD700' }]} numberOfLines={1}>
               {battle.host1_username || 'Host 1'}
             </Text>
             <View style={lobbyStyles.hostScorePill}>
@@ -138,13 +161,20 @@ const BattleCard = ({
           <View style={lobbyStyles.hostCol}>
             {battle.host2_id ? (
               <>
-                <UserAvatar
-                  uri={battle.host2_avatar}
-                  name={battle.host2_username || 'Host'}
-                  size={52}
-                  colors={['#30D158', '#4ADE80']}
-                />
-                <Text style={lobbyStyles.hostName} numberOfLines={1}>
+                <View style={{ position: 'relative' }}>
+                  <UserAvatar
+                    uri={battle.host2_avatar}
+                    name={battle.host2_username || 'Host'}
+                    size={52}
+                    colors={['#30D158', '#4ADE80']}
+                  />
+                  {host2Won && (
+                    <View style={lobbyStyles.winnerTag}>
+                      <Text style={lobbyStyles.winnerTagText}>WINNER</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={[lobbyStyles.hostName, host2Won && { color: '#FFD700' }]} numberOfLines={1}>
                   {battle.host2_username || 'Host 2'}
                 </Text>
                 <View style={[lobbyStyles.hostScorePill, { borderColor: 'rgba(48,209,88,0.3)' }]}>
@@ -191,7 +221,7 @@ const BattleCard = ({
               </LinearGradient>
             </TouchableOpacity>
           )}
-          {!isWaiting && (
+          {!isWaiting && !isEnded && (
             <TouchableOpacity
               style={lobbyStyles.joinBtn}
               onPress={() => onWatch(battle.battle_id)}
@@ -202,6 +232,11 @@ const BattleCard = ({
                 <Text style={lobbyStyles.joinBtnText}>Watch</Text>
               </LinearGradient>
             </TouchableOpacity>
+          )}
+          {isEnded && (
+            <Text style={lobbyStyles.endedResult}>
+              {battle.winner_username ? `${battle.winner_username} won` : 'Draw'}
+            </Text>
           )}
         </View>
       </View>
@@ -227,6 +262,21 @@ export default function PKLobbyScreen() {
 
   useEffect(() => {
     fetchBattles();
+    if (token && API_URL) {
+      const sock = io(API_URL, { transports: ['websocket'], auth: { token } });
+      sock.on('pk_battles_updated', () => { void fetchBattles(); });
+      return () => { sock.disconnect(); };
+    }
+  }, [token]);
+
+  useEffect(() => {
+    const hasLive = battles.some((b) => b.status === 'active');
+    if (!hasLive) return;
+    const interval = setInterval(() => { void fetchBattles(); }, 4000);
+    return () => clearInterval(interval);
+  }, [battles]);
+
+  useEffect(() => {
     Animated.parallel([
       Animated.timing(headerFade, { toValue: 1, duration: 500, useNativeDriver: true }),
       Animated.timing(headerSlide, { toValue: 0, duration: 500, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
@@ -474,6 +524,13 @@ const lobbyStyles = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 8, borderRadius: 14,
   },
   joinBtnText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  winnerTag: {
+    position: 'absolute', bottom: -6, alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.9)', paddingHorizontal: 6, paddingVertical: 2,
+    borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,215,0,0.45)',
+  },
+  winnerTagText: { color: '#FFD700', fontSize: 8, fontWeight: '900', letterSpacing: 0.5 },
+  endedResult: { color: '#FFD700', fontSize: 12, fontWeight: '700', textAlign: 'center', flex: 1 },
 
   activeBadge: {
     backgroundColor: 'rgba(48,209,88,0.15)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10,

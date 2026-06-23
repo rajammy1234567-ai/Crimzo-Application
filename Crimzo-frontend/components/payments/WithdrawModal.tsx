@@ -54,7 +54,10 @@ export default function WithdrawModal({
   const balance = withdrawInfo?.withdrawableInr ?? 0;
 
   const parsed = Number(amount) || 0;
-  const canWithdraw = paymentMethod?.status === 'verified' && balance >= minWithdraw;
+  const canWithdraw =
+    paymentMethod?.status === 'verified'
+    && (paymentMethod?.type === 'bank' || paymentMethod?.type === 'upi')
+    && balance >= minWithdraw;
 
   const affordableTiers = BEAN_PACKAGES.filter((p) => p.price <= balance && p.price >= minWithdraw);
 
@@ -71,7 +74,7 @@ export default function WithdrawModal({
           <View style={s.handle} />
           <Text style={s.title}>Withdraw Earnings</Text>
           <Text style={s.sub}>
-            Diamonds are auto-converted to beans, then beans are paid out to your verified bank/UPI (1–3 business days).
+            Diamonds convert to beans, then real money is sent to your verified bank account or UPI ID — not your phone number.
           </Text>
 
           {diamonds > 0 && (
@@ -102,8 +105,15 @@ export default function WithdrawModal({
 
           {paymentMethod?.status === 'verified' ? (
             <View style={s.bankRow}>
-              <Ionicons name="business" size={20} color="#FF9500" />
-              <Text style={s.bankVal}>{paymentMethod.display}</Text>
+              <Ionicons
+                name={paymentMethod.type === 'upi' ? 'phone-portrait-outline' : 'business'}
+                size={20}
+                color="#FF9500"
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={s.bankVal}>{paymentMethod.display}</Text>
+                <Text style={s.bankHint}>Payout destination — money goes here</Text>
+              </View>
             </View>
           ) : (
             <TouchableOpacity style={s.setupBanner} onPress={onSetupPayment}>
@@ -199,7 +209,8 @@ const s = StyleSheet.create({
   balanceVal: { color: '#FF9500', fontSize: 20, fontWeight: '800', marginTop: 2 },
   breakdown: { color: 'rgba(255,255,255,0.4)', fontSize: 11, textAlign: 'center', marginBottom: 12 },
   bankRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16, padding: 12, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12 },
-  bankVal: { color: '#FFF', fontSize: 14, fontWeight: '600', flex: 1 },
+  bankVal: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+  bankHint: { color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: 2 },
   setupBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16, padding: 14, backgroundColor: 'rgba(255,45,85,0.1)', borderRadius: 14 },
   setupText: { color: '#FF2D55', fontSize: 14, fontWeight: '700', flex: 1 },
   inputLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 8 },

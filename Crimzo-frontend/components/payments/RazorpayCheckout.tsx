@@ -69,6 +69,7 @@ type Props = {
     razorpay_signature: string;
   }) => void;
   onCancel: () => void;
+  onError?: (message: string) => void;
 };
 
 function buildCheckoutHtml(checkout: RazorpayCheckoutData): string {
@@ -146,6 +147,9 @@ function buildCheckoutHtml(checkout: RazorpayCheckoutData): string {
           post({ type: 'success', data: response });
         },
         modal: {
+          backdropclose: false,
+          escape: true,
+          confirm_close: true,
           ondismiss: function () { post({ type: 'cancel' }); }
         }
       };
@@ -162,8 +166,13 @@ function buildCheckoutHtml(checkout: RazorpayCheckoutData): string {
 </html>`;
 }
 
-export default function RazorpayCheckout({ checkout, onSuccess, onCancel }: Props) {
+export default function RazorpayCheckout({ checkout, onSuccess, onCancel, onError }: Props) {
   const openedWeb = useRef(false);
+
+  const failCheckout = useCallback((message: string) => {
+    if (onError) onError(message);
+    else onCancel();
+  }, [onCancel, onError]);
 
   const handleExternalUrl = useCallback((url: string) => {
     if (!shouldOpenExternally(url)) return true;
@@ -175,7 +184,7 @@ export default function RazorpayCheckout({ checkout, onSuccess, onCancel }: Prop
   useEffect(() => {
     if (Platform.OS !== 'web' || !checkout || openedWeb.current) return;
     if (!checkout.razorpayKeyId || !checkout.razorpayOrderId) {
-      onCancel();
+      failCheckout('Payment setup incomplete (missing Razorpay order). Restart and try again.');
       return;
     }
     openedWeb.current = true;
@@ -186,7 +195,7 @@ export default function RazorpayCheckout({ checkout, onSuccess, onCancel }: Prop
     script.onload = () => {
       const RazorpayCtor = (window as any).Razorpay;
       if (!RazorpayCtor) {
-        onCancel();
+        failCheckout('Could not load Razorpay checkout. Check internet connection.');
         return;
       }
       const prefs = checkout.paymentPrefs;
@@ -257,11 +266,18 @@ export default function RazorpayCheckout({ checkout, onSuccess, onCancel }: Prop
           openedWeb.current = false;
         },
         modal: {
+          backdropclose: false,
+          escape: true,
+          confirm_close: true,
           ondismiss: () => {
             onCancel();
             openedWeb.current = false;
           },
         },
+      });
+      rzp.on('payment.failed', (resp: { error?: { description?: string } }) => {
+        failCheckout(resp.error?.description || 'Payment failed');
+        openedWeb.current = false;
       });
       rzp.open();
     };
@@ -270,7 +286,7 @@ export default function RazorpayCheckout({ checkout, onSuccess, onCancel }: Prop
     return () => {
       openedWeb.current = false;
     };
-  }, [checkout, onSuccess, onCancel]);
+  }, [checkout, onSuccess, onCancel, failCheckout]);
 
   if (!checkout || checkout.mode !== 'razorpay') return null;
   if (!checkout.razorpayKeyId || !checkout.razorpayOrderId) return null;
@@ -304,6 +320,10 @@ export default function RazorpayCheckout({ checkout, onSuccess, onCancel }: Prop
               void openExternalPaymentUrl(navState.url);
             }
           }}
+          onOpenWindow={(event) => {
+            const targetUrl = event.nativeEvent.targetUrl;
+            if (targetUrl) void openExternalPaymentUrl(targetUrl);
+          }}
           onMessage={(event) => {
             try {
               const msg = JSON.parse(event.nativeEvent.data);
@@ -312,10 +332,10 @@ export default function RazorpayCheckout({ checkout, onSuccess, onCancel }: Prop
               } else if (msg.type === 'cancel') {
                 onCancel();
               } else if (msg.type === 'error') {
-                onCancel();
+                failCheckout(msg.message || 'Payment failed');
               }
             } catch {
-              onCancel();
+              failCheckout('Payment window closed unexpectedly');
             }
           }}
           startInLoadingState

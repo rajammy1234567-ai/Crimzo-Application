@@ -1,6 +1,7 @@
 const { RtcTokenBuilder, RtcRole } = require('agora-access-token');
 const User = require('../models/User');
 const { getBillingSettings } = require('../utils/billingSettings');
+const { assertCanInteract } = require('../utils/followPermissions');
 
 function buildAgoraUid(userId) {
   const uidStr = String(userId).replace(/[^0-9]/g, '');
@@ -22,9 +23,20 @@ function requireAgoraCreds(res) {
 /** 1-on-1 video call token (Communication channel — both users publish) */
 exports.generateCallToken = async (req, res) => {
   try {
-    const { channelName, role } = req.body;
+    const { channelName, role, peerId } = req.body;
     if (!channelName || !String(channelName).startsWith('vc_')) {
       return res.status(400).json({ error: 'Valid call channel name required' });
+    }
+
+    if (peerId) {
+      try {
+        await assertCanInteract(req.user.id, peerId);
+      } catch (permErr) {
+        return res.status(permErr.statusCode || 403).json({
+          error: permErr.message,
+          code: permErr.code || 'FOLLOW_REQUIRED',
+        });
+      }
     }
 
     const billingSettings = await getBillingSettings();

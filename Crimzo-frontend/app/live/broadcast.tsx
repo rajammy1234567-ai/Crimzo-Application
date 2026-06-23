@@ -33,7 +33,12 @@ import {
 } from '../../components/agoraImports';
 
 import { API_URL, apiGet, apiPost, ApiError } from '../../lib/apiClient';
-import { respondLiveTalk, getLiveTalkStatus, LIVE_TALK_RATE_PER_MIN } from '../../lib/liveTalkBilling';
+import {
+  respondLiveTalk,
+  getLiveTalkStatus,
+  LIVE_TALK_RATE_PER_MIN,
+  LIVE_TALK_BEANS_PER_MIN,
+} from '../../lib/liveTalkBilling';
 
 const LIVE_START_TIMEOUT_MS = 10000;
 const LOADING_SAFETY_MS = 15000;
@@ -180,6 +185,8 @@ export default function BroadcastScreen() {
     requesterName?: string;
     requesterAvatar?: string | null;
   }>>([]);
+  const [hostChatBeansEarned, setHostChatBeansEarned] = useState(0);
+  const [activeChatCount, setActiveChatCount] = useState(0);
   const handledTalkRequestIds = useRef<Set<string>>(new Set());
   const promptedTalkRequestIds = useRef<Set<string>>(new Set());
 
@@ -261,7 +268,7 @@ export default function BroadcastScreen() {
     });
     Alert.alert(
       'Talk Request',
-      `${data.requesterName || 'A viewer'} wants to chat with you on live.\n\nThe viewer will be charged ₹${rate}/min.`,
+      `${data.requesterName || 'A viewer'} wants to chat with you on live.\n\nViewer pays ₹${rate}/min from wallet.\nYou earn ${LIVE_TALK_BEANS_PER_MIN} beans/min.`,
       [
         {
           text: 'Decline',
@@ -281,6 +288,10 @@ export default function BroadcastScreen() {
     const refreshPendingTalkRequests = async () => {
       try {
         const status = await getLiveTalkStatus(token, sessionId);
+        if (status.hostChatEarnings) {
+          setHostChatBeansEarned(status.hostChatEarnings.sessionBeansEarned);
+          setActiveChatCount(status.hostChatEarnings.activeChats);
+        }
         const pending = status.pendingRequests || [];
         setPendingTalkRequests(pending.map((r) => ({
           id: r.id,
@@ -325,6 +336,13 @@ export default function BroadcastScreen() {
       ratePerMin?: number;
     }) => {
       promptTalkRequest(data);
+    });
+    s.on('live_talk_host_earning', (data: { sessionBeansEarned?: number; beansEarned?: number }) => {
+      if (typeof data?.sessionBeansEarned === 'number') {
+        setHostChatBeansEarned(data.sessionBeansEarned);
+      } else if (typeof data?.beansEarned === 'number') {
+        setHostChatBeansEarned((prev) => prev + data.beansEarned!);
+      }
     });
     s.on('stream_ended', async (data: { message?: string }) => {
       setIsLive(false);
@@ -658,12 +676,22 @@ export default function BroadcastScreen() {
           )}
         </SafeAreaView>
 
+        {isLive && (hostChatBeansEarned > 0 || activeChatCount > 0) && (
+          <View style={st.talkEarningsBanner}>
+            <Ionicons name="cafe" size={14} color="#FF9500" />
+            <Text style={st.talkEarningsText}>
+              Chat earnings · +{hostChatBeansEarned.toLocaleString('en-IN')} beans
+              {activeChatCount > 0 ? ` · ${activeChatCount} active` : ''}
+            </Text>
+          </View>
+        )}
+
         {isLive && pendingTalkRequests.length > 0 && (
           <View style={st.talkRequestBanner}>
             {pendingTalkRequests.map((req) => (
               <View key={req.id} style={st.talkRequestCard}>
                 <Text style={st.talkRequestText}>
-                  {req.requesterName || 'A viewer'} wants to chat · ₹{LIVE_TALK_RATE_PER_MIN}/min
+                  {req.requesterName || 'A viewer'} wants to chat · ₹{LIVE_TALK_RATE_PER_MIN}/min · you earn {LIVE_TALK_BEANS_PER_MIN} beans/min
                 </Text>
                 <View style={st.talkRequestActions}>
                   <TouchableOpacity
@@ -867,6 +895,23 @@ const st = StyleSheet.create({
   hostAvatarFallback: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.15)' },
   hostAvatarText: { color: '#FFF', fontSize: 12, fontWeight: '800' },
   hostName: { color: '#FFF', fontSize: 13, fontWeight: '700', maxWidth: 120 },
+  talkEarningsBanner: {
+    position: 'absolute',
+    top: 118,
+    left: 14,
+    right: 14,
+    zIndex: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,149,0,0.15)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,149,0,0.3)',
+  },
+  talkEarningsText: { color: '#FF9500', fontSize: 12, fontWeight: '800', flex: 1 },
   talkRequestBanner: {
     position: 'absolute', top: 120, left: 14, right: 14, zIndex: 25, gap: 8,
   },

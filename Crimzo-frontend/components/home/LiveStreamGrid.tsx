@@ -223,13 +223,18 @@ const s = StyleSheet.create({
     content: { flex: 1 },
 
     // Grid
-    grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 8, gap: 6 },
+    grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, gap: 10, paddingTop: 4 },
 
     // Card
-    card: { width: CARD_W, borderRadius: 14, overflow: 'hidden', marginBottom: 2 },
+    card: {
+        width: CARD_W, borderRadius: 18, overflow: 'hidden', marginBottom: 4,
+        borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
+        shadowColor: '#000', shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.35, shadowRadius: 10, elevation: 5,
+    },
     cardImageWrap: {
-        width: '100%', aspectRatio: 0.72, position: 'relative',
-        backgroundColor: '#111118', borderRadius: 14, overflow: 'hidden',
+        width: '100%', aspectRatio: 0.74, position: 'relative',
+        backgroundColor: '#111118', borderRadius: 18, overflow: 'hidden',
     },
     cardImage: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
     cardGrad: { position: 'absolute', bottom: 0, left: 0, right: 0, height: '60%' },

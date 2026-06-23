@@ -1,4 +1,6 @@
 const User = require('../models/User');
+const WithdrawalRequest = require('../models/WithdrawalRequest');
+const { refundWithdrawalBalance } = require('../utils/withdrawalHelpers');
 const LiveSession = require('../models/LiveSession');
 const LiveTalkRequest = require('../models/LiveTalkRequest');
 const LiveTalkSession = require('../models/LiveTalkSession');
@@ -21,13 +23,18 @@ const {
 
 exports.adminLogin = async (req, res) => {
   const { password } = req.body;
-  const adminPassword = process.env.ADMIN_PASSWORD || 'CrimzoAdmin123!';
-  
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  const jwtSecret = process.env.JWT_SECRET;
+
+  if (!adminPassword || !jwtSecret) {
+    return res.status(503).json({ error: 'Admin login not configured on server' });
+  }
+
   if (password === adminPassword) {
     const token = jwt.sign(
-      { is_admin: true, identifier: 'superadmin' }, 
-      process.env.JWT_SECRET || 'jwt_secret_fallback', 
-      { expiresIn: '7d' }
+      { is_admin: true, identifier: 'superadmin' },
+      jwtSecret,
+      { expiresIn: '7d' },
     );
     res.json({ token, message: 'Admin authentication successful' });
   } else {
@@ -84,6 +91,7 @@ exports.getDashboardStats = async (req, res) => {
         liveTalkRevenue: liveTalkRevenueAgg[0]?.total || 0,
         liveTalkSessions: liveTalkRevenueAgg[0]?.sessions || 0,
         pendingTalkRequests: await LiveTalkRequest.countDocuments({ status: 'pending' }),
+        pendingWithdrawals: await WithdrawalRequest.countDocuments({ status: 'pending' }),
         videoCallRatePerMin: billingSettings.videoCallRatePerMin,
         liveTalkRatePerMin: billingSettings.liveTalkRatePerMin,
       },
@@ -98,20 +106,23 @@ exports.getDashboardStats = async (req, res) => {
 // ====================== USERS ======================
 exports.getUsers = async (req, res) => {
   try {
-    const { search = '', page = 1, limit = 20 } = req.query;
+    const { search = '', page = 1, limit = 20, filter: statusFilter = 'all' } = req.query;
     const pageNum = Number(page) || 1;
     const limitNum = Number(limit) || 20;
     const skip = (pageNum - 1) * limitNum;
 
     const searchRegex = search ? new RegExp(search, 'i') : null;
 
-    const filter = searchRegex ? {
-      $or: [
+    const filter = {};
+    if (searchRegex) {
+      filter.$or = [
         { username: searchRegex },
         { email: searchRegex },
-        { crimzo_id: searchRegex }
-      ]
-    } : {};
+        { crimzo_id: searchRegex },
+      ];
+    }
+    if (statusFilter === 'banned') filter.is_banned = true;
+    else if (statusFilter === 'active') filter.is_banned = { $ne: true };
 
     const users = await User.find(filter)
       .select('id crimzo_id username email country diamonds beans status is_banned created_at')
@@ -138,10 +149,20 @@ exports.toggleBanUser = async (req, res) => {
     const userId = req.params.id;
     const { is_banned } = req.body;
 
-    const updates = { is_banned };
-    if (is_banned) updates.status = 'online';
+    if (typeof is_banned !== 'boolean') {
+      return res.status(400).json({ error: 'is_banned must be a boolean' });
+    }
 
-    await User.findByIdAndUpdate(userId, updates);
+    const updates = { is_banned };
+    if (is_banned) {
+      updates.status = 'offline';
+      updates.is_online = false;
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(userId, updates, { new: true });
+    if (!updatedUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
 
     if (is_banned) {
       const activeSessions = await LiveSession.find({ user_id: userId, status: 'active' }).select('_id');
@@ -335,6 +356,133 @@ exports.getBillingSessions = async (req, res) => {
         status: s.status,
         startedAt: s.started_at,
       })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ====================== WITHDRAWALS ======================
+function formatAdminWithdrawal(row) {
+  const user = row.user_id || {};
+  const snap = row.payout_snapshot || {};
+  return {
+    id: row._id.toString(),
+    userId: user._id?.toString() || row.user_id?.toString(),
+    username: user.username || null,
+    crimzoId: user.crimzo_id || null,
+    email: user.email || null,
+    amountInr: row.amount_inr,
+    beansUsed: row.beans_used,
+    status: row.status,
+    payoutMode: row.payout_mode,
+    payoutMethod: row.payout_method,
+    payoutDisplay: row.payout_display,
+    payoutSnapshot: snap,
+    utr: row.utr || null,
+    adminNote: row.admin_note || null,
+    failureReason: row.failure_reason || null,
+    balanceRefunded: row.balance_refunded || false,
+    createdAt: row.created_at,
+    completedAt: row.completed_at || null,
+    processedBy: row.processed_by || null,
+  };
+}
+
+exports.getWithdrawals = async (req, res) => {
+  try {
+    const { status = 'pending', page = 1, limit = 20 } = req.query;
+    const pageNum = Number(page) || 1;
+    const limitNum = Math.min(Number(limit) || 20, 50);
+    const skip = (pageNum - 1) * limitNum;
+
+    const filter = {};
+    if (status && status !== 'all') filter.status = status;
+
+    const [rows, total, pendingCount, processingCount] = await Promise.all([
+      WithdrawalRequest.find(filter)
+        .sort({ created_at: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .populate('user_id', 'username crimzo_id email')
+        .lean(),
+      WithdrawalRequest.countDocuments(filter),
+      WithdrawalRequest.countDocuments({ status: 'pending' }),
+      WithdrawalRequest.countDocuments({ status: 'processing' }),
+    ]);
+
+    res.json({
+      withdrawals: rows.map(formatAdminWithdrawal),
+      total,
+      page: pageNum,
+      totalPages: Math.ceil(total / limitNum),
+      counts: { pending: pendingCount, processing: processingCount },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.completeWithdrawal = async (req, res) => {
+  try {
+    const withdrawalId = req.params.id;
+    const utr = String(req.body.utr || '').trim();
+    const adminNote = String(req.body.admin_note || '').trim();
+
+    if (!utr) {
+      return res.status(400).json({ error: 'UTR / transaction reference is required' });
+    }
+
+    const withdrawal = await WithdrawalRequest.findById(withdrawalId);
+    if (!withdrawal) return res.status(404).json({ error: 'Withdrawal not found' });
+
+    if (!['pending', 'processing'].includes(withdrawal.status)) {
+      return res.status(400).json({ error: `Cannot complete withdrawal with status: ${withdrawal.status}` });
+    }
+
+    withdrawal.status = 'completed';
+    withdrawal.utr = utr;
+    withdrawal.admin_note = adminNote || undefined;
+    withdrawal.processed_by = req.admin?.identifier || 'admin';
+    withdrawal.completed_at = new Date();
+    await withdrawal.save();
+
+    res.json({
+      success: true,
+      withdrawal: formatAdminWithdrawal(
+        await WithdrawalRequest.findById(withdrawalId).populate('user_id', 'username crimzo_id email').lean(),
+      ),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.rejectWithdrawal = async (req, res) => {
+  try {
+    const withdrawalId = req.params.id;
+    const reason = String(req.body.reason || '').trim() || 'Rejected by admin';
+
+    const withdrawal = await WithdrawalRequest.findById(withdrawalId);
+    if (!withdrawal) return res.status(404).json({ error: 'Withdrawal not found' });
+
+    if (!['pending', 'processing'].includes(withdrawal.status)) {
+      return res.status(400).json({ error: `Cannot reject withdrawal with status: ${withdrawal.status}` });
+    }
+
+    withdrawal.status = 'failed';
+    withdrawal.failure_reason = reason;
+    withdrawal.admin_note = reason;
+    withdrawal.processed_by = req.admin?.identifier || 'admin';
+    await withdrawal.save();
+    await refundWithdrawalBalance(withdrawal);
+
+    res.json({
+      success: true,
+      refunded: true,
+      withdrawal: formatAdminWithdrawal(
+        await WithdrawalRequest.findById(withdrawalId).populate('user_id', 'username crimzo_id email').lean(),
+      ),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

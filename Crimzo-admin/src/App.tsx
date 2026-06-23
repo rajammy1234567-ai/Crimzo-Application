@@ -12,6 +12,7 @@ import Streams from './pages/Streams';
 import Reels from './pages/Reels';
 import Stickers from './pages/Stickers';
 import Billing from './pages/Billing';
+import Withdrawals from './pages/Withdrawals';
 
 function App() {
   return (
@@ -29,6 +30,7 @@ function App() {
               <Route path="reels" element={<Reels />} />
               <Route path="stickers" element={<Stickers />} />
               <Route path="billing" element={<Billing />} />
+              <Route path="withdrawals" element={<Withdrawals />} />
             </Route>
           </Routes>
         </ToastProvider>

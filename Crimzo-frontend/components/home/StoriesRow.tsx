@@ -135,7 +135,7 @@ const STORY_SIZE = 64;
 const AVATAR_SIZE = 56;
 
 const s = StyleSheet.create({
-    row: { paddingHorizontal: 8, paddingTop: 2, paddingBottom: 4 },
+    row: { paddingHorizontal: 12, paddingTop: 6, paddingBottom: 8 },
     item: { alignItems: 'center', width: 70, position: 'relative' },
     ringAdd: {
         width: STORY_SIZE, height: STORY_SIZE, borderRadius: STORY_SIZE / 2,
@@ -160,11 +160,11 @@ const s = StyleSheet.create({
     avatarPH: { backgroundColor: '#1C1C1E', alignItems: 'center', justifyContent: 'center' },
     addBadge: {
         position: 'absolute', bottom: 0, right: 0,
-        width: 20, height: 20, borderRadius: 10,
-        backgroundColor: '#0095F6', alignItems: 'center', justifyContent: 'center',
-        borderWidth: 2, borderColor: '#000', zIndex: 5,
+        width: 22, height: 22, borderRadius: 11,
+        backgroundColor: '#FF2D55', alignItems: 'center', justifyContent: 'center',
+        borderWidth: 2.5, borderColor: '#06060F', zIndex: 5,
     },
-    name: { color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: '500', marginTop: 6, textAlign: 'center', width: 70 },
+    name: { color: 'rgba(255,255,255,0.88)', fontSize: 11, fontWeight: '600', marginTop: 7, textAlign: 'center', width: 70 },
     nameSeen: { color: 'rgba(255,255,255,0.4)' },
 });
 

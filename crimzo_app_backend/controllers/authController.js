@@ -176,8 +176,7 @@ exports.verifyOtp = async (req, res) => {
 
     if (rejectIfBanned(user, res)) return;
 
-    user.is_online = true;
-    user.status = 'online';
+
     await user.save();
 
     const token = jwt.sign(
@@ -233,8 +232,7 @@ exports.googleLogin = async (req, res) => {
 
     if (rejectIfBanned(user, res)) return;
 
-    user.is_online = true;
-    user.status = 'online';
+
     await user.save();
 
     const token = jwt.sign(
@@ -386,8 +384,7 @@ exports.login = async (req, res) => {
       return res.status(403).json({ error: 'Your account has been suspended. Contact support.', banned: true });
     }
 
-    user.is_online = true;
-    user.status = 'online';
+
 
     // Auto-generate crimzo_id if missing
     if (!user.crimzo_id) {
@@ -501,10 +498,6 @@ exports.verifyEmailOtp = async (req, res) => {
       emailOtpStore.delete(normalizedEmail);
 
       if (rejectIfBanned(user, res)) return;
-
-      user.is_online = true;
-      user.status = 'online';
-      await user.save();
 
       const token = jwt.sign(
         { id: user.id, email: user.email, username: user.username },

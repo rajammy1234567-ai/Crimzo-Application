@@ -6,6 +6,14 @@ const LiveSession = require('../models/LiveSession');
 const Reel = require('../models/Reel');
 const GiftHistory = require('../models/GiftHistory');
 const { pushNotification } = require('../utils/notificationHelper');
+const { emitFollowUpdated } = require('../utils/socketEmitter');
+const { getInteractionPermission } = require('../utils/followPermissions');
+const {
+  toObjectId,
+  syncUserFollowCounts,
+  upsertPendingFollowRequest,
+  clearFollowRequestBetween,
+} = require('../utils/followHelpers');
 const { uploadToCloudinary } = require('../config/cloudinary');
 
 function resolveUserIdParam(param, fallbackId) {
@@ -88,10 +96,25 @@ async function followStatusFor(viewerId, targetId) {
   };
 }
 
+exports.checkInteraction = async (req, res) => {
+  try {
+    const userId = req.query.userId || req.params.userId;
+    if (!userId) return res.status(400).json({ error: 'userId required' });
+    const interaction = await getInteractionPermission(req.user.id, userId);
+    res.json({ success: true, ...interaction });
+  } catch (error) {
+    console.error('Interaction check error:', error);
+    res.status(500).json({ error: 'Failed to check interaction' });
+  }
+};
+
 // Get full profile
 exports.getFullProfile = async (req, res) => {
   try {
     const userId = req.query.userId || req.user.id;
+    if (!toObjectId(userId)) {
+      return res.status(400).json({ error: 'Invalid user id' });
+    }
     const u = await User.findById(userId);
     if (!u) return res.status(404).json({ error: 'User not found' });
 
@@ -113,15 +136,19 @@ exports.getFullProfile = async (req, res) => {
     ]).catch(() => []);
 
     let followState = { isFollowing: false, isRequested: false, hasIncomingRequest: false, incomingRequestId: null };
+    let interaction = {
+      canInteract: false,
+      followsYou: false,
+      isMutualFriend: false,
+      interactionBlockedReason: null,
+    };
     if (String(req.user.id) !== String(userId)) {
       followState = await followStatusFor(req.user.id, userId);
+      interaction = await getInteractionPermission(req.user.id, userId);
     }
 
     const liveCheck = await LiveSession.findOne({ user_id: userId, status: 'active' });
-    const friendsCount = await countMutualFriends(userId);
-    if (friendsCount !== (u.friends_count || 0)) {
-      await User.findByIdAndUpdate(userId, { friends_count: friendsCount });
-    }
+    const counts = await syncUserFollowCounts(userId);
 
     res.json({
       success: true,
@@ -135,11 +162,12 @@ exports.getFullProfile = async (req, res) => {
         tags: u.tags || '',
         show_location: !!u.show_location,
         push_notifications_enabled: u.push_notifications_enabled !== false,
+        is_private: !!u.is_private,
         diamonds: u.diamonds, beans: u.beans,
         wallet_balance: u.wallet_balance || 0,
-        followers_count: u.followers_count,
-        following_count: u.following_count,
-        friends_count: friendsCount,
+        followers_count: counts?.followers_count ?? u.followers_count,
+        following_count: counts?.following_count ?? u.following_count,
+        friends_count: counts?.friends_count ?? u.friends_count,
         is_online: u.is_online, status: u.status,
         created_at: u.created_at,
         totalStreams,
@@ -151,6 +179,10 @@ exports.getFullProfile = async (req, res) => {
         isRequested: followState.isRequested,
         hasIncomingRequest: followState.hasIncomingRequest,
         incomingRequestId: followState.incomingRequestId,
+        followsYou: interaction.followsYou,
+        isMutualFriend: interaction.isMutualFriend,
+        canInteract: interaction.canInteract,
+        interactionBlockedReason: interaction.reason,
         isLive: !!liveCheck,
         liveSessionId: liveCheck ? liveCheck.id : null
       }
@@ -184,15 +216,20 @@ exports.followUser = async (req, res) => {
     if (existingFollow) {
       const wasMutual = await isMutualFollow(followerId, userId);
       await Follow.deleteOne({ _id: existingFollow._id });
-      await User.findByIdAndUpdate(followerId, { $inc: { following_count: -1 } });
-      await User.findByIdAndUpdate(userId, { $inc: { followers_count: -1 } });
-      if (wasMutual) {
-        await User.updateMany(
-          { _id: { $in: [followerId, userId] } },
-          { $inc: { friends_count: -1 } },
-        );
-      }
-      return res.json({ success: true, action: 'unfollowed', isFollowing: false, isRequested: false });
+      await clearFollowRequestBetween(followerId, userId);
+      const [viewerCounts, targetCounts] = await Promise.all([
+        syncUserFollowCounts(followerId),
+        syncUserFollowCounts(userId),
+      ]);
+      emitFollowUpdated(followerId, viewerCounts);
+      emitFollowUpdated(userId, targetCounts);
+      return res.json({
+        success: true,
+        action: 'unfollowed',
+        isFollowing: false,
+        isRequested: false,
+        wasMutual,
+      });
     }
 
     const pending = await FollowRequest.findOne({
@@ -205,12 +242,46 @@ exports.followUser = async (req, res) => {
       return res.json({ success: true, action: 'request_cancelled', isFollowing: false, isRequested: false });
     }
 
+    const target = await User.findById(userId).select('username is_private');
+    if (!target) return res.status(404).json({ error: 'User not found' });
+
     const requester = await User.findById(followerId).select('username avatar').lean();
-    const reqDoc = await FollowRequest.create({
-      requester_id: followerId,
-      target_id: userId,
-      status: 'pending',
-    });
+
+    // Public account — instant follow (Instagram public profile)
+    if (!target.is_private) {
+      await Follow.create({ follower_id: followerId, following_id: userId });
+      await clearFollowRequestBetween(followerId, userId);
+      await adjustMutualFriends(followerId, userId, 1);
+      const [viewerCounts, targetCounts] = await Promise.all([
+        syncUserFollowCounts(followerId),
+        syncUserFollowCounts(userId),
+      ]);
+
+      await pushNotification({
+        userId,
+        type: 'follow_accepted',
+        title: 'New follower',
+        body: `${requester?.username || 'Someone'} started following you`,
+        actor: requester,
+        referenceId: followerId,
+      });
+
+      emitFollowUpdated(followerId, viewerCounts);
+      emitFollowUpdated(userId, targetCounts);
+
+      return res.json({
+        success: true,
+        action: 'followed',
+        isFollowing: true,
+        isRequested: false,
+        followers_count: targetCounts?.followers_count,
+        following_count: viewerCounts?.following_count,
+        friends_count: viewerCounts?.friends_count,
+      });
+    }
+
+    // Private account — follow request
+    const reqDoc = await upsertPendingFollowRequest(followerId, userId);
 
     await pushNotification({
       userId,
@@ -252,13 +323,16 @@ exports.acceptFollowRequest = async (req, res) => {
     });
     if (!already) {
       await Follow.create({ follower_id: request.requester_id, following_id: userId });
-      await User.findByIdAndUpdate(request.requester_id, { $inc: { following_count: 1 } });
-      await User.findByIdAndUpdate(userId, { $inc: { followers_count: 1 } });
       await adjustMutualFriends(request.requester_id, userId, 1);
     }
 
     request.status = 'accepted';
     await request.save();
+
+    const [requesterCounts, myCounts] = await Promise.all([
+      syncUserFollowCounts(request.requester_id),
+      syncUserFollowCounts(userId),
+    ]);
 
     const me = await User.findById(userId).select('username avatar').lean();
     await pushNotification({
@@ -270,7 +344,17 @@ exports.acceptFollowRequest = async (req, res) => {
       referenceId: userId,
     });
 
-    res.json({ success: true, action: 'accepted' });
+    emitFollowUpdated(request.requester_id, requesterCounts);
+    emitFollowUpdated(userId, myCounts);
+
+    res.json({
+      success: true,
+      action: 'accepted',
+      requesterId: request.requester_id.toString(),
+      followers_count: myCounts?.followers_count,
+      following_count: requesterCounts?.following_count,
+      friends_count: myCounts?.friends_count,
+    });
   } catch (error) {
     console.error('Accept follow error:', error);
     res.status(500).json({ error: 'Failed to accept request' });
@@ -370,6 +454,12 @@ exports.blockUser = async (req, res) => {
         { requester_id: userId, target_id: blockerId },
       ],
     });
+    const [viewerCounts, targetCounts] = await Promise.all([
+      syncUserFollowCounts(blockerId),
+      syncUserFollowCounts(userId),
+    ]);
+    emitFollowUpdated(blockerId, viewerCounts);
+    emitFollowUpdated(userId, targetCounts);
     res.json({ success: true, message: 'User blocked' });
   } catch (error) {
     console.error('Block user error:', error);
@@ -455,10 +545,11 @@ exports.uploadAvatar = async (req, res) => {
   }
 };
 
-// Get online users count
+// Get online users count (active socket connections — real-time app presence)
 exports.getOnlineCount = async (req, res) => {
   try {
-    const count = await User.countDocuments({ is_online: true });
+    const { getActiveCount } = require('../utils/presenceTracker');
+    const count = getActiveCount();
     res.json({ success: true, count });
   } catch (error) {
     console.error('Get online count error:', error);
@@ -515,32 +606,37 @@ exports.searchUsers = async (req, res) => {
   }
 };
 
+async function formatFollowListUser(currentUserId, profileUserId, u) {
+  if (!u) return null;
+  const targetId = u._id?.toString() || u.id;
+  const status = await followStatusFor(currentUserId, targetId);
+  const followsYou = await Follow.exists({
+    follower_id: targetId,
+    following_id: profileUserId,
+  });
+  return {
+    ...formatUserRef(u),
+    is_following: status.isFollowing,
+    is_requested: status.isRequested,
+    follows_you: !!followsYou,
+  };
+}
+
 // Get followers list
 exports.getFollowers = async (req, res) => {
   try {
     const userId = resolveUserIdParam(req.params.userId, req.user.id);
     const currentUserId = req.user.id;
+    const oid = toObjectId(userId);
+    if (!oid) return res.json({ success: true, followers: [] });
 
-    const mongoose = require('mongoose');
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return res.json({ success: true, followers: [] });
-    }
-
-    const follows = await Follow.find({ following_id: userId })
+    const follows = await Follow.find({ following_id: oid })
       .sort({ created_at: -1 })
       .populate('follower_id', 'username avatar bio is_online');
 
-    const formatted = await Promise.all(follows.map(async (f) => {
-      const follower = f.follower_id;
-      if (!follower) return null;
-      const followerId = follower._id?.toString();
-      const status = await followStatusFor(currentUserId, followerId);
-      return {
-        ...formatUserRef(follower),
-        is_following: status.isFollowing,
-        is_requested: status.isRequested,
-      };
-    }));
+    const formatted = await Promise.all(
+      follows.map((f) => formatFollowListUser(currentUserId, userId, f.follower_id)),
+    );
 
     res.json({ success: true, followers: formatted.filter(Boolean) });
   } catch (error) {
@@ -554,27 +650,16 @@ exports.getFollowing = async (req, res) => {
   try {
     const userId = resolveUserIdParam(req.params.userId, req.user.id);
     const currentUserId = req.user.id;
+    const oid = toObjectId(userId);
+    if (!oid) return res.json({ success: true, following: [] });
 
-    const mongoose = require('mongoose');
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return res.json({ success: true, following: [] });
-    }
-
-    const follows = await Follow.find({ follower_id: userId })
+    const follows = await Follow.find({ follower_id: oid })
       .sort({ created_at: -1 })
       .populate('following_id', 'username avatar bio is_online');
 
-    const formatted = await Promise.all(follows.map(async (f) => {
-      const u = f.following_id;
-      if (!u) return null;
-      const targetId = u._id?.toString();
-      const status = await followStatusFor(currentUserId, targetId);
-      return {
-        ...formatUserRef(u),
-        is_following: status.isFollowing,
-        is_requested: status.isRequested,
-      };
-    }));
+    const formatted = await Promise.all(
+      follows.map((f) => formatFollowListUser(currentUserId, userId, f.following_id)),
+    );
 
     res.json({ success: true, following: formatted.filter(Boolean) });
   } catch (error) {
@@ -583,33 +668,39 @@ exports.getFollowing = async (req, res) => {
   }
 };
 
-// Mutual follows (friends)
+// Mutual follows (friends) — both users follow each other
 exports.getFriends = async (req, res) => {
   try {
     const userId = resolveUserIdParam(req.params.userId, req.user.id);
-    const mongoose = require('mongoose');
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
+    const currentUserId = req.user.id;
+    const oid = toObjectId(userId);
+    if (!oid) return res.json({ success: true, friends: [] });
+
+    const following = await Follow.find({ follower_id: oid }).select('following_id').lean();
+    const followingIds = following.map((f) => f.following_id).filter(Boolean);
+    if (!followingIds.length) {
       return res.json({ success: true, friends: [] });
     }
-
-    const oid = new mongoose.Types.ObjectId(userId);
-    const following = await Follow.find({ follower_id: oid }).select('following_id').lean();
-    const followingIds = following.map((f) => f.following_id);
 
     const mutual = await Follow.find({
       follower_id: { $in: followingIds },
       following_id: oid,
     })
       .sort({ created_at: -1 })
-      .populate('follower_id', 'username avatar bio is_online')
-      .lean();
+      .populate('follower_id', 'username avatar bio is_online');
 
-    const friends = mutual
-      .map((row) => formatUserRef(row.follower_id))
-      .filter(Boolean)
-      .map((u) => ({ ...u, is_following: true, is_requested: false }));
+    const friends = await Promise.all(
+      mutual.map((row) => formatFollowListUser(currentUserId, userId, row.follower_id)),
+    );
 
-    res.json({ success: true, friends });
+    res.json({
+      success: true,
+      friends: friends.filter(Boolean).map((u) => ({
+        ...u,
+        is_following: true,
+        follows_you: true,
+      })),
+    });
   } catch (error) {
     console.error('Get friends error:', error);
     res.status(500).json({ error: 'Failed to get friends' });

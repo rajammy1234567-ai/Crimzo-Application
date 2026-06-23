@@ -23,15 +23,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { apiFetch, apiGet, apiPost, apiDelete, resolveMediaUrl } from '../../lib/apiClient';
 import { subscribe } from '../../lib/realtimeSync';
+import { getTabBarHeight } from '../../lib/theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-// We will calculate TAB_BAR_HEIGHT and REEL_HEIGHT dynamically inside the component hook
-// based on safe area insets to accurately match the float offset in _layout.tsx.
 
 type FeedMode = 'foryou' | 'following';
 
@@ -51,6 +49,25 @@ type Reel = {
   created_at: string;
 };
 
+function normalizeReelFromApi(raw: any): Reel {
+  const userId = raw?.user_id != null ? String(raw.user_id) : '';
+  return {
+    id: String(raw?.id ?? raw?._id ?? ''),
+    user_id: userId,
+    video_url: resolveMediaUrl(raw?.video_url ?? ''),
+    caption: raw?.caption ?? '',
+    likes_count: raw?.likes_count ?? 0,
+    comments_count: raw?.comments_count ?? 0,
+    views_count: raw?.views_count ?? 0,
+    username: (raw?.username && String(raw.username).trim()) || 'User',
+    avatar: raw?.avatar ? resolveMediaUrl(raw.avatar) : null,
+    is_liked: !!raw?.is_liked,
+    is_following: !!raw?.is_following,
+    is_requested: !!raw?.is_requested,
+    created_at: raw?.created_at ?? '',
+  };
+}
+
 type Comment = {
   id: string;
   user_id: string;
@@ -64,34 +81,33 @@ type Comment = {
 function ReelItem({
   item,
   isActive,
-  token,
+  reelHeight,
+  tabBarHeight,
   currentUserId,
   onLike,
   onFollow,
   onOpenComments,
+  onOpenProfile,
   onDeleteReel,
   onEditReel,
 }: {
   item: Reel;
   isActive: boolean;
-  token: string | null;
+  reelHeight: number;
+  tabBarHeight: number;
   currentUserId: string | undefined;
   onLike: (reelId: string) => void;
   onFollow: (userId: string) => Promise<void>;
   onOpenComments: (reelId: string) => void;
+  onOpenProfile: (userId: string) => void;
   onDeleteReel?: (reelId: string) => void;
   onEditReel?: (reelId: string, currentCaption: string) => void;
 }) {
-  const insets = useSafeAreaInsets();
-
-  // Calculate heights dynamically based on the flat tab bar
-  const BOTTOM_OFFSET = insets.bottom;
-  const TAB_BAR_HEIGHT = 54 + BOTTOM_OFFSET;
-  const REEL_HEIGHT = SCREEN_HEIGHT - TAB_BAR_HEIGHT;
+  const contentBottom = tabBarHeight + 10;
+  const avatarUri = item.avatar ? resolveMediaUrl(item.avatar) : null;
 
   const [liked, setLiked] = useState(item.is_liked);
   const [likesCount, setLikesCount] = useState(item.likes_count);
-  const [viewsCount, setViewsCount] = useState(item.views_count || 0);
   const [following, setFollowing] = useState(item.is_following);
   const [requested, setRequested] = useState(!!item.is_requested);
   const [followBusy, setFollowBusy] = useState(false);
@@ -117,10 +133,9 @@ function ReelItem({
   useEffect(() => {
     setLiked(item.is_liked);
     setLikesCount(item.likes_count);
-    setViewsCount(item.views_count || 0);
     setFollowing(item.is_following);
     setRequested(!!item.is_requested);
-  }, [item.is_liked, item.likes_count, item.views_count, item.is_following, item.is_requested]);
+  }, [item.is_liked, item.likes_count, item.is_following, item.is_requested]);
 
   const animateHeart = () => {
     Animated.sequence([
@@ -201,14 +216,15 @@ function ReelItem({
     return n.toString();
   };
 
-  const isOwnReel = currentUserId === item.user_id;
+  const isOwnReel = String(currentUserId) === String(item.user_id);
+  const displayUsername = item.username || 'User';
 
   return (
-    <View style={[styles.reelContainer, { height: REEL_HEIGHT }]}>
+    <View style={[styles.reelContainer, { height: reelHeight }]}>
       <TouchableOpacity
         activeOpacity={1}
         onPress={handleDoubleTap}
-        style={StyleSheet.absoluteFill}
+        style={styles.videoTouchable}
       >
         <VideoView
           player={player}
@@ -235,38 +251,28 @@ function ReelItem({
         <Ionicons name="heart" size={100} color="#FF2D55" />
       </Animated.View>
 
-      {/* ── Right side actions ── */}
-      <View style={[styles.rightActions, { bottom: 20 }]}>
-        {/* Like */}
+      {/* ── Right side actions (Instagram order) ── */}
+      <View style={[styles.rightActions, { bottom: contentBottom }]}>
         <TouchableOpacity style={styles.actionBtn} onPress={handleLike}>
           <Animated.View style={{ transform: [{ scale: heartScale }] }}>
             <Ionicons
               name={liked ? 'heart' : 'heart-outline'}
-              size={36}
+              size={34}
               color={liked ? '#FF2D55' : '#FFF'}
             />
           </Animated.View>
           <Text style={styles.actionCount}>{formatCount(likesCount)}</Text>
         </TouchableOpacity>
 
-        {/* Comment */}
         <TouchableOpacity style={styles.actionBtn} onPress={() => onOpenComments(item.id)}>
-          <Ionicons name="chatbubble-outline" size={34} color="#FFF" />
+          <Ionicons name="chatbubble-outline" size={32} color="#FFF" />
           <Text style={styles.actionCount}>{formatCount(item.comments_count)}</Text>
         </TouchableOpacity>
 
-        {/* Views */}
-        <View style={styles.actionBtn}>
-          <Ionicons name="eye-outline" size={32} color="#FFF" />
-          <Text style={styles.actionCount}>{formatCount(viewsCount)}</Text>
-        </View>
-
-        {/* Share */}
         <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>
-          <Ionicons name="paper-plane-outline" size={34} color="#FFF" />
+          <Ionicons name="paper-plane-outline" size={32} color="#FFF" />
         </TouchableOpacity>
 
-        {/* More / Owner actions */}
         {isOwnReel && onDeleteReel && onEditReel ? (
           <TouchableOpacity
             style={styles.actionBtn}
@@ -285,33 +291,47 @@ function ReelItem({
                     onPress: () => onDeleteReel(item.id),
                   },
                   { text: 'Cancel', style: 'cancel' },
-                ]
+                ],
               );
             }}
           >
-            <Ionicons name="ellipsis-vertical" size={28} color="#FFF" />
+            <Ionicons name="ellipsis-horizontal" size={28} color="#FFF" />
           </TouchableOpacity>
         ) : (
           <TouchableOpacity style={styles.actionBtn}>
-            <Ionicons name="ellipsis-vertical" size={28} color="#FFF" />
+            <Ionicons name="ellipsis-horizontal" size={28} color="#FFF" />
           </TouchableOpacity>
         )}
+
+        <TouchableOpacity
+          style={styles.profileDiscWrap}
+          onPress={() => item.user_id && onOpenProfile(item.user_id)}
+          activeOpacity={0.85}
+        >
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={styles.profileDisc} />
+          ) : (
+            <View style={[styles.profileDisc, styles.profileDiscPlaceholder]}>
+              <Ionicons name="person" size={18} color="#999" />
+            </View>
+          )}
+          {!isOwnReel && !following && !requested && (
+            <View style={styles.profileFollowBadge}>
+              <Ionicons name="add" size={11} color="#FFF" />
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
 
-      {/* ── Bottom info (Instagram-style) ── */}
-      <View style={[styles.bottomInfo, { bottom: 14 }]}>
-        {/* User row: avatar + username */}
+      {/* ── Bottom info (username + caption) ── */}
+      <View style={[styles.bottomInfo, { bottom: contentBottom }]}>
         <View style={styles.userRow}>
-          <TouchableOpacity style={styles.bottomAvatarWrap}>
-            {item.avatar ? (
-              <Image source={{ uri: item.avatar }} style={styles.bottomAvatar} />
-            ) : (
-              <View style={[styles.bottomAvatar, styles.bottomAvatarPlaceholder]}>
-                <Ionicons name="person" size={16} color="#999" />
-              </View>
-            )}
+          <TouchableOpacity
+            onPress={() => item.user_id && onOpenProfile(item.user_id)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.usernameText}>{displayUsername}</Text>
           </TouchableOpacity>
-          <Text style={styles.usernameText}>{item.username}</Text>
           {!isOwnReel && (
             <TouchableOpacity
               style={[
@@ -336,19 +356,12 @@ function ReelItem({
           )}
         </View>
 
-        {/* Caption */}
         {item.caption ? (
-          <Text style={styles.captionText} numberOfLines={2}>{item.caption}</Text>
+          <Text style={styles.captionText} numberOfLines={2}>
+            <Text style={styles.captionUsername}>{displayUsername} </Text>
+            {item.caption}
+          </Text>
         ) : null}
-
-        {/* Stats row */}
-        <View style={styles.statsRow}>
-          <Ionicons name="heart" size={12} color="rgba(255,255,255,0.4)" />
-          <Text style={styles.statsText}>{formatCount(likesCount)}</Text>
-          <View style={styles.statsDot} />
-          <Ionicons name="chatbubble" size={11} color="rgba(255,255,255,0.4)" />
-          <Text style={styles.statsText}>{formatCount(item.comments_count)}</Text>
-        </View>
       </View>
     </View>
   );
@@ -360,11 +373,13 @@ function CommentsSheet({
   reelId,
   token,
   onClose,
+  onOpenProfile,
 }: {
   visible: boolean;
   reelId: string | null;
   token: string | null;
   onClose: () => void;
+  onOpenProfile: (userId: string) => void;
 }) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
@@ -389,7 +404,14 @@ function CommentsSheet({
         `/api/reels/${reelId}/comments`,
         token,
       );
-      if (data.success) setComments(data.comments || []);
+      if (data.success) {
+        setComments(
+          (data.comments || []).map((c: Comment) => ({
+            ...c,
+            avatar: c.avatar ? resolveMediaUrl(c.avatar) : c.avatar,
+          })),
+        );
+      }
     } catch (e) {
       console.error('Fetch comments error:', e);
     } finally {
@@ -467,16 +489,36 @@ function CommentsSheet({
             style={styles.commentsList}
             renderItem={({ item: c }) => (
               <View style={styles.commentItem}>
-                {c.avatar ? (
-                  <Image source={{ uri: c.avatar }} style={styles.commentAvatar} />
-                ) : (
-                  <View style={[styles.commentAvatar, styles.commentAvatarPlaceholder]}>
-                    <Ionicons name="person" size={14} color="#999" />
-                  </View>
-                )}
+                <TouchableOpacity
+                  onPress={() => {
+                    if (c.user_id) {
+                      onClose();
+                      onOpenProfile(c.user_id);
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  {c.avatar ? (
+                    <Image source={{ uri: c.avatar }} style={styles.commentAvatar} />
+                  ) : (
+                    <View style={[styles.commentAvatar, styles.commentAvatarPlaceholder]}>
+                      <Ionicons name="person" size={14} color="#999" />
+                    </View>
+                  )}
+                </TouchableOpacity>
                 <View style={styles.commentBody}>
                   <View style={styles.commentNameRow}>
-                    <Text style={styles.commentUsername}>{c.username}</Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        if (c.user_id) {
+                          onClose();
+                          onOpenProfile(c.user_id);
+                        }
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.commentUsername}>{c.username}</Text>
+                    </TouchableOpacity>
                     <Text style={styles.commentTime}>{timeAgo(c.created_at)}</Text>
                   </View>
                   <Text style={styles.commentText}>{c.text}</Text>
@@ -517,11 +559,12 @@ function CommentsSheet({
 // ── Main Reels Screen ──
 export default function ReelsScreen() {
   const { token, user } = useAuth();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const BOTTOM_OFFSET = insets.bottom;
-  const TAB_BAR_HEIGHT = 54 + BOTTOM_OFFSET;
-  const REEL_HEIGHT = SCREEN_HEIGHT - TAB_BAR_HEIGHT;
+  const tabBarHeight = getTabBarHeight(insets.bottom);
+  const [viewportHeight, setViewportHeight] = useState(SCREEN_HEIGHT);
+  const reelHeight = viewportHeight;
 
   const [feedMode, setFeedMode] = useState<FeedMode>('foryou');
   const [reels, setReels] = useState<Reel[]>([]);
@@ -553,13 +596,7 @@ export default function ReelsScreen() {
         token,
       );
       if (data.success && Array.isArray(data.reels)) {
-        setReels(
-          data.reels.map((reel: Reel) => ({
-            ...reel,
-            video_url: resolveMediaUrl(reel.video_url),
-            avatar: reel.avatar ? resolveMediaUrl(reel.avatar) : reel.avatar,
-          })),
-        );
+        setReels(data.reels.map(normalizeReelFromApi));
         setActiveIndex(0);
       }
     } catch (e) {
@@ -620,11 +657,11 @@ export default function ReelsScreen() {
         isFollowing?: boolean;
         isRequested?: boolean;
       }>('/api/user/follow', { userId }, token);
-      const isFollowing = res.isFollowing ?? res.action === 'followed';
+      const isFollowing = res.isFollowing ?? (res.action === 'followed' || res.action === 'accepted');
       const isRequested = res.isRequested ?? res.action === 'requested';
       setReels((prev) =>
         prev.map((r) =>
-          r.user_id === userId
+          String(r.user_id) === String(userId)
             ? { ...r, is_following: isFollowing, is_requested: isRequested }
             : r,
         ),
@@ -664,6 +701,15 @@ export default function ReelsScreen() {
     setCommentReelId(reelId);
     setCommentsVisible(true);
   };
+
+  const handleOpenProfile = useCallback((userId: string) => {
+    if (!userId) return;
+    if (String(userId) === String(user?.id)) {
+      router.push('/(tabs)/profile');
+      return;
+    }
+    router.push(`/user/${userId}` as any);
+  }, [router, user?.id]);
 
   // ── Delete own reel from feed ──
   const handleDeleteReel = (reelId: string) => {
@@ -894,7 +940,16 @@ export default function ReelsScreen() {
   }
 
   return (
-    <View style={styles.container} pointerEvents={tabPointerEvents}>
+    <View
+      style={styles.container}
+      pointerEvents={tabPointerEvents}
+      onLayout={(e) => {
+        const h = e.nativeEvent.layout.height;
+        if (h > 0 && Math.abs(h - viewportHeight) > 1) {
+          setViewportHeight(h);
+        }
+      }}
+    >
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       {/* Header overlay */}
@@ -912,33 +967,38 @@ export default function ReelsScreen() {
           <ReelItem
             item={item}
             isActive={index === activeIndex && screenFocused && !commentsVisible}
-            token={token}
+            reelHeight={reelHeight}
+            tabBarHeight={tabBarHeight}
             currentUserId={user?.id != null ? String(user.id) : undefined}
             onLike={handleLike}
             onFollow={handleFollow}
             onOpenComments={onOpenComments}
+            onOpenProfile={handleOpenProfile}
             onDeleteReel={handleDeleteReel}
             onEditReel={handleEditReel}
           />
         )}
-        pagingEnabled
-        snapToInterval={REEL_HEIGHT}
+        pagingEnabled={Platform.OS === 'ios'}
+        snapToInterval={Platform.OS === 'android' ? reelHeight : undefined}
         snapToAlignment="start"
         decelerationRate="fast"
+        disableIntervalMomentum
         showsVerticalScrollIndicator={false}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         getItemLayout={(_, index) => ({
-          length: REEL_HEIGHT,
-          offset: REEL_HEIGHT * index,
+          length: reelHeight,
+          offset: reelHeight * index,
           index,
         })}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FF2D55" progressViewOffset={60} />
         }
-        removeClippedSubviews
-        maxToRenderPerBatch={3}
-        windowSize={5}
+        removeClippedSubviews={false}
+        maxToRenderPerBatch={2}
+        windowSize={3}
+        initialNumToRender={1}
+        extraData={`${activeIndex}-${reelHeight}`}
       />
 
       {/* Comments Sheet */}
@@ -946,6 +1006,7 @@ export default function ReelsScreen() {
         visible={commentsVisible}
         reelId={commentReelId}
         token={token}
+        onOpenProfile={handleOpenProfile}
         onClose={() => {
           setCommentsVisible(false);
           setCommentReelId(null);
@@ -1129,6 +1190,11 @@ const styles = StyleSheet.create({
   reelContainer: {
     width: SCREEN_WIDTH,
     backgroundColor: '#000',
+    overflow: 'hidden',
+  },
+  videoTouchable: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
   },
   bottomGradient: {
     position: 'absolute',
@@ -1155,10 +1221,10 @@ const styles = StyleSheet.create({
   // ── Right Actions ──
   rightActions: {
     position: 'absolute',
-    right: 10,
-    bottom: 100,
+    right: 8,
     alignItems: 'center',
-    gap: 20,
+    gap: 18,
+    zIndex: 5,
   },
   actionBtn: {
     alignItems: 'center',
@@ -1173,33 +1239,47 @@ const styles = StyleSheet.create({
   // ── Bottom Info (Instagram-style) ──
   bottomInfo: {
     position: 'absolute',
-    bottom: 14,
     left: 12,
-    right: 56,
+    right: 72,
+    zIndex: 4,
   },
   userRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
+    gap: 10,
+    marginBottom: 6,
   },
-  bottomAvatarWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  profileDiscWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     borderWidth: 2,
     borderColor: '#FFF',
-    overflow: 'hidden',
+    overflow: 'visible',
+    marginTop: 4,
   },
-  bottomAvatar: {
+  profileDisc: {
     width: '100%',
     height: '100%',
-    borderRadius: 18,
+    borderRadius: 23,
   },
-  bottomAvatarPlaceholder: {
+  profileDiscPlaceholder: {
     backgroundColor: '#2C2C2E',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  profileFollowBadge: {
+    position: 'absolute',
+    bottom: -4,
+    alignSelf: 'center',
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#FF2D55',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#000',
   },
   usernameText: {
     color: '#FFF',
@@ -1240,7 +1320,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     letterSpacing: 0.1,
-    marginBottom: 6,
+  },
+  captionUsername: {
+    fontWeight: '800',
+    color: '#FFF',
   },
   statsRow: {
     flexDirection: 'row',

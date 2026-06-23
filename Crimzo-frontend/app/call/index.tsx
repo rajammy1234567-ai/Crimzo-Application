@@ -204,7 +204,7 @@ export default function VideoCallScreen() {
           appId?: string;
           uid?: number;
           error?: string;
-        }>('/api/agora/call-token', { channelName, role }, token);
+        }>('/api/agora/call-token', { channelName, role, peerId }, token);
 
         if (!creds.success || !creds.token || !creds.appId) {
           throw new Error(creds.error || 'Could not get call credentials');
@@ -215,6 +215,12 @@ export default function VideoCallScreen() {
 
         const socket = io(API_URL, { transports: ['websocket'], auth: { token } });
         socket.on('connect', () => socket.emit('join_user', { userId: user.id }));
+        socket.on('video_call_ended', () => endCall());
+        socket.on('video_call_rejected', () => {
+          Alert.alert('Call Declined', 'The other person declined your call.', [
+            { text: 'OK', onPress: () => router.back() },
+          ]);
+        });
         socketRef.current = socket;
 
         if (!isAgoraNativeLinked) {
@@ -245,7 +251,7 @@ export default function VideoCallScreen() {
           },
           onUserJoined: (_conn: unknown, remoteUserUid: number) => {
             setRemoteUid(remoteUserUid);
-            void initCallBilling();
+            if (isCaller) void initCallBilling();
           },
           onUserOffline: () => {
             setRemoteUid(null);

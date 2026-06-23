@@ -41,6 +41,7 @@ export default function GiftsScreen() {
     resendPaymentOtp,
     removePaymentMethod,
     handleTopupSuccess,
+    handleCheckoutError,
     cancelTopup,
   } = useWallet();
   const insets = useSafeAreaInsets();
@@ -256,13 +257,14 @@ export default function GiftsScreen() {
         checkout={checkout}
         onSuccess={handleTopupSuccess}
         onCancel={cancelTopup}
+        onError={handleCheckoutError}
       />
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
+  container: { flex: 1, backgroundColor: '#06060F' },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, paddingVertical: 14,

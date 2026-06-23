@@ -47,9 +47,16 @@ export default function NotificationsScreen() {
     if (!token || !item.actor_id) return;
     setActing(item.id);
     try {
-      await apiPost('/api/user/follow/accept', { requesterId: item.actor_id }, token);
+      const res = await apiPost<{
+        followers_count?: number;
+        friends_count?: number;
+      }>('/api/user/follow/accept', { requesterId: item.actor_id }, token);
       Alert.alert('Accepted', `${item.actor_username || 'User'} is now following you`);
       publish('notifications_updated');
+      publish('follow_updated', {
+        followers_count: res.followers_count,
+        friends_count: res.friends_count,
+      });
       refresh();
     } catch {
       Alert.alert('Error', 'Could not accept request');

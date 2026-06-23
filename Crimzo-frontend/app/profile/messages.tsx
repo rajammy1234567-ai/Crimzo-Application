@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,16 +15,35 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { apiGet, apiPost, ApiError } from '../../lib/apiClient';
 import { useVideoCall } from '../../contexts/VideoCallContext';
 
+function normalizeSenderId(senderId: unknown): string {
+  if (senderId == null) return '';
+  if (typeof senderId === 'object' && senderId !== null && '_id' in senderId) {
+    return String((senderId as { _id?: unknown })._id ?? '');
+  }
+  return String(senderId);
+}
+
+function normalizeMessage(raw: any): Message {
+  const senderId = normalizeSenderId(raw?.sender_id);
+  return {
+    ...raw,
+    id: raw?.id ?? raw?._id ?? Date.now(),
+    sender_id: senderId as unknown as number,
+    sender_username: raw?.sender_username ?? raw?.sender_id?.username ?? '',
+    sender_avatar: raw?.sender_avatar ?? raw?.sender_id?.avatar ?? null,
+  };
+}
+
 type Message = {
-  id: number;
-  sender_id: number;
+  id: number | string;
+  sender_id: number | string;
   receiver_id: number;
   content: string;
   sender_username: string;
@@ -51,6 +70,7 @@ export default function MessagesScreen() {
   const { user, token, updateUser } = useAuth();
   const { startCall } = useVideoCall();
   const router = useRouter();
+  const params = useLocalSearchParams<{ userId?: string; username?: string }>();
   const insets = useSafeAreaInsets();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,6 +81,7 @@ export default function MessagesScreen() {
   const [sending, setSending] = useState(false);
   const [showGift, setShowGift] = useState(false);
   const [gifting, setGifting] = useState(false);
+  const openedParamUserRef = useRef<string | null>(null);
 
   const fetchConversations = useCallback(async () => {
     if (!token) return;
@@ -81,7 +102,29 @@ export default function MessagesScreen() {
 
   useEffect(() => {
     fetchConversations();
-  }, []);
+  }, [fetchConversations]);
+
+  useEffect(() => {
+    if (!params.userId || loading) return;
+    const uid = String(params.userId);
+    if (openedParamUserRef.current === uid) return;
+    openedParamUserRef.current = uid;
+
+    const existing = conversations.find((c) => String(c.user_id) === uid);
+    if (existing) {
+      openChat(existing);
+      return;
+    }
+    openChat({
+      user_id: uid as unknown as number,
+      username: params.username ? decodeURIComponent(params.username) : 'User',
+      avatar: null,
+      last_message: '',
+      last_time: new Date().toISOString(),
+      unread_count: 0,
+      is_online: false,
+    });
+  }, [params.userId, params.username, loading, conversations]);
 
   const openChat = async (conv: Conversation) => {
     setSelectedChat(conv);
@@ -92,7 +135,7 @@ export default function MessagesScreen() {
         token,
       );
       if (data.success) {
-        setChatMessages(data.messages || []);
+        setChatMessages((data.messages || []).map(normalizeMessage));
       }
     } catch (e) {
       console.error('Fetch messages error:', e);
@@ -126,7 +169,7 @@ export default function MessagesScreen() {
         diamonds,
       }, token);
       if (data.success && data.message) {
-        setChatMessages(prev => [...prev, data.message!]);
+        setChatMessages(prev => [...prev, normalizeMessage(data.message!)]);
         if (data.senderDiamonds != null) {
           updateUser({ diamonds: data.senderDiamonds });
         }
@@ -168,13 +211,23 @@ export default function MessagesScreen() {
         token,
       );
       if (data.success && data.message) {
-        const serverMsg = data.message;
+        const serverMsg = normalizeMessage(data.message);
         setChatMessages(prev =>
           prev.map(m => (m.id === optimistic.id ? serverMsg : m))
         );
       }
     } catch (e) {
-      console.error('Send message error:', e);
+      setChatMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
+      if (e instanceof ApiError) {
+        Alert.alert(
+          e.data && typeof e.data === 'object' && (e.data as { code?: string }).code === 'FOLLOW_REQUIRED'
+            ? 'Follow Required'
+            : 'Message Failed',
+          e.message,
+        );
+      } else {
+        console.error('Send message error:', e);
+      }
     } finally {
       setSending(false);
     }
@@ -239,7 +292,7 @@ export default function MessagesScreen() {
               keyExtractor={(item, index) => item?.id ? item.id.toString() : index.toString()}
               contentContainerStyle={{ padding: 16, paddingBottom: 20 }}
               renderItem={({ item }) => {
-                const isMe = item.sender_id === user?.id;
+                const isMe = normalizeSenderId(item.sender_id) === String(user?.id);
                 return (
                   <View style={[styles.msgRow, isMe && styles.msgRowMe]}>
                     {!isMe && (

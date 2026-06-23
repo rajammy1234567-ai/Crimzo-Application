@@ -20,6 +20,24 @@ const io = socketIo(server, {
 setIo(io);
 
 app.use(cors());
+
+// Razorpay payout webhooks need raw body for signature verification
+const paymentWebhook = require("./controllers/paymentController");
+app.post(
+  "/api/payments/webhook/razorpay-payout",
+  express.raw({ type: "application/json" }),
+  (req, _res, next) => {
+    req.rawBody = req.body?.toString?.("utf8") || "";
+    try {
+      req.body = req.rawBody ? JSON.parse(req.rawBody) : {};
+    } catch {
+      req.body = {};
+    }
+    next();
+  },
+  paymentWebhook.handlePayoutWebhook,
+);
+
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
@@ -62,7 +80,9 @@ app.get("/api/health", (req, res) => {
   const states = ['disconnected', 'connected', 'connecting', 'disconnecting'];
   const { hasRealCloudinary } = require('./config/cloudinary');
   const { getRazorpayStatus } = require('./config/razorpay');
+  const { getPayoutStatus } = require('./utils/razorpayPayout');
   const rz = getRazorpayStatus();
+  const payout = getPayoutStatus();
   res.json({
     status: "ok",
     message: "Crimzo API is running",
@@ -72,6 +92,7 @@ app.get("/api/health", (req, res) => {
       cloudinary: hasRealCloudinary,
       razorpay: rz.configured,
       razorpayMode: rz.mode,
+      razorpayPayouts: payout.configured,
       agora: !!(process.env.AGORA_APP_ID && process.env.AGORA_APP_CERTIFICATE),
     },
   });
@@ -119,11 +140,18 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Media mode: ${mediaMode}`);
 
   const { getRazorpayStatus } = require("./config/razorpay");
+  const { getPayoutStatus } = require("./utils/razorpayPayout");
   const rz = getRazorpayStatus();
+  const payout = getPayoutStatus();
   if (rz.configured) {
     console.log(
       `✅ Razorpay: ${rz.keyType === "live" ? "LIVE" : "TEST"} keys active (${rz.keyIdMasked})`,
     );
+    if (payout.configured) {
+      console.log("✅ RazorpayX Payouts: enabled (auto bank/UPI withdrawals)");
+    } else {
+      console.log("📋 Withdrawals: MANUAL mode — admin panel → Withdrawals (pending → UPI/bank transfer → mark complete)");
+    }
   } else if (process.env.NODE_ENV !== "production") {
     console.log(
       "⚠️  Razorpay: DEV MOCK — set RAZORPAY_KEY_ID + RAZORPAY_KEY_SECRET in .env, then restart",
@@ -175,6 +203,22 @@ async function connectWithRetry(attemptsLeft = 8, delayMs = 4000) {
       setInterval(() => purgeExpiredStories(), 60 * 60 * 1000);
     } catch (err) {
       console.error("Story cleanup setup error:", err.message);
+    }
+
+    // Reset stale online flags from old sessions (presence is socket-based now)
+    try {
+      const User = require("./models/User");
+      const { clearAllPresence } = require("./utils/presenceTracker");
+      clearAllPresence();
+      const reset = await User.updateMany(
+        { is_online: true },
+        { $set: { is_online: false, status: "offline" } },
+      );
+      if (reset.modifiedCount > 0) {
+        console.log(`🧹 Reset ${reset.modifiedCount} stale is_online user(s)`);
+      }
+    } catch (err) {
+      console.error("Presence reset error:", err.message);
     }
   } catch (err) {
     console.error(`❌ MongoDB connection failed: ${err.message}`);

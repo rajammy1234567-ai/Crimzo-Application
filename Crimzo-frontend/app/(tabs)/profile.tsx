@@ -113,7 +113,6 @@ export default function ProfileScreen() {
       if (data.success && data.profile) {
         const p = data.profile;
         updateUser({
-          ...user,
           crimzo_id: p.crimzo_id,
           diamonds: p.diamonds,
           beans: p.beans,
@@ -166,6 +165,22 @@ export default function ProfileScreen() {
     });
   }, []);
 
+  useEffect(() => {
+    return subscribe('follow_updated', (data) => {
+      if (!data || typeof data !== 'object') return;
+      const counts = data as {
+        followers_count?: number;
+        following_count?: number;
+        friends_count?: number;
+      };
+      updateUser({
+        ...(counts.followers_count != null ? { followers_count: counts.followers_count } : {}),
+        ...(counts.following_count != null ? { following_count: counts.following_count } : {}),
+        ...(counts.friends_count != null ? { friends_count: counts.friends_count } : {}),
+      });
+    });
+  }, [updateUser]);
+
   useFocusEffect(
     useCallback(() => {
       fetchProfile();
@@ -210,12 +225,14 @@ export default function ProfileScreen() {
         { userId: targetUserId },
         token,
       );
+      const isFollowing = data.isFollowing ?? data.action === 'followed';
+      const isRequested = data.isRequested ?? data.action === 'requested';
       setListData((prev) => {
         const updated = [...prev];
         updated[index] = {
           ...updated[index],
-          is_following: data.isFollowing ?? data.action === 'followed',
-          is_requested: data.isRequested ?? data.action === 'requested',
+          is_following: isFollowing,
+          is_requested: isRequested,
         };
         return updated;
       });
@@ -860,7 +877,7 @@ function ProfileReelViewerSlide({
 }
 
 const rv = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
+  container: { flex: 1, backgroundColor: '#06060F' },
   gradient: { ...StyleSheet.absoluteFillObject },
   closeBtn: {
     position: 'absolute',
@@ -905,7 +922,7 @@ const rv = StyleSheet.create({
 //  STYLES
 // ══════════════════════════════════════════════════════════════
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
+  container: { flex: 1, backgroundColor: '#06060F' },
 
   // ── Cover gradient ──
   coverGradient: {

@@ -1,7 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
-
-const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
+import { api, authHeaders, API_URL } from '../lib/api';
 
 interface AuthContextType {
     token: string | null;
@@ -17,18 +15,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Optional: verify token validity on mount
-        setLoading(false);
-    }, []);
+        const verify = async () => {
+            if (!token) {
+                setLoading(false);
+                return;
+            }
+            try {
+                await api.get('/dashboard', { headers: authHeaders(token) });
+            } catch {
+                setToken(null);
+                localStorage.removeItem('admin_token');
+            } finally {
+                setLoading(false);
+            }
+        };
+        verify();
+    }, [token]);
 
     const login = async (password: string) => {
         try {
-            const res = await axios.post(`${API_URL}/api/admin/login`, { password });
-            const newToken = res.data.token;
+            const res = await fetch(`${API_URL}/api/admin/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || 'Login failed');
+            }
+            const data = await res.json();
+            const newToken = data.token;
             setToken(newToken);
             localStorage.setItem('admin_token', newToken);
-        } catch (err: any) {
-            throw new Error(err.response?.data?.error || 'Login failed');
+        } catch (err: unknown) {
+            throw new Error(err instanceof Error ? err.message : 'Login failed');
         }
     };
 

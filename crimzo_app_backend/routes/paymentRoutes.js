@@ -22,6 +22,7 @@ router.post('/topup/verify', authenticateToken, payment.verifyTopup);
 router.post('/purchase', authenticateToken, payment.purchaseWithWallet);
 router.get('/withdraw/info', authenticateToken, payment.getWithdrawInfo);
 router.post('/withdraw', authenticateToken, payment.requestWithdraw);
+router.get('/withdraw/history', authenticateToken, payment.getWithdrawHistory);
 router.get('/history', authenticateToken, payment.getPaymentHistory);
 
 module.exports = router;

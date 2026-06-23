@@ -4,6 +4,7 @@ const { flexibleSingle } = require('../middleware/uploadFlexible');
 const user = require('../controllers/userController');
 
 router.get('/profile/full', authenticateToken, user.getFullProfile);
+router.get('/interaction', authenticateToken, user.checkInteraction);
 router.get('/search', authenticateToken, user.searchUsers);
 router.post('/follow', authenticateToken, user.followUser);
 router.post('/follow/accept', authenticateToken, user.acceptFollowRequest);

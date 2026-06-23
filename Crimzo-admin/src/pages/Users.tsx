@@ -37,12 +37,9 @@ const Users = () => {
         try {
             const res = await api.get('/users', {
                 headers: authHeaders(token),
-                params: { search, page, limit: 15 },
+                params: { search, page, limit: 15, filter },
             });
-            let filtered = res.data.users as User[];
-            if (filter === 'active') filtered = filtered.filter(u => !u.is_banned);
-            if (filter === 'banned') filtered = filtered.filter(u => u.is_banned);
-            setUsers(filtered);
+            setUsers(res.data.users as User[]);
             setTotal(res.data.total);
             setTotalPages(res.data.totalPages);
         } catch {

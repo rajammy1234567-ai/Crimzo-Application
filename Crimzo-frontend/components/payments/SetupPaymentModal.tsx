@@ -176,8 +176,8 @@ export default function SetupPaymentModal({
               <>
                 <Text style={s.sub}>
                   {payType === 'upi'
-                    ? 'Enter your UPI ID — we will send an OTP to verify it'
-                    : 'Enter your bank details — we will send an OTP to verify your account'}
+                    ? 'Enter your UPI ID. OTP verifies ownership — withdrawals are sent to this UPI, not your phone.'
+                    : 'Enter your bank account. OTP is only for verification — money goes to this account, not your mobile.'}
                 </Text>
                 <Text style={s.label}>Full name</Text>
                 <TextInput

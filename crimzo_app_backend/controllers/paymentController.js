@@ -31,6 +31,20 @@ const {
   getRazorpayStatus,
 } = require('../config/razorpay');
 const {
+  isPayoutConfigured,
+  getPayoutStatus,
+  ensurePayoutDestination,
+  createPayout,
+  mapRazorpayPayoutStatus,
+  verifyWebhookSignature,
+} = require('../utils/razorpayPayout');
+const {
+  refundWithdrawalBalance,
+  buildPayoutSnapshot,
+  isManualWithdrawalMode,
+} = require('../utils/withdrawalHelpers');
+const { v4: uuidv4 } = require('uuid');
+const {
   normalizeIfsc,
   isValidIfsc,
   resolveBankFromIfsc,
@@ -55,6 +69,16 @@ function isPaymentVerified(linked) {
   if (linked.type === 'upi') return !!linked.upi_id;
   if (linked.type === 'card') return !!linked.account_holder_name;
   return !!(linked.account_last4 && linked.ifsc && linked.linked_phone);
+}
+
+/** Withdrawals only go to verified bank account or UPI — not phone or card */
+function isWithdrawablePayment(linked) {
+  if (!linked || linked.status !== 'verified') return false;
+  if (linked.type === 'upi') return !!linked.upi_id;
+  if (linked.type === 'bank') {
+    return !!(linked.account_number && linked.ifsc && linked.account_holder_name);
+  }
+  return false;
 }
 
 function formatPaymentMethod(linked) {
@@ -116,9 +140,12 @@ function resolvePackage(productType, packageId) {
 
 exports.getPaymentStatus = (_req, res) => {
   const status = getRazorpayStatus();
+  const payout = getPayoutStatus();
   res.json({
     success: true,
     razorpayEnabled: status.configured,
+    payoutEnabled: payout.configured,
+    manualPayoutMode: isManualWithdrawalMode(),
     devMockEnabled: status.devMockEnabled,
     mode: status.mode,
     keyType: status.keyType,
@@ -182,6 +209,9 @@ exports.setupPaymentMethod = async (req, res) => {
       }
       linked.upi_id = upiId;
       linked.linked_phone = linkedPhone;
+      linked.razorpay_contact_id = undefined;
+      linked.razorpay_fund_account_id = undefined;
+      linked.payout_destination_key = undefined;
       phoneForOtp = linkedPhone;
       methodLabel = `UPI ${upiId}`;
     } else if (payType === 'card') {
@@ -212,6 +242,9 @@ exports.setupPaymentMethod = async (req, res) => {
         ifsc,
         linked_phone: linkedPhone,
         razorpay_bank_code: bank.razorpay,
+        razorpay_contact_id: undefined,
+        razorpay_fund_account_id: undefined,
+        payout_destination_key: undefined,
       };
       phoneForOtp = linkedPhone;
       methodLabel = `${bank.name} •••• ${linked.account_last4}`;
@@ -871,9 +904,11 @@ exports.getWithdrawInfo = async (req, res) => {
       minWithdrawBeans: MIN_WITHDRAW_BEANS,
       maxWithdraw: MAX_WITHDRAW_INR,
       beanTiers: beanTiers(),
-      canWithdraw: isPaymentVerified(user.linked_bank) && withdrawableInr >= MIN_WITHDRAW_INR,
+      canWithdraw: isWithdrawablePayment(user.linked_bank) && withdrawableInr >= MIN_WITHDRAW_INR,
       paymentMethod: method,
-      hasVerifiedPayment: isPaymentVerified(user.linked_bank),
+      hasVerifiedPayment: isWithdrawablePayment(user.linked_bank),
+      payoutEnabled: isPayoutConfigured(),
+      manualPayoutMode: isManualWithdrawalMode(),
     });
   } catch (error) {
     console.error('Get withdraw info error:', error);
@@ -882,6 +917,13 @@ exports.getWithdrawInfo = async (req, res) => {
 };
 
 exports.requestWithdraw = async (req, res) => {
+  let withdrawal = null;
+  let beansDeducted = false;
+  let prevDiamonds = 0;
+  let prevBeans = 0;
+  let newDiamonds = 0;
+  let newBeans = 0;
+
   try {
     const userId = req.user.id;
     const amountInr = Number(req.body.amount);
@@ -898,13 +940,18 @@ exports.requestWithdraw = async (req, res) => {
 
     const beansNeeded = inrToBeans(amountInr);
 
-    const user = await User.findById(userId).select('diamonds beans linked_bank');
-    if (!isPaymentVerified(user?.linked_bank)) {
-      return res.status(400).json({ error: 'Verify bank/UPI/card first', code: 'PAYMENT_NOT_VERIFIED' });
+    const user = await User.findById(userId).select('diamonds beans linked_bank email username');
+    if (!isWithdrawablePayment(user?.linked_bank)) {
+      return res.status(400).json({
+        error: 'Verify bank account or UPI first (card/phone alone cannot receive payouts)',
+        code: 'PAYMENT_NOT_VERIFIED',
+      });
     }
 
     const diamonds = user?.diamonds || 0;
     const beans = user?.beans || 0;
+    prevDiamonds = diamonds;
+    prevBeans = beans;
     const totalBeans = totalWithdrawableBeans(diamonds, beans);
     const availableInr = beansToInr(totalBeans);
 
@@ -920,26 +967,34 @@ exports.requestWithdraw = async (req, res) => {
     }
 
     const method = formatPaymentMethod(user.linked_bank);
-    const { diamonds: newDiamonds, beans: newBeans } = deductBeansForWithdraw(
+    ({ diamonds: newDiamonds, beans: newBeans } = deductBeansForWithdraw(
       diamonds,
       beans,
       beansNeeded,
-    );
+    ));
 
     const updated = await User.findByIdAndUpdate(
       userId,
       { diamonds: newDiamonds, beans: newBeans },
       { new: true },
-    ).select('diamonds beans');
+    ).select('diamonds beans linked_bank email username');
+    beansDeducted = true;
 
-    const isDev = process.env.NODE_ENV !== 'production' && !isRazorpayConfigured();
-    const withdrawal = await WithdrawalRequest.create({
+    const idempotencyKey = uuidv4();
+    const useManualPayout = isManualWithdrawalMode();
+
+    withdrawal = await WithdrawalRequest.create({
       user_id: userId,
       amount_inr: amountInr,
-      status: isDev ? 'completed' : 'processing',
+      beans_used: beansNeeded,
+      diamonds_deducted: Math.max(0, prevDiamonds - newDiamonds),
+      beans_deducted: Math.max(0, prevBeans - newBeans),
+      status: useManualPayout ? 'pending' : 'processing',
       payout_method: user.linked_bank.type,
       payout_display: method?.display,
-      completed_at: isDev ? new Date() : null,
+      payout_mode: useManualPayout ? 'manual' : 'razorpay',
+      payout_snapshot: buildPayoutSnapshot(user.linked_bank),
+      idempotency_key: idempotencyKey,
     });
 
     await PaymentOrder.create({
@@ -952,23 +1007,157 @@ exports.requestWithdraw = async (req, res) => {
       paid_at: new Date(),
     });
 
+    let payoutMessage = '';
+    let payoutStatus = withdrawal.status;
+
+    if (useManualPayout) {
+      payoutMessage = `₹${amountInr.toLocaleString('en-IN')} withdrawal request submitted. Our team will transfer to ${method?.display} within 1–3 business days.`;
+    } else {
+      const fullUser = await User.findById(userId).select('diamonds beans linked_bank email username');
+      const { fundAccountId } = await ensurePayoutDestination(fullUser);
+
+      const amountPaise = Math.round(amountInr * 100);
+      const payout = await createPayout({
+        fundAccountId,
+        amountPaise,
+        referenceId: withdrawal._id.toString(),
+        linkedType: user.linked_bank.type,
+        idempotencyKey,
+      });
+
+      payoutStatus = mapRazorpayPayoutStatus(payout.status);
+      withdrawal.razorpay_payout_id = payout.id;
+      withdrawal.razorpay_fund_account_id = fundAccountId;
+      withdrawal.razorpay_status = payout.status;
+      withdrawal.razorpay_mode = payout.mode;
+      withdrawal.status = payoutStatus;
+      if (payout.utr) withdrawal.utr = payout.utr;
+      if (payoutStatus === 'completed') withdrawal.completed_at = new Date();
+      if (payoutStatus === 'failed') {
+        withdrawal.failure_reason = payout.status_details?.description || 'Payout failed';
+        await refundWithdrawalBalance(withdrawal);
+        beansDeducted = false;
+      }
+      await withdrawal.save();
+
+      payoutMessage = payoutStatus === 'completed'
+        ? `₹${amountInr.toLocaleString('en-IN')} sent to ${method?.display}${payout.utr ? ` (UTR: ${payout.utr})` : ''}`
+        : payoutStatus === 'failed'
+          ? `Withdrawal failed — beans refunded. ${withdrawal.failure_reason}`
+          : `₹${amountInr.toLocaleString('en-IN')} payout initiated to ${method?.display}. Money will arrive in your bank/UPI shortly.`;
+    }
+
+    const finalUser = await User.findById(userId).select('diamonds beans');
+
     res.json({
-      success: true,
-      diamonds: updated.diamonds,
-      beans: updated.beans,
-      diamondsConverted: diamondsToBeans(diamonds),
+      success: payoutStatus !== 'failed',
+      diamonds: finalUser.diamonds,
+      beans: finalUser.beans,
+      diamondsConverted: diamondsToBeans(prevDiamonds),
       beansUsed: beansNeeded,
       withdrawn: amountInr,
       withdrawalId: withdrawal._id.toString(),
-      status: withdrawal.status,
-      message: isDev
-        ? `₹${amountInr.toLocaleString('en-IN')} sent to ${method?.display} (test mode)`
-        : `₹${amountInr.toLocaleString('en-IN')} withdrawal initiated — 1–3 business days`,
+      status: payoutStatus,
+      razorpayStatus: withdrawal.razorpay_status || null,
+      utr: withdrawal.utr || null,
+      message: payoutMessage,
       payoutTo: method?.display,
+      payoutDestination: user.linked_bank.type === 'upi' ? 'upi' : 'bank_account',
     });
   } catch (error) {
     console.error('Withdraw error:', error);
-    res.status(500).json({ error: 'Withdrawal failed', details: error.message });
+
+    if (withdrawal) {
+      withdrawal.status = 'failed';
+      withdrawal.failure_reason = error.message || 'Payout failed';
+      if (!withdrawal.diamonds_deducted && !withdrawal.beans_deducted && beansDeducted) {
+        withdrawal.diamonds_deducted = Math.max(0, prevDiamonds - newDiamonds);
+        withdrawal.beans_deducted = Math.max(0, prevBeans - newBeans);
+      }
+      await withdrawal.save();
+      await refundWithdrawalBalance(withdrawal);
+    } else if (beansDeducted && req.user?.id) {
+      await User.findByIdAndUpdate(req.user.id, { diamonds: prevDiamonds, beans: prevBeans });
+    }
+
+    const statusCode = error.statusCode && error.statusCode < 500 ? error.statusCode : 500;
+    res.status(statusCode).json({
+      error: 'Withdrawal failed',
+      details: error.razorpay?.error?.description || error.message,
+      code: 'PAYOUT_FAILED',
+    });
+  }
+};
+
+exports.handlePayoutWebhook = async (req, res) => {
+  try {
+    const signature = req.headers['x-razorpay-signature'];
+    const rawBody = req.rawBody || JSON.stringify(req.body);
+
+    if (!verifyWebhookSignature(rawBody, signature)) {
+      return res.status(400).json({ error: 'Invalid webhook signature' });
+    }
+
+    const event = req.body?.event;
+    const payout = req.body?.payload?.payout?.entity;
+    if (!payout?.id) {
+      return res.json({ success: true, ignored: true });
+    }
+
+    const withdrawal = await WithdrawalRequest.findOne({ razorpay_payout_id: payout.id });
+    if (!withdrawal) {
+      return res.json({ success: true, ignored: true });
+    }
+
+    const mapped = mapRazorpayPayoutStatus(payout.status);
+    withdrawal.razorpay_status = payout.status;
+    if (payout.utr) withdrawal.utr = payout.utr;
+
+    if (mapped === 'completed' && withdrawal.status !== 'completed') {
+      withdrawal.status = 'completed';
+      withdrawal.completed_at = new Date();
+      await withdrawal.save();
+    } else if (mapped === 'failed' && withdrawal.status !== 'failed') {
+      withdrawal.status = 'failed';
+      withdrawal.failure_reason = payout.status_details?.description || event || 'Payout failed';
+      await withdrawal.save();
+      await refundWithdrawalBalance(withdrawal);
+    } else if (mapped === 'processing') {
+      withdrawal.status = 'processing';
+      await withdrawal.save();
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Payout webhook error:', error);
+    res.status(500).json({ error: 'Webhook processing failed' });
+  }
+};
+
+exports.getWithdrawHistory = async (req, res) => {
+  try {
+    const withdrawals = await WithdrawalRequest.find({ user_id: req.user.id })
+      .sort({ created_at: -1 })
+      .limit(30)
+      .lean();
+
+    res.json({
+      success: true,
+      withdrawals: withdrawals.map((w) => ({
+        id: w._id.toString(),
+        amountInr: w.amount_inr,
+        status: w.status,
+        payoutDisplay: w.payout_display,
+        payoutMethod: w.payout_method,
+        utr: w.utr || null,
+        failureReason: w.failure_reason || null,
+        createdAt: w.created_at,
+        completedAt: w.completed_at || null,
+      })),
+    });
+  } catch (error) {
+    console.error('Withdraw history error:', error);
+    res.status(500).json({ error: 'Failed to fetch withdrawal history' });
   }
 };
 

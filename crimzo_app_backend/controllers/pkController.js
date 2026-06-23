@@ -3,6 +3,7 @@ const PKBattle = require('../models/PKBattle');
 const User = require('../models/User');
 const LiveSession = require('../models/LiveSession');
 const { toAgoraUid } = require('../utils/agoraUid');
+const { getIo } = require('../utils/socketEmitter');
 
 // Helper: build Agora token (only if credentials are configured)
 function buildAgoraToken(channelName, uid, role = 'publisher') {
@@ -86,11 +87,18 @@ exports.getActiveBattles = async (req, res) => {
       { status: 'ended', ended_at: new Date() }
     );
 
-    const battles = await PKBattle.find({ status: { $in: ['waiting', 'active'] } })
+    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const battles = await PKBattle.find({
+      $or: [
+        { status: { $in: ['waiting', 'active'] } },
+        { status: 'ended', ended_at: { $gte: thirtyMinAgo } },
+      ],
+    })
       .sort({ created_at: -1 })
       .limit(20)
       .populate('host1_id', 'username avatar')
       .populate('host2_id', 'username avatar')
+      .populate('winner_id', 'username avatar')
       .lean();
 
     const formatted = battles.map(b => ({
@@ -100,7 +108,9 @@ exports.getActiveBattles = async (req, res) => {
       host2_username: b.host2_id?.username,
       host2_avatar: b.host2_id?.avatar,
       host1_id: b.host1_id?._id || b.host1_id,
-      host2_id: b.host2_id?._id || b.host2_id
+      host2_id: b.host2_id?._id || b.host2_id,
+      winner_id: b.winner_id?._id || b.winner_id || null,
+      winner_username: b.winner_id?.username || null,
     }));
 
     res.json({ success: true, battles: formatted });
@@ -116,7 +126,16 @@ exports.joinBattle = async (req, res) => {
     const { battleId } = req.params;
     const userId = req.user.id;
 
-    const battle = await PKBattle.findOne({ battle_id: battleId, status: 'waiting' });
+    const battle = await PKBattle.findOneAndUpdate(
+      {
+        battle_id: battleId,
+        status: 'waiting',
+        $or: [{ host2_id: null }, { host2_id: { $exists: false } }],
+      },
+      { host2_id: userId, status: 'active' },
+      { new: true },
+    );
+
     if (!battle) {
       return res.status(404).json({ error: 'Battle not found or already started' });
     }
@@ -128,10 +147,6 @@ exports.joinBattle = async (req, res) => {
     const uid = toAgoraUid(userId);
     const host1AgoraUid = toAgoraUid(battle.host1_id);
     const token = buildAgoraToken(battle.channel_name, uid);
-
-    battle.host2_id = userId;
-    battle.status = 'active';
-    await battle.save();
 
     await User.updateMany(
       { _id: { $in: [userId, battle.host1_id] } },
@@ -285,13 +300,26 @@ exports.endBattle = async (req, res) => {
       await User.updateMany({ _id: { $in: userIds } }, { status: 'online' });
     }
 
-    res.json({
+    const result = {
       success: true,
       winnerId: winnerId ? String(winnerId) : null,
       host1_score: battle.host1_score,
       host2_score: battle.host2_score,
-      message: winnerId ? 'Battle ended - winner decided!' : 'Battle ended - draw!'
-    });
+      message: winnerId ? 'Battle ended - winner decided!' : 'Battle ended - draw!',
+    };
+
+    const io = getIo();
+    if (io) {
+      io.to(battleId).emit('pk_battle_ended', {
+        battleId,
+        winner: winnerId ? String(winnerId) : null,
+        host1Score: battle.host1_score,
+        host2Score: battle.host2_score,
+      });
+      io.emit('pk_battles_updated');
+    }
+
+    res.json(result);
   } catch (error) {
     console.error('End PK error:', error);
     res.status(500).json({ error: 'Failed to end battle', details: error.message });

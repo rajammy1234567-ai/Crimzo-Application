@@ -37,16 +37,11 @@ import {
 
 import { API_URL, apiGet, apiPost, ApiError, resolveMediaUrl } from '../../lib/apiClient';
 import { toAgoraUid, sameUserId } from '../../lib/agoraUid';
+import { PK_GIFTS, findPkGiftByValue } from '../../lib/pkGifts';
+
 const { width: SW, height: SH } = Dimensions.get('window');
 const BATTLE_DURATION = 300; // 5 minutes
-
-// ── Gift definitions ──
-const GIFTS = [
-  { id: 1, name: 'Rose', value: 10, icon: 'flower', color: '#FF6B8A' },
-  { id: 2, name: 'Heart', value: 50, icon: 'heart', color: '#FF2D55' },
-  { id: 3, name: 'Crown', value: 100, icon: 'trophy', color: '#FFD700' },
-  { id: 4, name: 'Rocket', value: 500, icon: 'rocket', color: '#FF9500' },
-];
+const GIFTS = PK_GIFTS;
 
 // ── Pulsing VS Badge ──
 const PulsingVS = React.memo(() => {
@@ -182,6 +177,7 @@ export default function PKBattleScreen() {
   const [host2Info, setHost2Info] = useState<any>(null);
   const [showWinner, setShowWinner] = useState(false);
   const [winnerData, setWinnerData] = useState<any>(null);
+  const [winnerId, setWinnerId] = useState<string | null>(null);
   const [floatingGifts, setFloatingGifts] = useState<any[]>([]);
   const [selectedHost, setSelectedHost] = useState<'host1' | 'host2' | null>(null);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
@@ -266,8 +262,22 @@ export default function PKBattleScreen() {
       }
     });
     s.on('score_update', (data: any) => {
-      setHost1Score(data.host1_score);
-      setHost2Score(data.host2_score);
+      if (data?.host1_score != null) setHost1Score(data.host1_score);
+      if (data?.host2_score != null) setHost2Score(data.host2_score);
+    });
+    s.on('gift_sent', (data: any) => {
+      if (data?.host1_score != null) setHost1Score(data.host1_score);
+      if (data?.host2_score != null) setHost2Score(data.host2_score);
+      const gift = findPkGiftByValue(data?.giftValue) || {
+        id: 0,
+        name: 'Gift',
+        value: data?.giftValue || 0,
+        icon: 'gift',
+        color: '#FFD700',
+      };
+      const side = data?.side === 'host1' ? 'left' : 'right';
+      const floatId = Date.now() + Math.random();
+      setFloatingGifts((prev) => [...prev, { id: floatId, gift, side }]);
     });
     s.on('pk_opponent_joined', (data: any) => {
       const joined = {
@@ -280,7 +290,7 @@ export default function PKBattleScreen() {
       setTimeRemaining(BATTLE_DURATION);
     });
     s.on('pk_battle_ended', (data: any) => {
-      showWinnerModal(data.winner, data.host1Score, data.host2Score);
+      showWinnerModal(data.winner ?? null, data.host1Score, data.host2Score);
     });
     s.on('pk_chat_message', (data: any) => {
       setChatMessages((prev) => [...prev.slice(-40), data]);
@@ -502,8 +512,8 @@ export default function PKBattleScreen() {
     }
   };
 
-  const sendGift = (gift: typeof GIFTS[0], targetHost: 'host1' | 'host2') => {
-    if (!battleData?.battleId || !isActive) return;
+  const sendGift = (gift: typeof GIFTS[number], targetHost: 'host1' | 'host2') => {
+    if (!battleData?.battleId || !isActive || showWinner) return;
     const hostId = targetHost === 'host1' ? host1Info?.id : host2Info?.id;
     if (!hostId) return;
 
@@ -512,12 +522,7 @@ export default function PKBattleScreen() {
       hostId,
       giftValue: gift.value,
       senderId: user?.id,
-      stickerId: gift.id,
     });
-
-    // Floating gift animation
-    const floatId = Date.now() + Math.random();
-    setFloatingGifts((prev) => [...prev, { id: floatId, gift, side: targetHost === 'host1' ? 'left' : 'right' }]);
   };
 
   const removeFloatingGift = useCallback((id: number) => {
@@ -578,9 +583,14 @@ export default function PKBattleScreen() {
     } else {
       winnerInfo = host2Info;
     }
+    setWinnerId(winnerId ? String(winnerId) : null);
     setWinnerData({ winner: winnerInfo, isDraw, host1Score: h1Score, host2Score: h2Score });
     setShowWinner(true);
+    setIsActive(false);
   };
+
+  const isHost1Winner = winnerId && sameUserId(winnerId, host1Info?.id);
+  const isHost2Winner = winnerId && sameUserId(winnerId, host2Info?.id);
 
   const handleExit = () => {
     cleanupAll();
@@ -679,6 +689,12 @@ export default function PKBattleScreen() {
                 {host1Info?.username || 'Host 1'}
               </Text>
             </View>
+            {showWinner && isHost1Winner && (
+              <View style={styles.winnerSideBadge}>
+                <Ionicons name="trophy" size={12} color="#FFD700" />
+                <Text style={styles.winnerSideText}>WINNER</Text>
+              </View>
+            )}
           </View>
           {/* Tap target for gifts */}
           {isActive && selectedHost === 'host1' && (
@@ -708,6 +724,12 @@ export default function PKBattleScreen() {
                 {host2Info?.username || (isActive ? 'Host 2' : 'Waiting...')}
               </Text>
             </View>
+            {showWinner && isHost2Winner && (
+              <View style={[styles.winnerSideBadge, { borderColor: 'rgba(48,209,88,0.5)' }]}>
+                <Ionicons name="trophy" size={12} color="#FFD700" />
+                <Text style={styles.winnerSideText}>WINNER</Text>
+              </View>
+            )}
           </View>
           {isActive && selectedHost === 'host2' && (
             <View style={[styles.selectedOverlay, { borderColor: '#30D158' }]} />
@@ -925,6 +947,12 @@ const styles = StyleSheet.create({
   },
   hostDot: { width: 8, height: 8, borderRadius: 4 },
   hostNameText: { color: '#FFF', fontSize: 13, fontWeight: '600', maxWidth: 100 },
+  winnerSideBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6,
+    backgroundColor: 'rgba(255,215,0,0.2)', paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,215,0,0.45)',
+  },
+  winnerSideText: { color: '#FFD700', fontSize: 11, fontWeight: '900', letterSpacing: 1 },
 
   // Selected overlay
   selectedOverlay: {

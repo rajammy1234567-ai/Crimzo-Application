@@ -6,6 +6,8 @@ const {
   getBillingSettings,
   buildLiveTalkBalancePayload,
 } = require('../utils/billingSettings');
+const { inrToBeans } = require('../utils/beanConversion');
+const { chargeLiveTalkMinute, InsufficientWalletError } = require('../utils/liveTalkCharge');
 const { getIo, userRoom } = require('../utils/socketEmitter');
 
 exports.checkTalkEligibility = async (req, res) => {
@@ -149,10 +151,13 @@ exports.respondTalk = async (req, res) => {
       if (action === 'accept') {
         io.to(userRoom(request.requester_id)).emit('live_talk_accepted', payload);
         io.to(liveRoom).emit('live_talk_accepted', payload);
+        const beansPerMin = inrToBeans(settings.liveTalkRatePerMin);
         io.to(liveRoom).emit('live_system_message', {
           type: 'talk_accepted',
           username: 'System',
-          message: 'Viewer granted permission to chat',
+          message: beansPerMin > 0
+            ? `Viewer granted permission to chat — host earns ${beansPerMin} beans/min`
+            : 'Viewer granted permission to chat',
         });
       } else {
         io.to(userRoom(request.requester_id)).emit('live_talk_rejected', payload);
@@ -200,6 +205,31 @@ exports.getTalkStatus = async (req, res) => {
         .lean()
       : [];
 
+    let hostChatEarnings = null;
+    if (isHost) {
+      const activeTalks = await LiveTalkSession.find({
+        session_id: sessionId,
+        host_id: userId,
+        status: 'active',
+      })
+        .populate('talker_id', 'username avatar')
+        .select('talker_id minutes_charged host_beans_earned total_charged')
+        .lean();
+
+      const sessionBeansEarned = activeTalks.reduce((sum, t) => sum + (t.host_beans_earned || 0), 0);
+      hostChatEarnings = {
+        beansPerMinute: inrToBeans(settings.liveTalkRatePerMin),
+        sessionBeansEarned,
+        activeChats: activeTalks.length,
+        activeViewers: activeTalks.map((t) => ({
+          talkSessionId: t._id.toString(),
+          requesterName: t.talker_id?.username || 'Viewer',
+          minutesCharged: t.minutes_charged,
+          beansEarned: t.host_beans_earned || 0,
+        })),
+      };
+    }
+
     res.json({
       success: true,
       isHost,
@@ -216,6 +246,7 @@ exports.getTalkStatus = async (req, res) => {
         canChat: true,
       } : null,
       canChat: isHost || !!active,
+      hostChatEarnings,
       pendingRequests: pendingForHost.map((r) => ({
         id: r._id.toString(),
         requesterId: r.requester_id?._id?.toString(),
@@ -291,19 +322,23 @@ exports.startTalkBilling = async (req, res) => {
       });
     }
 
-    const updated = await User.findOneAndUpdate(
-      { _id: talkerId, wallet_balance: { $gte: rate } },
-      { $inc: { wallet_balance: -rate } },
-      { new: true },
-    ).select('wallet_balance');
-
-    if (!updated) {
-      const current = await User.findById(talkerId).select('wallet_balance');
-      return res.status(400).json({
-        error: 'Insufficient wallet balance',
-        code: 'INSUFFICIENT_BALANCE',
-        ...buildLiveTalkBalancePayload(current?.wallet_balance, settings),
+    let chargeResult;
+    try {
+      chargeResult = await chargeLiveTalkMinute({
+        talkerId,
+        hostId: request.host_id,
+        rateInr: rate,
       });
+    } catch (e) {
+      if (e instanceof InsufficientWalletError) {
+        const current = await User.findById(talkerId).select('wallet_balance');
+        return res.status(400).json({
+          error: 'Insufficient wallet balance',
+          code: 'INSUFFICIENT_BALANCE',
+          ...buildLiveTalkBalancePayload(current?.wallet_balance, settings),
+        });
+      }
+      throw e;
     }
 
     const talkSession = await LiveTalkSession.create({
@@ -314,18 +349,31 @@ exports.startTalkBilling = async (req, res) => {
       rate_per_min: rate,
       minutes_charged: 1,
       total_charged: rate,
+      host_beans_earned: chargeResult.beansEarned,
       status: 'active',
     });
+
+    const io = getIo();
+    if (io && chargeResult.beansEarned > 0) {
+      io.to(`live_${sessionId}`).emit('live_talk_host_earning', {
+        sessionId: String(sessionId),
+        hostId: String(request.host_id),
+        beansEarned: chargeResult.beansEarned,
+        beansPerMinute: chargeResult.beansEarned,
+        talkSessionId: talkSession._id.toString(),
+      });
+    }
 
     res.json({
       success: true,
       talkSessionId: talkSession._id.toString(),
-      wallet_balance: updated.wallet_balance,
+      wallet_balance: chargeResult.wallet_balance,
+      hostBeansEarned: chargeResult.beansEarned,
       minutesCharged: 1,
       totalCharged: rate,
       ratePerMin: rate,
       billingEnabled: true,
-      canContinue: updated.wallet_balance >= rate,
+      canContinue: chargeResult.wallet_balance >= rate,
     });
   } catch (error) {
     console.error('Live talk start billing error:', error);
@@ -363,37 +411,55 @@ exports.tickTalkBilling = async (req, res) => {
       });
     }
 
-    const updated = await User.findOneAndUpdate(
-      { _id: req.user.id, wallet_balance: { $gte: rate } },
-      { $inc: { wallet_balance: -rate } },
-      { new: true },
-    ).select('wallet_balance');
-
-    if (!updated) {
-      talkSession.status = 'ended_insufficient';
-      talkSession.ended_at = new Date();
-      await talkSession.save();
-      return res.status(400).json({
-        error: 'Wallet balance exhausted — ending the chat.',
-        code: 'BALANCE_EXHAUSTED',
-        shouldEndTalk: true,
-        minutesCharged: talkSession.minutes_charged,
-        totalCharged: talkSession.total_charged,
+    let chargeResult;
+    try {
+      chargeResult = await chargeLiveTalkMinute({
+        talkerId: req.user.id,
+        hostId: talkSession.host_id,
+        rateInr: rate,
       });
+    } catch (e) {
+      if (e instanceof InsufficientWalletError) {
+        talkSession.status = 'ended_insufficient';
+        talkSession.ended_at = new Date();
+        await talkSession.save();
+        return res.status(400).json({
+          error: 'Wallet balance exhausted — ending the chat.',
+          code: 'BALANCE_EXHAUSTED',
+          shouldEndTalk: true,
+          minutesCharged: talkSession.minutes_charged,
+          totalCharged: talkSession.total_charged,
+        });
+      }
+      throw e;
     }
 
     talkSession.minutes_charged += 1;
     talkSession.total_charged += rate;
+    talkSession.host_beans_earned = (talkSession.host_beans_earned || 0) + chargeResult.beansEarned;
     talkSession.last_tick_at = new Date();
     await talkSession.save();
 
+    const io = getIo();
+    if (io && chargeResult.beansEarned > 0) {
+      io.to(`live_${sessionId}`).emit('live_talk_host_earning', {
+        sessionId: String(sessionId),
+        hostId: String(talkSession.host_id),
+        beansEarned: chargeResult.beansEarned,
+        beansPerMinute: chargeResult.beansEarned,
+        talkSessionId: talkSession._id.toString(),
+        sessionBeansEarned: talkSession.host_beans_earned,
+      });
+    }
+
     res.json({
       success: true,
-      wallet_balance: updated.wallet_balance,
+      wallet_balance: chargeResult.wallet_balance,
+      hostBeansEarned: chargeResult.beansEarned,
       minutesCharged: talkSession.minutes_charged,
       totalCharged: talkSession.total_charged,
       ratePerMin: rate,
-      canContinue: updated.wallet_balance >= rate,
+      canContinue: chargeResult.wallet_balance >= rate,
     });
   } catch (error) {
     console.error('Live talk tick billing error:', error);

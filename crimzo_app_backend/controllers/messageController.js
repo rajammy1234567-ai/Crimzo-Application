@@ -3,6 +3,7 @@ const User = require('../models/User');
 const GiftHistory = require('../models/GiftHistory');
 const mongoose = require('mongoose');
 const { transferDiamonds } = require('../utils/diamondTransfer');
+const { assertCanInteract } = require('../utils/followPermissions');
 const { emitBalanceUpdate } = require('../utils/socketEmitter');
 const { CHAT_GIFT_PRESETS } = require('../config/walletConfig');
 
@@ -114,10 +115,18 @@ exports.sendMessage = async (req, res) => {
       return res.status(400).json({ error: 'Receiver and content are required' });
     }
 
-    // Check receiver exists
     const receiver = await User.findById(receiverId);
     if (!receiver) {
       return res.status(404).json({ error: 'User not found' });
+    }
+
+    try {
+      await assertCanInteract(senderId, receiverId);
+    } catch (permErr) {
+      return res.status(permErr.statusCode || 403).json({
+        error: permErr.message,
+        code: permErr.code || 'FOLLOW_REQUIRED',
+      });
     }
 
     const msg = await Message.create({
@@ -159,6 +168,15 @@ exports.sendDiamondGift = async (req, res) => {
     }
     if (!CHAT_GIFT_PRESETS.includes(amount)) {
       return res.status(400).json({ error: 'Invalid gift amount', presets: CHAT_GIFT_PRESETS });
+    }
+
+    try {
+      await assertCanInteract(senderId, receiverId);
+    } catch (permErr) {
+      return res.status(permErr.statusCode || 403).json({
+        error: permErr.message,
+        code: permErr.code || 'FOLLOW_REQUIRED',
+      });
     }
 
     const transfer = await transferDiamonds(senderId, receiverId, amount);

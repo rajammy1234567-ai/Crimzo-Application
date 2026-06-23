@@ -66,8 +66,18 @@ function tierBg(t: string): [string, string] {
 // WALLET / TOP-UP SCREEN
 // ════════════════════════════════════════════════════════════
 export default function WalletScreen() {
-  const { user } = useAuth();
+  const { user, isGuest } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    if (isGuest) {
+      Alert.alert(
+        'Account Required',
+        'Create an account to use wallet, recharge, and withdraw.',
+        [{ text: 'OK', onPress: () => router.back() }],
+      );
+    }
+  }, [isGuest, router]);
   const {
     busy,
     checkout,
@@ -85,6 +95,7 @@ export default function WalletScreen() {
     withdrawInfo,
     loadWithdrawInfo,
     handleTopupSuccess,
+    handleCheckoutError,
     cancelTopup,
   } = useWallet();
   const [showAddMoney, setShowAddMoney] = useState(false);
@@ -496,6 +507,7 @@ export default function WalletScreen() {
         checkout={checkout}
         onSuccess={handleTopupSuccess}
         onCancel={cancelTopup}
+        onError={handleCheckoutError}
       />
 
       <WithdrawModal

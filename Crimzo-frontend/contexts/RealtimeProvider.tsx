@@ -30,9 +30,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       auth: { token },
     });
 
-    socket.on('connect', () => {
-      socket.emit('join_user', { userId: user.id });
-    });
+    const registerPresence = () => {
+      socket.emit('join_user');
+      socket.emit('app_presence');
+    };
+
+    socket.on('connect', registerPresence);
 
     socket.on('user_banned', (data: { message?: string }) => {
       Alert.alert(
@@ -41,7 +44,6 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         [{ text: 'OK', onPress: () => logout() }],
         { cancelable: false },
       );
-      logout();
     });
 
     socket.on('diamond_update', (data: { diamonds?: number }) => {
@@ -68,6 +70,20 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       publish('live_streams_updated');
     });
 
+    socket.on('follow_updated', (data: {
+      followers_count?: number;
+      following_count?: number;
+      friends_count?: number;
+    }) => {
+      publish('follow_updated', data);
+    });
+
+    socket.on('online_count_update', (data: { count?: number }) => {
+      if (typeof data?.count === 'number') {
+        publish('online_count_update', data.count);
+      }
+    });
+
     socket.on('new_notification', (data: {
       title?: string;
       body?: string;
@@ -85,7 +101,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     socketRef.current = socket;
 
+    const heartbeat = setInterval(() => {
+      if (socket.connected) {
+        socket.emit('presence_heartbeat');
+      }
+    }, 30 * 1000);
+
     return () => {
+      clearInterval(heartbeat);
       socket.disconnect();
       socketRef.current = null;
     };

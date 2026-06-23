@@ -302,12 +302,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateUser = (userData: Partial<User>) => {
-    if (user) {
-      const updated = { ...user, ...userData };
-      setUser(updated);
-      // Sync cache in background
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, ...userData };
       AsyncStorage.setItem('cached_user', JSON.stringify(updated)).catch(() => { });
-    }
+      return updated;
+    });
   };
 
   // ── Email OTP: Send ──

@@ -61,6 +61,21 @@ function emitLiveStreamsUpdated() {
   _io.emit('live_streams_updated', { at: Date.now() });
 }
 
+function emitFollowUpdated(userId, counts = {}) {
+  if (!_io || !userId) return;
+  _io.to(userRoom(userId)).emit('follow_updated', {
+    userId: String(userId),
+    ...counts,
+    at: Date.now(),
+  });
+}
+
+function emitOnlineCountUpdate(count) {
+  if (!_io) return;
+  const safeCount = Math.max(0, Number(count) || 0);
+  _io.emit('online_count_update', { count: safeCount, at: Date.now() });
+}
+
 module.exports = {
   setIo,
   getIo,
@@ -74,4 +89,6 @@ module.exports = {
   emitReelDeleted,
   emitStickersUpdated,
   emitLiveStreamsUpdated,
+  emitFollowUpdated,
+  emitOnlineCountUpdate,
 };

@@ -9,7 +9,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 const { width: SW } = Dimensions.get('window');
 const CARD_W = (SW - 22) / 2;
-import { apiGet } from '../../lib/apiClient';
+import io from 'socket.io-client';
+import { API_URL, apiGet } from '../../lib/apiClient';
 import { sameUserId } from '../../lib/agoraUid';
 
 interface PKBattle {
@@ -23,6 +24,14 @@ interface PKBattle {
     host1_score: number;
     host2_score: number;
     status: string;
+    winner_id?: string | null;
+    winner_username?: string | null;
+}
+
+function isPkWinner(battle: PKBattle, side: 'host1' | 'host2'): boolean {
+    if (battle.status !== 'ended' || !battle.winner_id) return false;
+    const hostId = side === 'host1' ? battle.host1_id : battle.host2_id;
+    return !!hostId && sameUserId(battle.winner_id, hostId);
 }
 
 interface Props {
@@ -71,21 +80,29 @@ const PKBattleCard: React.FC<{
 }> = ({ battle, isOwnBattle, onWatch, onJoin, onResume }) => {
     const h1Initial = (battle.host1_username || 'H').charAt(0).toUpperCase();
     const isWaiting = battle.status === 'waiting';
+    const isEnded = battle.status === 'ended';
+    const host1Won = isPkWinner(battle, 'host1');
+    const host2Won = isPkWinner(battle, 'host2');
 
     return (
         <View style={st.pkCard}>
             <LinearGradient colors={['#1C1C2E', '#111118']} style={st.pkCardInner}>
                 {/* Header badge */}
                 <View style={st.pkBadgeRow}>
-                    <LinearGradient colors={isWaiting ? ['#FF9500', '#FF6B00'] : ['#FF2D55', '#FF6B8A']} style={st.pkBadge}>
-                        <PulsingDot />
-                        <Text style={st.pkBadgeText}>{isWaiting ? 'WAITING' : 'LIVE PK'}</Text>
+                    <LinearGradient
+                        colors={isEnded ? ['#FFD700', '#FF9500'] : isWaiting ? ['#FF9500', '#FF6B00'] : ['#FF2D55', '#FF6B8A']}
+                        style={st.pkBadge}
+                    >
+                        {!isEnded && <PulsingDot />}
+                        <Text style={st.pkBadgeText}>
+                            {isEnded ? 'ENDED' : isWaiting ? 'WAITING' : 'LIVE PK'}
+                        </Text>
                     </LinearGradient>
                     {!isWaiting && (
                         <View style={st.pkScoreMini}>
-                            <Text style={[st.pkScoreText, { color: '#FF2D55' }]}>{battle.host1_score}</Text>
+                            <Text style={[st.pkScoreText, { color: '#FF2D55' }]}>{battle.host1_score || 0}</Text>
                             <Text style={st.pkScoreVs}>:</Text>
-                            <Text style={[st.pkScoreText, { color: '#30D158' }]}>{battle.host2_score}</Text>
+                            <Text style={[st.pkScoreText, { color: '#30D158' }]}>{battle.host2_score || 0}</Text>
                         </View>
                     )}
                 </View>
@@ -93,14 +110,24 @@ const PKBattleCard: React.FC<{
                 {/* Avatars */}
                 <View style={st.pkAvatarRow}>
                     <View style={st.pkAvatarWrap}>
-                        {battle.host1_avatar ? (
-                            <Image source={{ uri: battle.host1_avatar }} style={st.pkAvatar} />
-                        ) : (
-                            <LinearGradient colors={['#FF2D55', '#FF6B8A']} style={st.pkAvatar}>
-                                <Text style={st.pkAvatarText}>{h1Initial}</Text>
-                            </LinearGradient>
-                        )}
-                        <Text style={st.pkAvatarName} numberOfLines={1}>{battle.host1_username}</Text>
+                        <View style={st.pkAvatarFrame}>
+                            {battle.host1_avatar ? (
+                                <Image source={{ uri: battle.host1_avatar }} style={st.pkAvatar} />
+                            ) : (
+                                <LinearGradient colors={['#FF2D55', '#FF6B8A']} style={st.pkAvatar}>
+                                    <Text style={st.pkAvatarText}>{h1Initial}</Text>
+                                </LinearGradient>
+                            )}
+                            {host1Won && (
+                                <View style={st.pkWinnerTag}>
+                                    <Ionicons name="trophy" size={9} color="#FFD700" />
+                                    <Text style={st.pkWinnerTagText}>WINNER</Text>
+                                </View>
+                            )}
+                        </View>
+                        <Text style={[st.pkAvatarName, host1Won && st.pkWinnerName]} numberOfLines={1}>
+                            {battle.host1_username}
+                        </Text>
                     </View>
 
                     <View style={st.pkVsWrap}>
@@ -110,18 +137,28 @@ const PKBattleCard: React.FC<{
                     </View>
 
                     <View style={st.pkAvatarWrap}>
-                        {battle.host2_avatar ? (
-                            <Image source={{ uri: battle.host2_avatar }} style={st.pkAvatar} />
-                        ) : battle.host2_username ? (
-                            <LinearGradient colors={['#30D158', '#4ADE80']} style={st.pkAvatar}>
-                                <Text style={st.pkAvatarText}>{(battle.host2_username || 'H').charAt(0).toUpperCase()}</Text>
-                            </LinearGradient>
-                        ) : (
-                            <View style={[st.pkAvatar, { backgroundColor: '#222', justifyContent: 'center', alignItems: 'center' }]}>
-                                <Ionicons name="help" size={20} color="#555" />
-                            </View>
-                        )}
-                        <Text style={st.pkAvatarName} numberOfLines={1}>{battle.host2_username || 'Open Slot'}</Text>
+                        <View style={st.pkAvatarFrame}>
+                            {battle.host2_avatar ? (
+                                <Image source={{ uri: battle.host2_avatar }} style={st.pkAvatar} />
+                            ) : battle.host2_username ? (
+                                <LinearGradient colors={['#30D158', '#4ADE80']} style={st.pkAvatar}>
+                                    <Text style={st.pkAvatarText}>{(battle.host2_username || 'H').charAt(0).toUpperCase()}</Text>
+                                </LinearGradient>
+                            ) : (
+                                <View style={[st.pkAvatar, { backgroundColor: '#222', justifyContent: 'center', alignItems: 'center' }]}>
+                                    <Ionicons name="help" size={20} color="#555" />
+                                </View>
+                            )}
+                            {host2Won && (
+                                <View style={[st.pkWinnerTag, { borderColor: 'rgba(48,209,88,0.5)' }]}>
+                                    <Ionicons name="trophy" size={9} color="#FFD700" />
+                                    <Text style={st.pkWinnerTagText}>WINNER</Text>
+                                </View>
+                            )}
+                        </View>
+                        <Text style={[st.pkAvatarName, host2Won && st.pkWinnerName]} numberOfLines={1}>
+                            {battle.host2_username || 'Open Slot'}
+                        </Text>
                     </View>
                 </View>
 
@@ -136,6 +173,15 @@ const PKBattleCard: React.FC<{
                             <Text style={st.pkActionText}>{isOwnBattle ? 'Resume Battle' : 'Join Battle'}</Text>
                         </LinearGradient>
                     </TouchableOpacity>
+                ) : isEnded ? (
+                    <View style={st.pkEndedRow}>
+                        <Ionicons name="trophy" size={14} color="#FFD700" />
+                        <Text style={st.pkEndedText}>
+                            {battle.winner_username
+                                ? `${battle.winner_username} won`
+                                : 'Draw'}
+                        </Text>
+                    </View>
                 ) : (
                     <TouchableOpacity onPress={onWatch} activeOpacity={0.8}>
                         <LinearGradient colors={['#FF2D55', '#FF6B8A']} style={st.pkActionBtn}>
@@ -194,6 +240,20 @@ const GamingSection: React.FC<Props> = ({
         : (insets.bottom > 0 ? insets.bottom + 18 : 46));
 
     useEffect(() => { fetchPKBattles(); }, []);
+
+    useEffect(() => {
+        if (!token || !API_URL) return;
+        const sock = io(API_URL, { transports: ['websocket'], auth: { token } });
+        sock.on('pk_battles_updated', () => { void fetchPKBattles(); });
+        return () => { sock.disconnect(); };
+    }, [token]);
+
+    useEffect(() => {
+        const hasLive = pkBattles.some((b) => b.status === 'active');
+        if (!hasLive) return;
+        const interval = setInterval(() => { void fetchPKBattles(); }, 4000);
+        return () => clearInterval(interval);
+    }, [pkBattles]);
 
     const fetchPKBattles = async () => {
         try {
@@ -338,9 +398,19 @@ const st = StyleSheet.create({
     // Avatars
     pkAvatarRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 16, marginBottom: 16 },
     pkAvatarWrap: { alignItems: 'center', gap: 6, flex: 1 },
+    pkAvatarFrame: { position: 'relative', alignItems: 'center' },
     pkAvatar: { width: 52, height: 52, borderRadius: 26, overflow: 'hidden' },
     pkAvatarText: { color: '#FFF', fontSize: 20, fontWeight: '900' },
     pkAvatarName: { color: '#CCC', fontSize: 12, fontWeight: '600', maxWidth: 80 },
+    pkWinnerName: { color: '#FFD700' },
+    pkWinnerTag: {
+        position: 'absolute', bottom: -4, flexDirection: 'row', alignItems: 'center', gap: 2,
+        backgroundColor: 'rgba(0,0,0,0.85)', paddingHorizontal: 6, paddingVertical: 2,
+        borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,215,0,0.45)',
+    },
+    pkWinnerTagText: { color: '#FFD700', fontSize: 8, fontWeight: '900', letterSpacing: 0.5 },
+    pkEndedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10 },
+    pkEndedText: { color: '#FFD700', fontSize: 13, fontWeight: '700' },
     pkVsWrap: { marginHorizontal: 8 },
     pkVsBadge: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
     pkVsText: { color: '#FFF', fontSize: 12, fontWeight: '900' },

@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, StyleSheet, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { gradients } from '../../lib/theme';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useTabFocus } from '../../lib/useTabFocus';
 import { useAuth } from '../../contexts/AuthContext';
@@ -56,9 +58,13 @@ export default function HomeScreen() {
     const unsubStreams = subscribe('live_streams_updated', () => {
       fetchActiveStreams();
     });
+    const unsubOnline = subscribe('online_count_update', (count) => {
+      if (typeof count === 'number') setOnlineCount(count);
+    });
     return () => {
       clearInterval(interval);
       unsubStreams();
+      unsubOnline();
     };
   }, [token]);
 
@@ -66,6 +72,7 @@ export default function HomeScreen() {
     useCallback(() => {
       if (!token) return;
       fetchActiveStreams();
+      fetchOnlineCount();
       fetchStories();
       loadViewedStories();
       refreshUnreadCount();
@@ -109,6 +116,16 @@ export default function HomeScreen() {
       setLiveStreams(res.streams || []);
     } catch (error) {
       console.error('Fetch active streams error:', error);
+    }
+  };
+
+  const fetchOnlineCount = async () => {
+    if (!token) return;
+    try {
+      const res = await apiGet<{ count?: number }>('/api/users/online-count', token);
+      if (typeof res.count === 'number') setOnlineCount(res.count);
+    } catch (error) {
+      console.error('Fetch online count error:', error);
     }
   };
 
@@ -252,6 +269,7 @@ export default function HomeScreen() {
   }, []);
 
   return (
+    <LinearGradient colors={[...gradients.screen]} style={styles.gradient}>
     <SafeAreaView style={styles.container} pointerEvents={pointerEvents}>
       <HomeHeader
         username={user?.username || ''}
@@ -315,9 +333,11 @@ export default function HomeScreen() {
         onDismiss={dismissUploadOverlay}
       />
     </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
+  gradient: { flex: 1 },
+  container: { flex: 1, backgroundColor: 'transparent' },
 });

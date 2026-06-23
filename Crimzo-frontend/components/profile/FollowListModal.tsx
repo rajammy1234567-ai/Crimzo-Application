@@ -118,7 +118,9 @@ export default function FollowListModal({
                             ? 'Following'
                             : item.is_requested
                               ? 'Requested'
-                              : 'Follow'}
+                              : type === 'followers'
+                                ? 'Follow back'
+                                : 'Follow'}
                         </Text>
                       </TouchableOpacity>
                     )}

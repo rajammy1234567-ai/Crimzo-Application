@@ -8,7 +8,11 @@ const authenticateAdmin = (req, res, next) => {
     return res.status(401).json({ error: 'Admin access required' });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET || 'jwt_secret_fallback', (err, admin) => {
+  if (!process.env.JWT_SECRET) {
+    return res.status(503).json({ error: 'Server auth not configured' });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, admin) => {
     if (err) {
       return res.status(403).json({ error: 'Invalid admin token' });
     }

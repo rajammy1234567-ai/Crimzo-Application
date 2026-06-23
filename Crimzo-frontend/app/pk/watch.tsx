@@ -32,16 +32,12 @@ import {
 } from '../../components/agoraImports';
 
 import { API_URL, apiGet, ApiError, resolveMediaUrl } from '../../lib/apiClient';
-import { toAgoraUid } from '../../lib/agoraUid';
+import { toAgoraUid, sameUserId } from '../../lib/agoraUid';
+import { PK_GIFTS, findPkGiftByValue } from '../../lib/pkGifts';
+
 const { width: SW, height: SH } = Dimensions.get('window');
 
-// ── Gift definitions ──
-const GIFTS = [
-  { id: 1, name: 'Rose', value: 10, icon: 'flower', color: '#FF6B8A' },
-  { id: 2, name: 'Heart', value: 50, icon: 'heart', color: '#FF2D55' },
-  { id: 3, name: 'Crown', value: 100, icon: 'trophy', color: '#FFD700' },
-  { id: 4, name: 'Rocket', value: 500, icon: 'rocket', color: '#FF9500' },
-];
+const GIFTS = PK_GIFTS;
 
 // ── Pulsing VS Badge ──
 const PulsingVS = React.memo(() => {
@@ -120,7 +116,7 @@ const GiftFloat = ({ gift, side, onDone }: { gift: any; side: 'left' | 'right'; 
 // ══════════════════════════════════════════
 export default function PKWatchScreen() {
   const { battleId: paramBattleId } = useLocalSearchParams();
-  const { user, token } = useAuth();
+  const { user, token, updateUser } = useAuth();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
@@ -229,8 +225,21 @@ export default function PKWatchScreen() {
       sock.emit('join_battle', { battleId });
     });
     sock.on('score_update', (data: any) => {
-      setHost1Score(data.host1_score);
-      setHost2Score(data.host2_score);
+      if (data?.host1_score != null) setHost1Score(data.host1_score);
+      if (data?.host2_score != null) setHost2Score(data.host2_score);
+    });
+    sock.on('gift_sent', (data: any) => {
+      if (data?.host1_score != null) setHost1Score(data.host1_score);
+      if (data?.host2_score != null) setHost2Score(data.host2_score);
+      const gift = findPkGiftByValue(data?.giftValue) || {
+        id: 0, name: 'Gift', value: data?.giftValue || 0, icon: 'gift', color: '#FFD700',
+      };
+      const floatId = Date.now() + Math.random();
+      setFloatingGifts((prev) => [...prev, {
+        id: floatId,
+        gift,
+        side: data?.side === 'host1' ? 'left' : 'right',
+      }]);
     });
     sock.on('pk_opponent_joined', (data: any) => {
       setHost2Info(data.user);
@@ -248,7 +257,10 @@ export default function PKWatchScreen() {
       setViewerCount(data.count || 0);
     });
     sock.on('gift_error', (data: any) => {
-      console.warn('[PK Watch] Gift error:', data.message);
+      Alert.alert('Gift Failed', data?.message || 'Could not send gift');
+    });
+    sock.on('diamond_update', (data: { diamonds?: number }) => {
+      if (typeof data?.diamonds === 'number') updateUser({ diamonds: data.diamonds });
     });
     socketRef.current = sock;
   };
@@ -262,10 +274,7 @@ export default function PKWatchScreen() {
       hostId,
       giftValue: gift.value,
       senderId: user?.id,
-      stickerId: gift.id,
     });
-    const floatId = Date.now() + Math.random();
-    setFloatingGifts(prev => [...prev, { id: floatId, gift, side: targetHost === 'host1' ? 'left' : 'right' }]);
   };
 
   const removeFloat = useCallback((id: number) => {
@@ -330,6 +339,12 @@ export default function PKWatchScreen() {
           <View style={s.hostLabel}>
             <View style={[s.hostDot, { backgroundColor: '#FF2D55' }]} />
             <Text style={s.hostName} numberOfLines={1}>{host1Info?.username || 'Host 1'}</Text>
+            {ended && winnerData?.winner && sameUserId(winnerData.winner, host1Info?.id) && (
+              <View style={s.winnerBadge}>
+                <Ionicons name="trophy" size={10} color="#FFD700" />
+                <Text style={s.winnerBadgeText}>WINNER</Text>
+              </View>
+            )}
           </View>
           {selectedHost === 'host1' && <View style={[s.selectedBorder, { borderColor: '#FF2D55' }]} />}
         </TouchableOpacity>
@@ -363,6 +378,12 @@ export default function PKWatchScreen() {
           <View style={s.hostLabel}>
             <View style={[s.hostDot, { backgroundColor: '#30D158' }]} />
             <Text style={s.hostName} numberOfLines={1}>{host2Info?.username || 'Waiting...'}</Text>
+            {ended && winnerData?.winner && sameUserId(winnerData.winner, host2Info?.id) && (
+              <View style={s.winnerBadge}>
+                <Ionicons name="trophy" size={10} color="#FFD700" />
+                <Text style={s.winnerBadgeText}>WINNER</Text>
+              </View>
+            )}
           </View>
           {selectedHost === 'host2' && <View style={[s.selectedBorder, { borderColor: '#30D158' }]} />}
         </TouchableOpacity>
@@ -473,7 +494,11 @@ export default function PKWatchScreen() {
           <LinearGradient colors={['rgba(0,0,0,0.9)', 'rgba(26,10,30,0.95)']} style={StyleSheet.absoluteFill} />
           <View style={s.endedCard}>
             <Ionicons name="trophy" size={48} color="#FFD700" />
-            <Text style={s.endedTitle}>Battle Ended!</Text>
+            <Text style={s.endedTitle}>
+              {winnerData?.winner
+                ? `${sameUserId(winnerData.winner, host1Info?.id) ? host1Info?.username : host2Info?.username} Wins!`
+                : 'Battle Ended — Draw!'}
+            </Text>
             <View style={s.endedScores}>
               <View style={s.endedScoreBox}>
                 <Text style={s.endedName}>{host1Info?.username || 'Host 1'}</Text>
@@ -520,6 +545,12 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12,
     overflow: 'hidden', marginTop: 4,
   },
+  winnerBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4,
+    backgroundColor: 'rgba(255,215,0,0.2)', paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 10, borderWidth: 1, borderColor: 'rgba(255,215,0,0.4)',
+  },
+  winnerBadgeText: { color: '#FFD700', fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
   selectedBorder: { ...StyleSheet.absoluteFillObject, borderWidth: 3 },
 
   // VS

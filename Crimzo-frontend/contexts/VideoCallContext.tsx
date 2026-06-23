@@ -3,7 +3,7 @@ import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import io, { Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
-import { API_URL, ApiError } from '../lib/apiClient';
+import { API_URL, ApiError, apiGet } from '../lib/apiClient';
 import {
   checkVideoCallEligibility,
   isInsufficientBalanceError,
@@ -98,6 +98,10 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
     });
 
     socket.on('video_call_error', (data?: { code?: string; message?: string; wallet_balance?: number }) => {
+      if (data?.code === 'FOLLOW_REQUIRED') {
+        Alert.alert('Follow Required', data.message || 'Follow this user and wait until they accept your follow request.');
+        return;
+      }
       if (data?.code === 'INSUFFICIENT_BALANCE') {
         Alert.alert(
           'Recharge Required',
@@ -123,6 +127,25 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
     if (!user?.id || !socketRef.current || !token) {
       Alert.alert('Error', 'Could not start call. Check your connection.');
       return;
+    }
+
+    try {
+      const interaction = await apiGet<{
+        canInteract?: boolean;
+        reason?: string;
+      }>(`/api/user/interaction?userId=${peerId}`, token);
+      if (!interaction.canInteract) {
+        Alert.alert(
+          'Follow Required',
+          interaction.reason || 'Follow this user and wait until they accept your follow request.',
+        );
+        return;
+      }
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 403) {
+        Alert.alert('Follow Required', e.message);
+        return;
+      }
     }
 
     try {

@@ -32,6 +32,9 @@ const userSchema = new mongoose.Schema({
     card_last4: { type: String },
     card_network: { type: String },
     razorpay_bank_code: { type: String },
+    razorpay_contact_id: { type: String },
+    razorpay_fund_account_id: { type: String },
+    payout_destination_key: { type: String },
     status: { type: String, enum: ['pending', 'verified'], default: 'pending' },
     verify_otp_hash: { type: String },
     verify_otp_expires: { type: Date },
@@ -44,6 +47,8 @@ const userSchema = new mongoose.Schema({
   is_online: { type: Boolean, default: false },
   status: { type: String, default: 'offline' }, // offline, online, live, pk_*, etc.
   is_banned: { type: Boolean, default: false },
+  /** false = public (instant follow). true = private (follow request → accept) */
+  is_private: { type: Boolean, default: false },
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
 
 // Virtual for frontend-friendly id

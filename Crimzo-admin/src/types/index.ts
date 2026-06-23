@@ -9,8 +9,42 @@ export interface DashboardStats {
     liveTalkRevenue?: number;
     liveTalkSessions?: number;
     pendingTalkRequests?: number;
+    pendingWithdrawals?: number;
     videoCallRatePerMin?: number;
     liveTalkRatePerMin?: number;
+}
+
+export interface PayoutSnapshot {
+    type?: string;
+    account_holder_name?: string;
+    account_number?: string;
+    account_last4?: string;
+    ifsc?: string;
+    bank_name?: string;
+    upi_id?: string;
+    linked_phone?: string;
+}
+
+export interface WithdrawalRow {
+    id: string;
+    userId?: string;
+    username?: string;
+    crimzoId?: string;
+    email?: string;
+    amountInr: number;
+    beansUsed: number;
+    status: string;
+    payoutMode?: string;
+    payoutMethod?: string;
+    payoutDisplay?: string;
+    payoutSnapshot?: PayoutSnapshot;
+    utr?: string | null;
+    adminNote?: string | null;
+    failureReason?: string | null;
+    balanceRefunded?: boolean;
+    createdAt: string;
+    completedAt?: string | null;
+    processedBy?: string | null;
 }
 
 export interface BillingSettings {

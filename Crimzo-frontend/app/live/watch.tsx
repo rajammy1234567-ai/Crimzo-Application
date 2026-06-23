@@ -86,6 +86,7 @@ export default function WatchScreen() {
   const [showStickers, setShowStickers] = useState(false);
   const [streamEnded, setStreamEnded] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [isRequested, setIsRequested] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [hostFollowers, setHostFollowers] = useState(0);
   const socketRef = useRef<any>(null);
@@ -414,12 +415,17 @@ export default function WatchScreen() {
     if (followLoading || !streamData?.hostId) return;
     setFollowLoading(true);
     try {
-      const res = await apiPost<{ action?: string }>(
+      const res = await apiPost<{
+        action?: string;
+        isFollowing?: boolean;
+        isRequested?: boolean;
+      }>(
         '/api/user/follow',
         { userId: streamData.hostId },
         token,
       );
-      setIsFollowing(res.action === 'followed');
+      setIsFollowing(res.isFollowing ?? (res.action === 'followed' || res.action === 'accepted'));
+      setIsRequested(res.isRequested ?? res.action === 'requested');
     } catch { }
     setFollowLoading(false);
   }, [streamData?.hostId, followLoading, token]);
@@ -557,6 +563,10 @@ export default function WatchScreen() {
                 {isFollowing ? (
                   <View style={s.followingBtn}>
                     <Ionicons name="checkmark" size={14} color="rgba(255,255,255,0.6)" />
+                  </View>
+                ) : isRequested ? (
+                  <View style={s.followingBtn}>
+                    <Text style={s.followBtnText}>Requested</Text>
                   </View>
                 ) : (
                   <LinearGradient colors={['#FF2D55', '#FF6B8A']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.followBtn}>

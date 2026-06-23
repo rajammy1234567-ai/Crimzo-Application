@@ -1,6 +1,9 @@
 import { apiGet, apiPost, ApiError } from './apiClient';
 
+import { inrToBeans } from './diamondPackages';
+
 export const LIVE_TALK_RATE_PER_MIN = 1;
+export const LIVE_TALK_BEANS_PER_MIN = inrToBeans(LIVE_TALK_RATE_PER_MIN);
 
 export type LiveTalkStatus = {
   success?: boolean;
@@ -22,6 +25,17 @@ export type LiveTalkStatus = {
     requesterName?: string;
     requesterAvatar?: string | null;
   }>;
+  hostChatEarnings?: {
+    beansPerMinute: number;
+    sessionBeansEarned: number;
+    activeChats: number;
+    activeViewers?: Array<{
+      talkSessionId: string;
+      requesterName: string;
+      minutesCharged: number;
+      beansEarned: number;
+    }>;
+  } | null;
 };
 
 export async function checkLiveTalkEligibility(token: string) {

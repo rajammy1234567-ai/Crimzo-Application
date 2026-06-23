@@ -388,10 +388,15 @@ export function useWallet() {
 
   const handleTopupSuccess = handleCheckoutSuccess;
 
+  const handleCheckoutError = useCallback((message: string) => {
+    setCheckout(null);
+    Alert.alert('Payment Failed', message);
+  }, []);
+
   const cancelCheckout = useCallback(() => {
     setCheckout(null);
     if (Platform.OS !== 'web') {
-      Alert.alert('Cancelled', 'Payment cancelled.');
+      Alert.alert('Cancelled', 'Payment was cancelled.');
     }
   }, []);
 
@@ -474,6 +479,9 @@ export function useWallet() {
         diamondsConverted?: number;
         beansUsed?: number;
         message?: string;
+        status?: string;
+        payoutTo?: string;
+        utr?: string | null;
         minWithdraw?: number;
         availableInr?: number;
       }>('/api/payments/withdraw', { amount: amountInr }, token);
@@ -482,7 +490,22 @@ export function useWallet() {
         const convertedNote = res.diamondsConverted
           ? `\n\n${res.diamondsConverted.toLocaleString()} diamonds converted to beans.`
           : '';
-        Alert.alert('✅ Withdrawal', (res.message || 'Withdrawal submitted') + convertedNote);
+        const payoutNote = res.payoutTo ? `\n\nSent to: ${res.payoutTo}` : '';
+        const utrNote = res.utr ? `\nUTR: ${res.utr}` : '';
+        const statusNote = res.status === 'pending'
+          ? '\n\nStatus: Pending — admin will transfer to your account within 1–3 business days.'
+          : res.status === 'processing'
+            ? '\n\nStatus: Processing — usually within minutes.'
+            : '';
+        const alertTitle = res.status === 'completed'
+          ? '✅ Withdrawal Complete'
+          : res.status === 'pending'
+            ? '📋 Withdrawal Requested'
+            : '⏳ Withdrawal Initiated';
+        Alert.alert(
+          alertTitle,
+          (res.message || 'Withdrawal submitted') + payoutNote + utrNote + statusNote + convertedNote,
+        );
         await loadWithdrawInfo();
         return true;
       }
@@ -527,6 +550,7 @@ export function useWallet() {
     refreshPaymentMethod,
     handleCheckoutSuccess,
     handleTopupSuccess,
+    handleCheckoutError,
     cancelCheckout,
     cancelTopup,
     closeTopup: () => setCheckout(null),

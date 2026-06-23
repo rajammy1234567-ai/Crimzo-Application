@@ -1,7 +1,9 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import CrimzoNavLogo from './CrimzoNavLogo';
+import { colors } from '../../lib/theme';
 
 interface Props {
   username: string;
@@ -12,7 +14,6 @@ interface Props {
 }
 
 const HomeHeader: React.FC<Props> = ({
-  username,
   onlineCount,
   notificationCount = 0,
   onSearch,
@@ -31,100 +32,119 @@ const HomeHeader: React.FC<Props> = ({
   };
 
   return (
-    <View style={s.header}>
-      {/* Left: Logo + greeting */}
-      <View style={s.left}>
-        <Image
-          source={require('../../assets/images/crimzo_logo1.png')}
-          style={s.logo}
-          resizeMode="contain"
-        />
-      </View>
+    <View style={s.wrap}>
+      <LinearGradient
+        colors={['rgba(255,45,85,0.12)', 'rgba(255,45,85,0.02)', 'transparent']}
+        style={s.glow}
+      />
+      <View style={s.header}>
+        <View style={s.left}>
+          <CrimzoNavLogo />
+        </View>
 
-      {/* Right: Online badge + action buttons */}
-      <View style={s.right}>
-        {onlineCount > 0 && (
-          <View style={s.onlinePill}>
-            <View style={s.greenDot} />
-            <Text style={s.onlineText}>{onlineCount.toLocaleString()} online</Text>
-          </View>
-        )}
-
-        {/* Notification button */}
-        <TouchableOpacity style={s.iconBtn} onPress={handleNotification} activeOpacity={0.7}>
-          <Ionicons name="notifications-outline" size={22} color="rgba(255,255,255,0.85)" />
-          {notificationCount > 0 && (
-            <View style={s.badge}>
-              <Text style={s.badgeText}>{notificationCount > 9 ? '9+' : notificationCount}</Text>
+        <View style={s.right}>
+          {onlineCount > 0 && (
+            <View style={s.onlinePill}>
+              <View style={s.greenDot} />
+              <Text style={s.onlineText}>{onlineCount.toLocaleString()} online</Text>
             </View>
           )}
-        </TouchableOpacity>
 
-        {/* Search button */}
-        <TouchableOpacity style={s.iconBtn} onPress={handleSearch} activeOpacity={0.7}>
-          <Ionicons name="search-outline" size={22} color="rgba(255,255,255,0.85)" />
-        </TouchableOpacity>
+          <TouchableOpacity style={s.iconBtn} onPress={handleNotification} activeOpacity={0.7}>
+            <Ionicons name="notifications-outline" size={20} color="rgba(255,255,255,0.9)" />
+            {notificationCount > 0 && (
+              <View style={s.badge}>
+                <Text style={s.badgeText}>{notificationCount > 9 ? '9+' : notificationCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity style={s.iconBtn} onPress={handleSearch} activeOpacity={0.7}>
+            <Ionicons name="search-outline" size={20} color="rgba(255,255,255,0.9)" />
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
 };
 
 const s = StyleSheet.create({
+  wrap: {
+    position: 'relative',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.surfaceBorder,
+    backgroundColor: 'rgba(6,6,15,0.72)',
+  },
+  glow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 48,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    minHeight: 64,
-    borderBottomWidth: 0.5,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    minHeight: 60,
   },
   left: {
-    flex: 1,
+    flexShrink: 1,
     flexDirection: 'row',
     alignItems: 'center',
     marginRight: 8,
-  },
-  logo: {
-    width: 168,
-    height: 56,
+    minWidth: 0,
   },
   right: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexShrink: 0,
   },
   onlinePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(76,217,100,0.1)',
+    backgroundColor: 'rgba(76,217,100,0.12)',
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(76,217,100,0.15)',
+    borderColor: 'rgba(76,217,100,0.22)',
   },
   greenDot: {
-    width: 5, height: 5, borderRadius: 2.5,
-    backgroundColor: '#4CD964',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.success,
   },
-  onlineText: { color: '#4CD964', fontSize: 11, fontWeight: '700' },
+  onlineText: { color: colors.success, fontSize: 11, fontWeight: '700' },
   iconBtn: {
-    width: 36, height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    alignItems: 'center', justifyContent: 'center',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
     position: 'relative',
   },
   badge: {
-    position: 'absolute', top: -2, right: -2,
-    minWidth: 16, height: 16, borderRadius: 8,
-    backgroundColor: '#FF2D55',
-    alignItems: 'center', justifyContent: 'center',
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 3,
-    borderWidth: 1.5, borderColor: '#000',
+    borderWidth: 2,
+    borderColor: colors.bg,
   },
   badgeText: { color: '#FFF', fontSize: 9, fontWeight: '800' },
 });

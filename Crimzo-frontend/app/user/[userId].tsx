@@ -20,7 +20,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useVideoCall } from '../../contexts/VideoCallContext';
 import { apiGet, apiPost, resolveMediaUrl } from '../../lib/apiClient';
 import FollowListModal, { FollowUser } from '../../components/profile/FollowListModal';
-import { subscribe } from '../../lib/realtimeSync';
+import { subscribe, publish } from '../../lib/realtimeSync';
 
 function formatNumber(n?: number) {
   if (!n) return '0';
@@ -42,7 +42,7 @@ export default function UserProfileScreen() {
   const [followLoading, setFollowLoading] = useState(false);
 
   const [listVisible, setListVisible] = useState(false);
-  const [listType, setListType] = useState<'followers' | 'following'>('followers');
+  const [listType, setListType] = useState<'followers' | 'following' | 'friends'>('followers');
   const [listData, setListData] = useState<FollowUser[]>([]);
   const [listLoading, setListLoading] = useState(false);
 
@@ -96,15 +96,37 @@ export default function UserProfileScreen() {
         action?: string;
         isFollowing?: boolean;
         isRequested?: boolean;
+        followers_count?: number;
+        following_count?: number;
+        friends_count?: number;
       }>('/api/user/follow', { userId }, token);
+      const isFollowing = res.isFollowing ?? res.action === 'followed';
+      const isRequested = res.isRequested ?? res.action === 'requested';
       setProfile((p: any) => ({
         ...p,
-        isFollowing: res.isFollowing ?? res.action === 'followed',
-        isRequested: res.isRequested ?? res.action === 'requested',
-        followers_count: res.action === 'unfollowed'
-          ? Math.max(0, (p?.followers_count || 0) - 1)
-          : p?.followers_count,
+        isFollowing,
+        isRequested,
+        canInteract: isFollowing,
+        interactionBlockedReason: isFollowing
+          ? null
+          : isRequested
+            ? 'Wait until they accept your follow request.'
+            : 'Follow this user and wait until they accept your follow request.',
+        followers_count: res.followers_count ?? (
+          res.action === 'unfollowed'
+            ? Math.max(0, (p?.followers_count || 0) - 1)
+            : res.action === 'followed'
+              ? (p?.followers_count || 0) + 1
+              : p?.followers_count
+        ),
+        friends_count: res.friends_count ?? p?.friends_count,
       }));
+      if (res.following_count != null || res.friends_count != null) {
+        publish('follow_updated', {
+          following_count: res.following_count,
+          friends_count: res.friends_count,
+        });
+      }
     } catch (e) {
       console.error('Follow error:', e);
     } finally {
@@ -116,13 +138,21 @@ export default function UserProfileScreen() {
     if (!token || !userId || followLoading) return;
     setFollowLoading(true);
     try {
-      await apiPost('/api/user/follow/accept', { requesterId: userId }, token);
+      const res = await apiPost<{
+        followers_count?: number;
+        friends_count?: number;
+      }>('/api/user/follow/accept', { requesterId: userId }, token);
       setProfile((p: any) => ({
         ...p,
         hasIncomingRequest: false,
-        isFollowing: false,
-        followers_count: (p?.followers_count || 0) + 1,
+        followsYou: true,
+        followers_count: res.followers_count ?? (p?.followers_count || 0) + 1,
+        friends_count: res.friends_count ?? p?.friends_count,
       }));
+      publish('follow_updated', {
+        followers_count: res.followers_count,
+        friends_count: res.friends_count,
+      });
       Alert.alert('Accepted', `${profile?.username} is now following you`);
     } catch (e) {
       Alert.alert('Error', 'Could not accept request');
@@ -144,7 +174,7 @@ export default function UserProfileScreen() {
     }
   };
 
-  const openFollowList = async (type: 'followers' | 'following') => {
+  const openFollowList = async (type: 'followers' | 'following' | 'friends') => {
     if (!token || !userId) return;
     setListType(type);
     setListVisible(true);
@@ -166,10 +196,18 @@ export default function UserProfileScreen() {
   const handleFollowFromList = async (targetId: string, index: number) => {
     if (!token) return;
     try {
-      const res = await apiPost<{ action?: string }>('/api/user/follow', { userId: targetId }, token);
+      const res = await apiPost<{
+        action?: string;
+        isFollowing?: boolean;
+        isRequested?: boolean;
+      }>('/api/user/follow', { userId: targetId }, token);
       setListData((prev) => {
         const next = [...prev];
-        next[index] = { ...next[index], is_following: res.action === 'followed' };
+        next[index] = {
+          ...next[index],
+          is_following: res.isFollowing ?? res.action === 'followed',
+          is_requested: res.isRequested ?? res.action === 'requested',
+        };
         return next;
       });
       if (String(targetId) === String(userId)) {
@@ -178,6 +216,26 @@ export default function UserProfileScreen() {
     } catch (e) {
       console.error('Follow from list error:', e);
     }
+  };
+
+  const guardInteraction = () => {
+    if (profile?.canInteract) return true;
+    Alert.alert(
+      'Follow Required',
+      profile?.interactionBlockedReason
+        || 'Follow this user and wait until they accept your follow request.',
+    );
+    return false;
+  };
+
+  const handleMessage = () => {
+    if (!guardInteraction()) return;
+    router.push(`/profile/messages?userId=${profile.id}&username=${encodeURIComponent(profile.username || '')}` as any);
+  };
+
+  const handleVideoCall = () => {
+    if (!guardInteraction()) return;
+    startCall(profile.id, profile.username, profile.avatar);
   };
 
   const openUserProfile = (id: string) => {
@@ -241,6 +299,14 @@ export default function UserProfileScreen() {
         ) : null}
         {profile.bio ? <Text style={s.bio}>{profile.bio}</Text> : null}
 
+        {!profile.canInteract && (
+          <Text style={s.interactionHint}>
+            {profile.isRequested
+              ? 'Follow request sent — message & call unlock when they accept.'
+              : 'Follow to unlock message and video call (after they accept).'}
+          </Text>
+        )}
+
         <View style={s.statsRow}>
           <View style={s.stat}>
             <Text style={s.statNum}>{reels.length}</Text>
@@ -253,6 +319,10 @@ export default function UserProfileScreen() {
           <TouchableOpacity style={s.stat} onPress={() => openFollowList('following')}>
             <Text style={s.statNum}>{formatNumber(profile.following_count)}</Text>
             <Text style={s.statLabel}>Following</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.stat} onPress={() => openFollowList('friends')}>
+            <Text style={s.statNum}>{formatNumber(profile.friends_count)}</Text>
+            <Text style={s.statLabel}>Friends</Text>
           </TouchableOpacity>
         </View>
 
@@ -285,16 +355,16 @@ export default function UserProfileScreen() {
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            style={s.messageBtn}
-            onPress={() => router.push('/profile/messages' as any)}
+            style={[s.messageBtn, !profile.canInteract && s.actionDisabled]}
+            onPress={handleMessage}
           >
-            <Text style={s.messageText}>Message</Text>
+            <Text style={[s.messageText, !profile.canInteract && s.actionDisabledText]}>Message</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={s.videoCallBtn}
-            onPress={() => startCall(profile.id, profile.username, profile.avatar)}
+            style={[s.videoCallBtn, !profile.canInteract && s.actionDisabled]}
+            onPress={handleVideoCall}
           >
-            <Ionicons name="videocam" size={20} color="#4CD964" />
+            <Ionicons name="videocam" size={20} color={profile.canInteract ? '#4CD964' : '#666'} />
           </TouchableOpacity>
           <TouchableOpacity
             style={s.moreBtn}
@@ -435,6 +505,16 @@ const s = StyleSheet.create({
     marginTop: 8,
     lineHeight: 20,
   },
+  interactionHint: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 12,
+    textAlign: 'center',
+    paddingHorizontal: 28,
+    marginTop: 10,
+    lineHeight: 17,
+  },
+  actionDisabled: { opacity: 0.45 },
+  actionDisabledText: { color: '#888' },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'center',

@@ -40,12 +40,13 @@ function computeReelScore(reel, { isFollowing, hoursOld }) {
 async function getSocialContext(currentUserId) {
   const currentOid = new mongoose.Types.ObjectId(currentUserId);
 
-  const [followingRows, pendingRows, blockedRows] = await Promise.all([
+  const [followingRows, pendingRows, blockedRows, bannedRows] = await Promise.all([
     Follow.find({ follower_id: currentOid }).select('following_id').lean(),
     FollowRequest.find({ requester_id: currentOid, status: 'pending' }).select('target_id').lean(),
     BlockedUser.find({
       $or: [{ blocker_id: currentOid }, { blocked_id: currentOid }],
     }).lean(),
+    User.find({ is_banned: true }).select('_id').lean(),
   ]);
 
   const followingIdSet = new Set(followingRows.map((f) => String(f.following_id)));
@@ -58,6 +59,7 @@ async function getSocialContext(currentUserId) {
       blockedIdSet.add(String(b.blocker_id));
     }
   });
+  bannedRows.forEach((u) => blockedIdSet.add(String(u._id)));
 
   const allowedFollowingIds = [...followingIdSet]
     .filter((id) => !blockedIdSet.has(id))
@@ -77,10 +79,34 @@ async function getSocialContext(currentUserId) {
 async function enrichReels(reels, ctx) {
   const { currentOid, followingIdSet, requestedIdSet } = ctx;
 
+  const missingUserIds = [];
+  for (const reel of reels) {
+    const rawUser = reel.user_id;
+    const hasProfile = rawUser && typeof rawUser === 'object' && rawUser.username;
+    if (!hasProfile) {
+      const creatorId = reelCreatorId(reel);
+      if (creatorId) missingUserIds.push(creatorId);
+    }
+  }
+
+  const uniqueMissingIds = [...new Set(missingUserIds)];
+  const fetchedUsers = uniqueMissingIds.length
+    ? await User.find({
+        _id: { $in: uniqueMissingIds.map((id) => new mongoose.Types.ObjectId(id)) },
+      })
+        .select('username avatar')
+        .lean()
+    : [];
+  const userById = new Map(fetchedUsers.map((u) => [String(u._id), u]));
+
   return Promise.all(reels.map(async (r) => {
     const creatorId = reelCreatorId(r);
-    const populatedUser = r.user_id || {};
-    const followingId = populatedUser._id || populatedUser || r.user_id;
+    const rawUser = r.user_id;
+    let u = rawUser && typeof rawUser === 'object' && rawUser.username ? rawUser : null;
+    if (!u && creatorId) {
+      u = userById.get(creatorId) || null;
+    }
+    const followingId = u?._id || rawUser?._id || rawUser || r.user_id;
 
     const [likeCount, commentCount, isLiked, isFollowing] = await Promise.all([
       ReelLike.countDocuments({ reel_id: r._id }),
@@ -89,22 +115,21 @@ async function enrichReels(reels, ctx) {
       creatorId ? Promise.resolve(followingIdSet.has(creatorId)) : Follow.exists({ follower_id: currentOid, following_id: followingId }),
     ]);
 
-    const u = populatedUser;
-    const uid = u._id || u || r.user_id;
+    const uid = u?._id || rawUser?._id || rawUser || r.user_id;
     const isRequested = creatorId ? requestedIdSet.has(creatorId) : false;
 
     return {
       id: r._id ? r._id.toString() : null,
-      user_id: uid ? (uid.toString ? uid.toString() : uid) : null,
+      user_id: uid ? (uid.toString ? uid.toString() : String(uid)) : null,
       video_url: normalizeMediaUrl(r.video_url),
       thumbnail_url: normalizeMediaUrl(r.thumbnail_url),
-      caption: r.caption,
+      caption: r.caption || '',
       likes_count: likeCount || r.likes_count || 0,
       views_count: r.views_count || 0,
       comments_count: commentCount || r.comments_count || 0,
       created_at: r.created_at,
-      username: u.username,
-      avatar: u.avatar,
+      username: u?.username || 'User',
+      avatar: u?.avatar ? normalizeMediaUrl(u.avatar) : null,
       is_liked: !!isLiked,
       is_following: !!isFollowing,
       is_requested: isRequested,
@@ -324,12 +349,20 @@ exports.getComments = async (req, res) => {
 
     const total = await ReelComment.countDocuments({ reel_id: reelId });
 
-    const formatted = comments.map(c => ({
-      ...c,
-      id: c._id ? c._id.toString() : undefined,
-      username: c.user_id?.username,
-      avatar: c.user_id?.avatar
-    }));
+    const formatted = comments.map((c) => {
+      const author = c.user_id && typeof c.user_id === 'object' ? c.user_id : null;
+      const authorId = author?._id
+        ? author._id.toString()
+        : (c.user_id ? String(c.user_id) : null);
+      return {
+        id: c._id ? c._id.toString() : undefined,
+        user_id: authorId,
+        text: c.text,
+        username: author?.username || 'User',
+        avatar: author?.avatar || null,
+        created_at: c.created_at,
+      };
+    });
 
     res.json({ success: true, comments: formatted, total });
   } catch (error) {

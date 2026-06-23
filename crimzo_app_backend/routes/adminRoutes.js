@@ -17,6 +17,11 @@ router.get('/billing/settings', adminController.getBillingSettings);
 router.put('/billing/settings', adminController.updateBillingSettings);
 router.get('/billing/sessions', adminController.getBillingSessions);
 
+// Withdrawals (manual UPI/bank payouts)
+router.get('/withdrawals', adminController.getWithdrawals);
+router.put('/withdrawals/:id/complete', adminController.completeWithdrawal);
+router.put('/withdrawals/:id/reject', adminController.rejectWithdrawal);
+
 // Users
 router.get('/users', adminController.getUsers);
 router.put('/users/:id/ban', adminController.toggleBanUser);

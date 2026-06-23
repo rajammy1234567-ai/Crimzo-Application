@@ -141,6 +141,11 @@ export function useDiamondPurchase() {
     }
   }, [token, checkout, updateUser]);
 
+  const handlePaymentError = useCallback((message: string) => {
+    setCheckout(null);
+    Alert.alert('Payment Failed', message);
+  }, []);
+
   const handlePaymentCancel = useCallback(() => {
     setCheckout(null);
     if (Platform.OS !== 'web') {
@@ -154,6 +159,7 @@ export function useDiamondPurchase() {
     startPurchase,
     closeCheckout,
     handlePaymentSuccess,
+    handlePaymentError,
     handlePaymentCancel,
   };
 }
