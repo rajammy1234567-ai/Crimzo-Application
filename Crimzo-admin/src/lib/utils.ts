@@ -1,9 +1,14 @@
-export function formatNumber(n: number): string {
-    return n.toLocaleString('en-IN');
+export function formatNumber(n: number | null | undefined): string {
+    const value = Number(n);
+    if (!Number.isFinite(value)) return '0';
+    return value.toLocaleString('en-IN');
 }
 
-export function formatDate(date: string | Date): string {
-    return new Date(date).toLocaleDateString('en-IN', {
+export function formatDate(date: string | Date | null | undefined): string {
+    if (!date) return '—';
+    const parsed = new Date(date);
+    if (Number.isNaN(parsed.getTime())) return '—';
+    return parsed.toLocaleDateString('en-IN', {
         day: '2-digit',
         month: 'short',
         year: 'numeric',

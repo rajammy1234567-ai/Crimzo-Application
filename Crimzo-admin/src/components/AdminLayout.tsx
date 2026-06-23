@@ -6,6 +6,7 @@ import {
     LayoutDashboard, Users, Radio, Film, Image as ImageIcon, LogOut,
     Menu, X, Shield, IndianRupee, Banknote, ListChecks,
 } from 'lucide-react';
+import { ErrorBoundary } from './ErrorBoundary';
 
 const navSections = [
     {
@@ -220,7 +221,9 @@ const AdminLayout = () => {
                 </header>
 
                 <main className="flex-1 overflow-y-auto custom-scrollbar p-4 lg:p-8">
-                    <Outlet />
+                    <ErrorBoundary>
+                        <Outlet />
+                    </ErrorBoundary>
                 </main>
             </div>
         </div>

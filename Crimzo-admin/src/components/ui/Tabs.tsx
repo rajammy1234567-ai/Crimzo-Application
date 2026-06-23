@@ -14,10 +14,12 @@ interface TabsProps {
 
 export function Tabs({ tabs, active, onChange }: TabsProps) {
     return (
-        <div className="flex bg-dark-bg border border-dark-border rounded-xl p-1 gap-1">
+        <div className="overflow-x-auto custom-scrollbar">
+            <div className="flex min-w-max bg-dark-bg border border-dark-border rounded-xl p-1 gap-1">
             {tabs.map(tab => (
                 <button
                     key={tab.id}
+                    type="button"
                     onClick={() => onChange(tab.id)}
                     className={cn(
                         'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
@@ -37,6 +39,7 @@ export function Tabs({ tabs, active, onChange }: TabsProps) {
                     )}
                 </button>
             ))}
+            </div>
         </div>
     );
 }

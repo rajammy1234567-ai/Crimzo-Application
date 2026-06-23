@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import {
@@ -33,6 +33,31 @@ const statusVariant = (status: string) => {
     return 'info';
 };
 
+function normalizeWithdrawal(raw: Record<string, unknown>): WithdrawalRow {
+    const snap = (raw.payoutSnapshot ?? raw.payout_snapshot ?? {}) as WithdrawalRow['payoutSnapshot'];
+    return {
+        id: String(raw.id ?? raw._id ?? ''),
+        userId: raw.userId != null ? String(raw.userId) : raw.user_id != null ? String(raw.user_id) : undefined,
+        username: (raw.username as string) ?? undefined,
+        crimzoId: (raw.crimzoId as string) ?? (raw.crimzo_id as string) ?? undefined,
+        email: (raw.email as string) ?? undefined,
+        amountInr: Number(raw.amountInr ?? raw.amount_inr ?? 0),
+        beansUsed: Number(raw.beansUsed ?? raw.beans_used ?? 0),
+        status: String(raw.status ?? 'pending'),
+        payoutMode: (raw.payoutMode as string) ?? (raw.payout_mode as string) ?? undefined,
+        payoutMethod: (raw.payoutMethod as string) ?? (raw.payout_method as string) ?? undefined,
+        payoutDisplay: (raw.payoutDisplay as string) ?? (raw.payout_display as string) ?? undefined,
+        payoutSnapshot: snap,
+        utr: (raw.utr as string) ?? null,
+        adminNote: (raw.adminNote as string) ?? (raw.admin_note as string) ?? null,
+        failureReason: (raw.failureReason as string) ?? (raw.failure_reason as string) ?? null,
+        balanceRefunded: Boolean(raw.balanceRefunded ?? raw.balance_refunded),
+        createdAt: String(raw.createdAt ?? raw.created_at ?? ''),
+        completedAt: (raw.completedAt as string) ?? (raw.completed_at as string) ?? null,
+        processedBy: (raw.processedBy as string) ?? (raw.processed_by as string) ?? null,
+    };
+}
+
 function payoutDetailsText(row: WithdrawalRow): string {
     const s = row.payoutSnapshot;
     if (!s) return row.payoutDisplay || '—';
@@ -55,6 +80,7 @@ const Withdrawals = () => {
     const [total, setTotal] = useState(0);
     const [rows, setRows] = useState<WithdrawalRow[]>([]);
     const [counts, setCounts] = useState({ pending: 0, processing: 0 });
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [actionLoading, setActionLoading] = useState(false);
 
     const [completeModal, setCompleteModal] = useState<WithdrawalRow | null>(null);
@@ -63,27 +89,36 @@ const Withdrawals = () => {
     const [adminNote, setAdminNote] = useState('');
     const [rejectReason, setRejectReason] = useState('');
 
-    const fetchWithdrawals = async () => {
+    const fetchWithdrawals = useCallback(async () => {
+        if (!token) return;
         setLoading(true);
+        setLoadError(null);
         try {
             const res = await api.get('/withdrawals', {
                 headers: authHeaders(token),
                 params: { status, page, limit: 15 },
             });
-            setRows(res.data.withdrawals || []);
-            setTotalPages(res.data.totalPages || 1);
-            setTotal(res.data.total ?? 0);
-            setCounts(res.data.counts || { pending: 0, processing: 0 });
-        } catch {
-            toast.error('Failed to load withdrawals');
+            const list = Array.isArray(res.data?.withdrawals) ? res.data.withdrawals : [];
+            setRows(list.map((row: Record<string, unknown>) => normalizeWithdrawal(row)));
+            setTotalPages(res.data?.totalPages || 1);
+            setTotal(res.data?.total ?? 0);
+            setCounts(res.data?.counts || { pending: 0, processing: 0 });
+        } catch (err: unknown) {
+            const message = err && typeof err === 'object' && 'response' in err
+                && err.response && typeof err.response === 'object' && 'data' in err.response
+                && err.response.data && typeof err.response.data === 'object' && 'error' in err.response.data
+                ? String(err.response.data.error)
+                : 'Failed to load withdrawals';
+            setLoadError(message);
+            toast.error(message);
         } finally {
             setLoading(false);
         }
-    };
+    }, [page, status, token]);
 
     useEffect(() => {
-        fetchWithdrawals();
-    }, [page, status, token]);
+        void fetchWithdrawals();
+    }, [fetchWithdrawals]);
 
     const copyPayout = async (row: WithdrawalRow) => {
         try {
@@ -168,10 +203,23 @@ const Withdrawals = () => {
                 />
             </div>
 
+            {loadError && (
+                <div className="mb-4 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-sm text-red-300">
+                    {loadError}
+                    <button
+                        type="button"
+                        onClick={() => void fetchWithdrawals()}
+                        className="ml-3 underline hover:text-red-200"
+                    >
+                        Retry
+                    </button>
+                </div>
+            )}
+
             <Card>
-                {loading ? (
+                {loading && rows.length === 0 ? (
                     <TableSkeleton rows={6} />
-                ) : rows.length === 0 ? (
+                ) : !loading && rows.length === 0 && !loadError ? (
                     <EmptyState
                         icon={IndianRupee}
                         title="No withdrawal requests"
@@ -179,8 +227,11 @@ const Withdrawals = () => {
                             ? 'When users request payouts, they appear here for manual transfer.'
                             : `No ${status} withdrawals found.`}
                     />
-                ) : (
+                ) : rows.length > 0 ? (
                     <div className="overflow-x-auto">
+                        {loading && (
+                            <p className="text-xs text-gray-500 mb-3">Refreshing {status} withdrawals…</p>
+                        )}
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="text-left text-gray-500 border-b border-dark-border">
@@ -267,7 +318,13 @@ const Withdrawals = () => {
                             </tbody>
                         </table>
                     </div>
-                )}
+                ) : loadError ? (
+                    <EmptyState
+                        icon={IndianRupee}
+                        title="Could not load withdrawals"
+                        description="Check backend connection or login session, then retry."
+                    />
+                ) : null}
 
                 {!loading && totalPages > 1 && (
                     <div className="mt-6 pt-4 border-t border-dark-border">
@@ -281,7 +338,7 @@ const Withdrawals = () => {
                 onClose={() => setCompleteModal(null)}
                 title="Mark withdrawal complete"
                 description={completeModal
-                    ? `Transfer ₹${completeModal.amountInr.toLocaleString('en-IN')} manually, then enter UTR/reference.`
+                    ? `Transfer ₹${formatNumber(completeModal.amountInr)} manually, then enter UTR/reference.`
                     : undefined}
                 footer={(
                     <>

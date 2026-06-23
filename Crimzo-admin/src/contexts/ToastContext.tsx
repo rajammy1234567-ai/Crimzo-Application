@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -45,11 +45,11 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setTimeout(() => remove(id), 4000);
     }, [remove]);
 
-    const value = {
+    const value = useMemo(() => ({
         toast: add,
         success: (msg: string) => add(msg, 'success'),
         error: (msg: string) => add(msg, 'error'),
-    };
+    }), [add]);
 
     return (
         <ToastContext.Provider value={value}>
