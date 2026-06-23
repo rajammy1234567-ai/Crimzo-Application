@@ -24,5 +24,6 @@ router.get('/withdraw/info', authenticateToken, payment.getWithdrawInfo);
 router.post('/withdraw', authenticateToken, payment.requestWithdraw);
 router.get('/withdraw/history', authenticateToken, payment.getWithdrawHistory);
 router.get('/history', authenticateToken, payment.getPaymentHistory);
+router.get('/transactions', authenticateToken, payment.getTransactionHistory);
 
 module.exports = router;

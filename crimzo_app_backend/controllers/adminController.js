@@ -12,6 +12,7 @@ const {
   updateBillingSettings,
 } = require('../utils/billingSettings');
 const mongoose = require('mongoose');
+const { fetchUserTransactionHistory } = require('../utils/transactionHistory');
 
 async function aggregateUserEarnings() {
   const [videoByPeer, liveByHost] = await Promise.all([
@@ -263,6 +264,42 @@ exports.getUsers = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+};
+
+exports.getUserTransactions = async (req, res) => {
+  try {
+    const userId = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ error: 'Invalid user id' });
+    }
+
+    const user = await User.findById(userId)
+      .select('username email crimzo_id diamonds beans wallet_balance created_at')
+      .lean();
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const limit = Math.min(Number(req.query.limit) || 50, 100);
+    const { transactions, summary } = await fetchUserTransactionHistory(userId, limit);
+
+    res.json({
+      success: true,
+      user: {
+        id: user._id.toString(),
+        username: user.username,
+        email: user.email,
+        crimzoId: user.crimzo_id,
+        diamonds: user.diamonds || 0,
+        beans: user.beans || 0,
+        walletBalance: user.wallet_balance || 0,
+        joinedAt: user.created_at,
+      },
+      transactions,
+      summary,
+    });
+  } catch (err) {
+    console.error('Admin user transactions error:', err);
+    res.status(500).json({ error: err.message || 'Failed to load user transactions' });
   }
 };
 
@@ -593,6 +630,7 @@ function formatAdminWithdrawal(row) {
     adminNote: row.admin_note || null,
     failureReason: row.failure_reason || null,
     balanceRefunded: row.balance_refunded || false,
+    scheduledCreditDate: row.scheduled_credit_date || null,
     createdAt: row.created_at,
     completedAt: row.completed_at || null,
     processedBy: row.processed_by || null,

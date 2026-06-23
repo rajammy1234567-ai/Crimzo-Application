@@ -20,7 +20,7 @@ import {
 import { API_URL, apiGet, ApiError, resolveMediaUrl } from '../../lib/apiClient';
 import { toAgoraUid, sameUserId } from '../../lib/agoraUid';
 import { PK_GIFTS, findPkGiftByValue } from '../../lib/pkGifts';
-import { playGiftPop, playMessageReceivePop, playMessageSendPop } from '../../lib/uiSounds';
+import { playMessageReceivePop, playMessageSendPop } from '../../lib/uiSounds';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -263,7 +263,6 @@ export default function PKWatchScreen() {
       giftValue: gift.value,
       senderId: user?.id,
     });
-    playGiftPop();
   };
 
   const removeFloat = useCallback((id: number) => {

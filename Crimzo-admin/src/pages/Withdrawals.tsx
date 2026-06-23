@@ -52,6 +52,7 @@ function normalizeWithdrawal(raw: Record<string, unknown>): WithdrawalRow {
         adminNote: (raw.adminNote as string) ?? (raw.admin_note as string) ?? null,
         failureReason: (raw.failureReason as string) ?? (raw.failure_reason as string) ?? null,
         balanceRefunded: Boolean(raw.balanceRefunded ?? raw.balance_refunded),
+        scheduledCreditDate: (raw.scheduledCreditDate as string) ?? (raw.scheduled_credit_date as string) ?? null,
         createdAt: String(raw.createdAt ?? raw.created_at ?? ''),
         completedAt: (raw.completedAt as string) ?? (raw.completed_at as string) ?? null,
         processedBy: (raw.processedBy as string) ?? (raw.processed_by as string) ?? null,
@@ -171,7 +172,7 @@ const Withdrawals = () => {
         <div>
             <PageHeader
                 title="Withdrawals"
-                description="Manual payout queue — transfer via your UPI/bank app, then mark complete with UTR."
+                description="User withdrawal requests with bank/UPI details — credit on the 7th of next month, then mark complete with UTR."
                 breadcrumbs={[{ label: 'Dashboard', to: '/dashboard' }, { label: 'Withdrawals' }]}
             />
 
@@ -238,8 +239,9 @@ const Withdrawals = () => {
                                     <th className="pb-3 pr-4 font-medium">User</th>
                                     <th className="pb-3 pr-4 font-medium">Amount</th>
                                     <th className="pb-3 pr-4 font-medium">Payout details</th>
+                                    <th className="pb-3 pr-4 font-medium">Credit on</th>
                                     <th className="pb-3 pr-4 font-medium">Status</th>
-                                    <th className="pb-3 pr-4 font-medium">Date</th>
+                                    <th className="pb-3 pr-4 font-medium">Requested</th>
                                     <th className="pb-3 font-medium text-right">Actions</th>
                                 </tr>
                             </thead>
@@ -266,6 +268,11 @@ const Withdrawals = () => {
                                             >
                                                 <Copy size={12} /> Copy
                                             </button>
+                                        </td>
+                                        <td className="py-4 pr-4 text-amber-300/90 text-xs font-medium">
+                                            {row.scheduledCreditDate
+                                                ? formatDate(row.scheduledCreditDate)
+                                                : '7th next month'}
                                         </td>
                                         <td className="py-4 pr-4">
                                             <Badge variant={statusVariant(row.status)} dot>

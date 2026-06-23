@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const User = require('../models/User');
+const { emitBalanceUpdate, emitGiftReceived } = require('./socketEmitter');
 
 async function transferGift(senderId, receiverId, amount) {
   const value = Math.floor(Number(amount));
@@ -39,9 +40,21 @@ async function transferGift(senderId, receiverId, amount) {
     void recordTaskAction(senderId, 'spend_diamonds', value).catch(() => {});
     void recordTaskAction(senderId, 'send_gift', 1).catch(() => {});
 
+    const senderDiamonds = senderAfter.diamonds;
+    const receiverBeans = receiverAfter?.beans || 0;
+
+    emitBalanceUpdate(senderId, { diamonds: senderDiamonds });
+    emitBalanceUpdate(receiverId, { beans: receiverBeans });
+    emitGiftReceived(receiverId, {
+      senderId: String(senderId),
+      amount: value,
+      diamondsSpent: value,
+      beansEarned: value,
+    });
+
     return {
-      senderDiamonds: senderAfter.diamonds,
-      receiverBeans: receiverAfter?.beans || 0,
+      senderDiamonds,
+      receiverBeans,
       beansEarned: value,
       transferred: value,
     };

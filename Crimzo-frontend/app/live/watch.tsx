@@ -4,7 +4,11 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, 
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
-import { useVideoCall } from '../../contexts/VideoCallContext';
+import {
+  requestLiveCall,
+  getLiveCallStatus,
+  isInsufficientCallBalanceError,
+} from '../../lib/liveCallRequest';
 import {
   requestLiveTalk,
   getLiveTalkStatus,
@@ -73,7 +77,7 @@ function formatViewers(n: number): string {
 export default function WatchScreen() {
   const { sessionId, talk } = useLocalSearchParams<{ sessionId?: string; talk?: string }>();
   const { user, token, updateUser } = useAuth();
-  const { startCall } = useVideoCall();
+
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
@@ -102,6 +106,9 @@ export default function WatchScreen() {
   const [talkCharged, setTalkCharged] = useState(0);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [requestingTalk, setRequestingTalk] = useState(false);
+  const [callStatus, setCallStatus] = useState<'idle' | 'pending' | 'accepted'>('idle');
+  const [callRequestId, setCallRequestId] = useState<string | null>(null);
+  const [requestingCall, setRequestingCall] = useState(false);
   const [activeTalkSessionId, setActiveTalkSessionId] = useState<string | null>(null);
   const [privateChatOpen, setPrivateChatOpen] = useState(false);
 
@@ -241,6 +248,92 @@ export default function WatchScreen() {
     }
   }, [token, sessionId, user?.id, startTalkBillingLoop]);
 
+  const joinAcceptedCall = useCallback((data: {
+    channelName?: string;
+    requesterId?: string;
+    hostId?: string;
+    hostName?: string;
+    hostAvatar?: string | null;
+    ratePerMin?: number;
+    beansPerMin?: number;
+  }) => {
+    if (!data?.channelName) return;
+    setCallStatus('accepted');
+    router.push({
+      pathname: '/call',
+      params: {
+        channel: data.channelName,
+        role: 'caller',
+        peerId: String(data.hostId || streamData?.hostId || ''),
+        peerName: data.hostName || streamData?.hostUsername || 'Host',
+        peerAvatar: data.hostAvatar || streamData?.hostAvatar || '',
+        ratePerMin: String(data.ratePerMin ?? hostRates.voiceRatePerMin),
+        beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : '',
+        fromLive: '1',
+        accepted: '1',
+        sessionId: String(sessionId || ''),
+      },
+    } as any);
+  }, [router, streamData, hostRates.voiceRatePerMin, sessionId]);
+
+  const sendCallRequest = useCallback(async () => {
+    if (!token || !sessionId || requestingCall) return;
+    setRequestingCall(true);
+    try {
+      const res = await requestLiveCall(token, String(sessionId));
+      if (res.alreadyAccepted && res.channelName) {
+        joinAcceptedCall({
+          channelName: res.channelName,
+          hostId: streamData?.hostId,
+          hostName: streamData?.hostUsername,
+          hostAvatar: streamData?.hostAvatar,
+          ratePerMin: hostRates.voiceRatePerMin,
+          beansPerMin: hostRates.voiceBeansPerMin,
+        });
+        return;
+      }
+      if (res.requestId) {
+        setCallRequestId(res.requestId);
+        setCallStatus('pending');
+        appAlert(
+          'Call Request Sent',
+          `Request sent to the host. Voice call at ₹${hostRates.voiceRatePerMin}/min once accepted. Host earns ${hostRates.voiceBeansPerMin} beans/min.`,
+        );
+      }
+    } catch (e) {
+      if (isInsufficientCallBalanceError(e)) {
+        const data = e.data as { wallet_balance?: number };
+        appAlert(
+          'Recharge Required',
+          `Please recharge your wallet first for voice calls.\n\nRate: ₹${hostRates.voiceRatePerMin}/min\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Add Money', onPress: () => router.push('/profile/wallet' as any) },
+          ],
+        );
+      } else {
+        appAlert('Error', e instanceof ApiError ? e.message : 'Call request failed');
+      }
+    } finally {
+      setRequestingCall(false);
+    }
+  }, [token, sessionId, requestingCall, router, joinAcceptedCall, streamData, hostRates]);
+
+  const refreshCallStatus = useCallback(async () => {
+    if (!token || !sessionId || !user?.id) return;
+    try {
+      const status = await getLiveCallStatus(token, String(sessionId));
+      if (status.pendingRequest?.id) {
+        setCallRequestId(status.pendingRequest.id);
+        setCallStatus('pending');
+      } else if (status.acceptedCall?.channelName) {
+        setCallStatus('accepted');
+      }
+    } catch {
+      // non-fatal
+    }
+  }, [token, sessionId, user?.id]);
+
   const sendTalkRequest = useCallback(async () => {
     if (!token || !sessionId || requestingTalk) return;
     setRequestingTalk(true);
@@ -341,6 +434,21 @@ export default function WatchScreen() {
         void beginTalkBilling(data.requestId);
       }
     });
+    s.on('live_call_accepted', (data: {
+      channelName?: string;
+      hostId?: string;
+      hostName?: string;
+      hostAvatar?: string | null;
+      ratePerMin?: number;
+      beansPerMin?: number;
+    }) => {
+      joinAcceptedCall(data);
+    });
+    s.on('live_call_rejected', () => {
+      setCallStatus('idle');
+      setCallRequestId(null);
+      appAlert('Call Declined', 'The host declined your call request.');
+    });
     s.on('live_talk_rejected', () => {
       setTalkStatus('rejected');
       setTalkRequestId(null);
@@ -368,7 +476,7 @@ export default function WatchScreen() {
       socketRef.current = null;
       setViewerSocket(null);
     };
-  }, [sessionId, streamData, user?.id, user?.username, token, clearTalkBilling, finalizeTalkBilling, beginTalkBilling]);
+  }, [sessionId, streamData, user?.id, user?.username, token, clearTalkBilling, finalizeTalkBilling, beginTalkBilling, joinAcceptedCall]);
 
   useEffect(() => {
     if (!loading && streamData && talk === '1' && streamData.hostId !== user?.id) {
@@ -379,8 +487,9 @@ export default function WatchScreen() {
   useEffect(() => {
     if (!loading && streamData && token && sessionId) {
       void refreshTalkStatus();
+      void refreshCallStatus();
     }
-  }, [loading, streamData, token, sessionId, refreshTalkStatus]);
+  }, [loading, streamData, token, sessionId, refreshTalkStatus, refreshCallStatus]);
 
   // Check follow status with host
   useEffect(() => {
@@ -586,15 +695,17 @@ export default function WatchScreen() {
 
   const handleVoiceCall = () => {
     if (!streamData?.hostId) return;
+    if (callStatus === 'pending') return;
+    if (callStatus === 'accepted') {
+      appAlert('Call Ready', 'Your call request was accepted. Joining the private call...');
+      return;
+    }
     appAlert(
-      'Voice Call',
-      `Call ${streamData.hostUsername} while they are live?\n\n₹${hostRates.voiceRatePerMin}/min from wallet\nHost earns ${hostRates.voiceBeansPerMin} beans/min`,
+      'Request Voice Call',
+      `Send a call request to ${streamData.hostUsername}?\n\n₹${hostRates.voiceRatePerMin}/min from wallet once accepted\nHost earns ${hostRates.voiceBeansPerMin} beans/min`,
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Call',
-          onPress: () => startCall(streamData.hostId, streamData.hostUsername || 'Host', hostAvatar),
-        },
+        { text: 'Send Request', onPress: () => void sendCallRequest() },
       ],
     );
   };
@@ -722,21 +833,34 @@ export default function WatchScreen() {
       {isViewer && (
         <View style={[s.actionBar, { bottom: 62 + Math.max(insets.bottom, 8) }]}>
           <TouchableOpacity
-            style={[s.actionBarBtnWrap, { shadowColor: '#10B981' }]}
+            style={[s.actionBarBtnWrap, {
+              shadowColor: callStatus === 'pending' ? '#64748B' : '#10B981',
+            }]}
             onPress={handleVoiceCall}
+            disabled={requestingCall || callStatus === 'pending'}
             activeOpacity={0.88}
           >
             <LinearGradient
-              colors={['#34D399', '#10B981', '#059669']}
+              colors={
+                callStatus === 'pending'
+                  ? ['#94A3B8', '#64748B', '#475569']
+                  : ['#34D399', '#10B981', '#059669']
+              }
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={s.actionBarBtn}
+              style={[s.actionBarBtn, (requestingCall || callStatus === 'pending') && s.actionBarBtnDisabled]}
             >
               <View style={s.actionBarIcon}>
-                <Ionicons name="call" size={22} color="#FFF" />
+                <Ionicons
+                  name={callStatus === 'pending' ? 'time' : 'call'}
+                  size={22}
+                  color="#FFF"
+                />
               </View>
               <View style={s.actionBarTextCol}>
-                <Text style={s.actionBarTitle}>Call</Text>
+                <Text style={s.actionBarTitle}>
+                  {callStatus === 'pending' ? 'Calling...' : 'Call'}
+                </Text>
                 <Text style={s.actionBarRate}>₹{hostRates.voiceRatePerMin}/min</Text>
               </View>
             </LinearGradient>
@@ -781,12 +905,16 @@ export default function WatchScreen() {
       )}
 
       {/* Talk billing status */}
-      {isViewer && (talkStatus === 'active' || talkStatus === 'pending') && (
+      {isViewer && (talkStatus === 'active' || talkStatus === 'pending' || callStatus === 'pending') && (
         <View style={s.talkBanner}>
           <Text style={s.talkBannerText}>
             {talkStatus === 'active'
               ? `Live chat · ₹${talkCharged || hostRates.chatRatePerMin} charged · ${talkMinutes} min${walletBalance != null ? ` · Bal ₹${walletBalance}` : ''}`
-              : 'Request sent — waiting for host to accept...'}
+              : callStatus === 'pending' && talkStatus === 'pending'
+                ? 'Chat & call requests sent — waiting for host...'
+                : callStatus === 'pending'
+                  ? 'Call request sent — waiting for host to accept...'
+                  : 'Chat request sent — waiting for host to accept...'}
           </Text>
         </View>
       )}

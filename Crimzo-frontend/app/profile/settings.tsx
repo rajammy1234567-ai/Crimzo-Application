@@ -406,6 +406,12 @@ export default function SettingsScreen() {
       title: 'Account',
       items: [
         {
+          icon: 'receipt-outline',
+          label: 'Transaction History',
+          value: 'Deposits & withdrawals',
+          onPress: () => router.push('/profile/transactions' as any),
+        },
+        {
           icon: 'person-outline',
           label: 'Edit Profile',
           onPress: () => router.push('/profile/edit' as any),

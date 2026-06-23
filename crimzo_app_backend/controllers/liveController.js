@@ -3,6 +3,7 @@ const LiveSession = require('../models/LiveSession');
 const LiveSessionView = require('../models/LiveSessionView');
 const LiveTalkRequest = require('../models/LiveTalkRequest');
 const LiveTalkSession = require('../models/LiveTalkSession');
+const LiveCallRequest = require('../models/LiveCallRequest');
 const User = require('../models/User');
 const { getBillingSettings } = require('../utils/billingSettings');
 const { resolveUserRates } = require('../utils/userRates');
@@ -27,6 +28,10 @@ async function finalizeLiveSessionEnd(sessionId, io, options = {}) {
   );
 
   await LiveTalkRequest.updateMany(
+    { session_id: sessionId, status: 'pending' },
+    { status: 'cancelled', responded_at: new Date() },
+  );
+  await LiveCallRequest.updateMany(
     { session_id: sessionId, status: 'pending' },
     { status: 'cancelled', responded_at: new Date() },
   );

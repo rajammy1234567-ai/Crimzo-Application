@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { ShieldAlert, ShieldCheck, Diamond as DiamondIcon, Users as UsersIcon, Plus, Minus } from 'lucide-react';
+import {
+    ShieldAlert, ShieldCheck, Diamond as DiamondIcon, Users as UsersIcon,
+    Plus, Minus, Receipt, ArrowDownLeft, ArrowUpRight,
+} from 'lucide-react';
 import { api, authHeaders } from '../lib/api';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card } from '../components/ui/Card';
@@ -14,7 +17,7 @@ import { Modal } from '../components/ui/Modal';
 import { TableSkeleton } from '../components/ui/LoadingState';
 import { EmptyState } from '../components/ui/EmptyState';
 import { formatDate, formatNumber } from '../lib/utils';
-import type { User } from '../types';
+import type { User, UserTransactionRow, UserTransactionSummary } from '../types';
 
 const Users = () => {
     const [users, setUsers] = useState<User[]>([]);
@@ -31,6 +34,11 @@ const Users = () => {
     const [diamondAmount, setDiamondAmount] = useState('');
     const [actionLoading, setActionLoading] = useState(false);
     const [banModal, setBanModal] = useState<User | null>(null);
+    const [txModal, setTxModal] = useState<User | null>(null);
+    const [txLoading, setTxLoading] = useState(false);
+    const [txRows, setTxRows] = useState<UserTransactionRow[]>([]);
+    const [txSummary, setTxSummary] = useState<UserTransactionSummary | null>(null);
+    const [txFilter, setTxFilter] = useState<'all' | 'deposits' | 'withdrawals'>('all');
 
     const fetchUsers = async () => {
         setLoading(true);
@@ -91,6 +99,57 @@ const Users = () => {
         } finally {
             setActionLoading(false);
         }
+    };
+
+    const openUserTransactions = async (user: User) => {
+        setTxModal(user);
+        setTxFilter('all');
+        setTxLoading(true);
+        setTxRows([]);
+        setTxSummary(null);
+        try {
+            const res = await api.get(`/users/${user.id || user._id}/transactions`, {
+                headers: authHeaders(token),
+                params: { limit: 80 },
+            });
+            const list = Array.isArray(res.data?.transactions) ? res.data.transactions : [];
+            setTxRows(list.map((row: Record<string, unknown>) => ({
+                id: String(row.id ?? ''),
+                category: (row.category as UserTransactionRow['category']) || 'deposit',
+                type: String(row.type ?? ''),
+                direction: (row.direction as UserTransactionRow['direction']) || 'credit',
+                amountInr: Number(row.amountInr ?? 0),
+                title: String(row.title ?? 'Transaction'),
+                subtitle: String(row.subtitle ?? ''),
+                status: String(row.status ?? 'completed'),
+                diamonds: row.diamonds != null ? Number(row.diamonds) : undefined,
+                beans: row.beans != null ? Number(row.beans) : undefined,
+                payoutDisplay: (row.payoutDisplay as string) ?? null,
+                scheduledCreditDate: (row.scheduledCreditDate as string) ?? null,
+                utr: (row.utr as string) ?? null,
+                failureReason: (row.failureReason as string) ?? null,
+                createdAt: String(row.createdAt ?? ''),
+                completedAt: (row.completedAt as string) ?? null,
+            })));
+            setTxSummary(res.data?.summary ?? null);
+        } catch {
+            toast.error('Failed to load transaction history');
+        } finally {
+            setTxLoading(false);
+        }
+    };
+
+    const filteredTxRows = txRows.filter((row) => {
+        if (txFilter === 'deposits') return row.category === 'deposit';
+        if (txFilter === 'withdrawals') return row.category === 'withdraw';
+        return true;
+    });
+
+    const txStatusVariant = (status: string) => {
+        if (status === 'completed') return 'success';
+        if (status === 'failed') return 'danger';
+        if (status === 'pending') return 'warning';
+        return 'info';
     };
 
     const bannedCount = users.filter(u => u.is_banned).length;
@@ -187,6 +246,13 @@ const Users = () => {
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
+                                                onClick={() => openUserTransactions(u)}
+                                                icon={<Receipt size={16} className="text-violet-400" />}
+                                                title="Transaction history"
+                                            />
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
                                                 onClick={() => { setDiamondModal({ user: u, action: 'add' }); setDiamondAmount(''); }}
                                                 icon={<Plus size={14} className="text-blue-400" />}
                                                 title="Add diamonds"
@@ -250,6 +316,129 @@ const Users = () => {
                         autoFocus
                     />
                 </div>
+            </Modal>
+
+            <Modal
+                open={!!txModal}
+                onClose={() => setTxModal(null)}
+                title="Transaction History"
+                description={txModal ? `@${txModal.username} · ${txModal.crimzo_id || txModal.email}` : ''}
+                size="lg"
+                footer={
+                    <Button variant="ghost" onClick={() => setTxModal(null)}>Close</Button>
+                }
+            >
+                {txModal && (
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-4 p-4 bg-dark-bg rounded-xl border border-dark-border">
+                            <div className="w-12 h-12 rounded-full bg-violet-500/20 flex items-center justify-center text-violet-300 font-bold text-lg">
+                                {txModal.username.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-white">{txModal.username}</p>
+                                <p className="text-sm text-gray-500 truncate">{txModal.email}</p>
+                                <p className="text-xs text-gray-600 font-mono mt-0.5">{txModal.crimzo_id}</p>
+                            </div>
+                            <div className="text-right text-xs text-gray-500">
+                                <p>💎 {formatNumber(txModal.diamonds)}</p>
+                                <p className="mt-1">🫘 {formatNumber(txModal.beans || 0)}</p>
+                            </div>
+                        </div>
+
+                        {txSummary && (
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                                    <p className="text-[10px] uppercase tracking-wider text-emerald-400/80 font-bold">Added</p>
+                                    <p className="text-lg font-bold text-white tabular-nums">
+                                        ₹{formatNumber(txSummary.totalDeposited + txSummary.totalPurchased)}
+                                    </p>
+                                </div>
+                                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                                    <p className="text-[10px] uppercase tracking-wider text-amber-400/80 font-bold">Withdrawn</p>
+                                    <p className="text-lg font-bold text-white tabular-nums">₹{formatNumber(txSummary.totalWithdrawn)}</p>
+                                </div>
+                                <div className="p-3 rounded-xl bg-orange-500/10 border border-orange-500/20">
+                                    <p className="text-[10px] uppercase tracking-wider text-orange-400/80 font-bold">Pending</p>
+                                    <p className="text-lg font-bold text-white tabular-nums">₹{formatNumber(txSummary.pendingWithdrawn)}</p>
+                                </div>
+                                <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                                    <p className="text-[10px] uppercase tracking-wider text-blue-400/80 font-bold">Records</p>
+                                    <p className="text-lg font-bold text-white tabular-nums">{txRows.length}</p>
+                                </div>
+                            </div>
+                        )}
+
+                        <Tabs
+                            tabs={[
+                                { id: 'all', label: 'All' },
+                                { id: 'deposits', label: 'Deposits' },
+                                { id: 'withdrawals', label: 'Withdrawals' },
+                            ]}
+                            active={txFilter}
+                            onChange={(id) => setTxFilter(id as typeof txFilter)}
+                        />
+
+                        {txLoading ? (
+                            <TableSkeleton rows={5} />
+                        ) : filteredTxRows.length === 0 ? (
+                            <EmptyState
+                                icon={Receipt}
+                                title="No transactions"
+                                description="This user has not made any wallet or withdrawal activity yet."
+                            />
+                        ) : (
+                            <div className="max-h-[420px] overflow-y-auto rounded-xl border border-dark-border">
+                                <table className="w-full text-sm">
+                                    <thead className="sticky top-0 bg-dark-card z-10">
+                                        <tr className="text-left text-gray-500 border-b border-dark-border">
+                                            <th className="p-3 font-medium">Type</th>
+                                            <th className="p-3 font-medium">Details</th>
+                                            <th className="p-3 font-medium">Amount</th>
+                                            <th className="p-3 font-medium">Status</th>
+                                            <th className="p-3 font-medium">Date</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-dark-border/60">
+                                        {filteredTxRows.map((row) => (
+                                            <tr key={row.id} className="hover:bg-white/[0.02]">
+                                                <td className="p-3">
+                                                    <div className="flex items-center gap-2">
+                                                        {row.direction === 'credit' ? (
+                                                            <ArrowDownLeft size={14} className="text-emerald-400" />
+                                                        ) : (
+                                                            <ArrowUpRight size={14} className="text-amber-400" />
+                                                        )}
+                                                        <span className="text-white font-medium">{row.title}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="p-3 text-gray-400 text-xs max-w-[220px]">
+                                                    <p>{row.subtitle}</p>
+                                                    {row.scheduledCreditDate && row.status === 'pending' && (
+                                                        <p className="text-amber-400/90 mt-1">
+                                                            Credit: {formatDate(row.scheduledCreditDate)}
+                                                        </p>
+                                                    )}
+                                                    {row.utr && <p className="text-gray-500 mt-1">UTR: {row.utr}</p>}
+                                                </td>
+                                                <td className={`p-3 font-bold tabular-nums ${row.direction === 'credit' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                                    {row.direction === 'credit' ? '+' : '−'}₹{formatNumber(row.amountInr)}
+                                                </td>
+                                                <td className="p-3">
+                                                    <Badge variant={txStatusVariant(row.status)} dot>
+                                                        {row.status}
+                                                    </Badge>
+                                                </td>
+                                                <td className="p-3 text-gray-500 text-xs whitespace-nowrap">
+                                                    {formatDate(row.createdAt)}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                )}
             </Modal>
 
             <Modal

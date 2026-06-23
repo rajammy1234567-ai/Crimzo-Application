@@ -25,6 +25,7 @@ router.put('/withdrawals/:id/reject', adminController.rejectWithdrawal);
 
 // Users
 router.get('/users', adminController.getUsers);
+router.get('/users/:id/transactions', adminController.getUserTransactions);
 router.put('/users/:id/ban', adminController.toggleBanUser);
 router.put('/users/:id/diamonds', adminController.updateDiamonds);
 

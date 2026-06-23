@@ -42,6 +42,11 @@ type StreakInfo = {
   weekDots?: boolean[];
   todayWeekday?: number;
   atRisk?: boolean;
+  milestoneDays?: number;
+  milestoneDiamonds?: number;
+  nextMilestoneAt?: number;
+  daysToNextMilestone?: number;
+  progressInBlock?: number;
 };
 
 const WEEK_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -162,6 +167,8 @@ export default function TasksScreen() {
         success?: boolean;
         added?: number;
         pendingReward?: number;
+        pendingDiamonds?: number;
+        streakMilestoneReward?: number;
         alreadyCheckedIn?: boolean;
         streak?: StreakInfo;
       }>('/api/tasks/checkin', {}, token);
@@ -169,9 +176,20 @@ export default function TasksScreen() {
       if (res.success) {
         setCheckedIn(true);
         setPendingReward(res.pendingReward ?? pendingReward + (res.added || 50));
+        if (typeof res.pendingDiamonds === 'number') {
+          setPendingDiamonds(res.pendingDiamonds);
+        }
         if (res.streak) setStreak(res.streak);
         if (!res.alreadyCheckedIn) {
-          appAlert('Check In', `+${res.added || 50} beans added to pending rewards!`);
+          const milestone = res.streakMilestoneReward || 0;
+          if (milestone > 0) {
+            appAlert(
+              '🎉 30-Day Streak!',
+              `+${res.added || 50} beans and ${milestone.toLocaleString()} diamonds from Crimzo! Claim from Rewards.`,
+            );
+          } else {
+            appAlert('Check In', `+${res.added || 50} beans added to pending rewards!`);
+          }
         }
       }
     } catch (e) {
@@ -492,6 +510,34 @@ export default function TasksScreen() {
                     );
                   })}
                 </View>
+                {streak.milestoneDays && streak.milestoneDiamonds ? (
+                  <View style={styles.streakMilestoneBox}>
+                    <View style={styles.streakMilestoneTop}>
+                      <Ionicons name="diamond" size={14} color="#00BFFF" />
+                      <Text style={styles.streakMilestoneTitle}>
+                        {streak.milestoneDays}-day streak → {streak.milestoneDiamonds.toLocaleString()} 💎 from Crimzo
+                      </Text>
+                    </View>
+                    <View style={styles.streakMilestoneBarBg}>
+                      <View
+                        style={[
+                          styles.streakMilestoneBarFill,
+                          {
+                            width: `${Math.min(
+                              100,
+                              ((streak.progressInBlock || 0) / streak.milestoneDays) * 100,
+                            )}%`,
+                          },
+                        ]}
+                      />
+                    </View>
+                    <Text style={styles.streakMilestoneHint}>
+                      {streak.currentStreak > 0
+                        ? `${streak.progressInBlock || 0}/${streak.milestoneDays} days · ${streak.daysToNextMilestone ?? streak.milestoneDays} left to reward`
+                        : `Check in daily for ${streak.milestoneDays} days to unlock`}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
             )}
 
@@ -697,6 +743,27 @@ const styles = StyleSheet.create({
   streakDotEmoji: { fontSize: 12 },
   streakDayLabel: { color: '#999', fontSize: 9, fontWeight: '600' },
   streakDayLabelToday: { color: '#9333EA', fontWeight: '800' },
+  streakMilestoneBox: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.06)',
+    gap: 8,
+  },
+  streakMilestoneTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  streakMilestoneTitle: { color: '#555', fontSize: 12, fontWeight: '700', flex: 1 },
+  streakMilestoneBarBg: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(147,51,234,0.12)',
+    overflow: 'hidden',
+  },
+  streakMilestoneBarFill: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: '#9333EA',
+  },
+  streakMilestoneHint: { color: '#888', fontSize: 11, fontWeight: '600' },
   appTimeCard: {
     marginHorizontal: 16,
     marginTop: 12,

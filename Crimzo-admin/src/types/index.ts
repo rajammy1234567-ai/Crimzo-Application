@@ -51,6 +51,7 @@ export interface WithdrawalRow {
     adminNote?: string | null;
     failureReason?: string | null;
     balanceRefunded?: boolean;
+    scheduledCreditDate?: string | null;
     createdAt: string;
     completedAt?: string | null;
     processedBy?: string | null;
@@ -138,6 +139,35 @@ export interface User {
     status?: string;
     is_banned: boolean;
     created_at: string;
+}
+
+export interface UserTransactionRow {
+    id: string;
+    category: 'deposit' | 'withdraw';
+    type: string;
+    direction: 'credit' | 'debit';
+    amountInr: number;
+    title: string;
+    subtitle: string;
+    status: string;
+    diamonds?: number;
+    beans?: number;
+    payoutDisplay?: string | null;
+    scheduledCreditDate?: string | null;
+    utr?: string | null;
+    failureReason?: string | null;
+    createdAt: string;
+    completedAt?: string | null;
+}
+
+export interface UserTransactionSummary {
+    totalDeposited: number;
+    totalPurchased: number;
+    totalWithdrawn: number;
+    pendingWithdrawn: number;
+    depositCount: number;
+    purchaseCount: number;
+    withdrawCount: number;
 }
 
 export interface Stream {

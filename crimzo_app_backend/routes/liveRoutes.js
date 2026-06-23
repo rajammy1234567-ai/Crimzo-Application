@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { authenticateToken } = require('../middleware/auth');
 const live = require('../controllers/liveController');
 const liveTalk = require('../controllers/liveTalkController');
+const liveCall = require('../controllers/liveCallController');
 
 // Factory function — needs io for the endLive event emission
 module.exports = (io) => {
@@ -18,6 +19,10 @@ module.exports = (io) => {
   router.post('/talk/start', authenticateToken, liveTalk.startTalkBilling);
   router.post('/talk/tick', authenticateToken, liveTalk.tickTalkBilling);
   router.post('/talk/end', authenticateToken, liveTalk.endTalkBilling);
+
+  router.post('/call/request', authenticateToken, liveCall.requestCall);
+  router.post('/call/respond', authenticateToken, liveCall.respondCall);
+  router.get('/call/status/:sessionId', authenticateToken, liveCall.getCallStatus);
 
   return router;
 };

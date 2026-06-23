@@ -7,6 +7,7 @@ import { API_URL } from '../lib/apiClient';
 import { publish } from '../lib/realtimeSync';
 import { loadAppSettings, onAppSettingsChange, type AppSettings } from '../lib/appSettings';
 import { attachAppTimeTracker } from '../lib/appTimeTracker';
+import { playGiftPop } from '../lib/uiSounds';
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const { user, token, updateUser, logout } = useAuth();
@@ -113,6 +114,19 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       if (data?.id && data?.sender_id && data?.receiver_id) {
         publish('new_message', data);
       }
+    });
+
+    socket.on('gift_received', (data: {
+      receiverId?: string;
+      senderId?: string;
+      amount?: number;
+      diamondsSpent?: number;
+      stickerName?: string;
+      senderUsername?: string;
+    }) => {
+      if (String(data?.receiverId) !== String(user.id)) return;
+      playGiftPop();
+      publish('gift_received', data);
     });
 
     socketRef.current = socket;

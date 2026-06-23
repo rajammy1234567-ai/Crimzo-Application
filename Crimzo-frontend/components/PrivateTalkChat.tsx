@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { Socket } from 'socket.io-client';
 
-import { playGiftPop, playMessageReceivePop, playMessageSendPop } from '../lib/uiSounds';
+import { playMessageReceivePop, playMessageSendPop } from '../lib/uiSounds';
 import { KEYBOARD_BEHAVIOR } from './KeyboardAware';
 
 const { width: SW } = Dimensions.get('window');
@@ -117,9 +117,8 @@ export default function PrivateTalkChat({
 
     const onMessage = (data: ChatMessage) => {
       setMessages((prev) => appendMessage(prev, data));
-      if (String(data.userId) !== String(userId)) {
-        if (data.type === 'sticker') playGiftPop();
-        else if (data.type === 'text') playMessageReceivePop();
+      if (String(data.userId) !== String(userId) && data.type === 'text') {
+        playMessageReceivePop();
       }
       scrollToEnd();
     };

@@ -471,11 +471,22 @@ export function useWallet() {
       appAlert('Login Required', 'Please log in first.');
       return false;
     }
-    const { isWithdrawDay, withdrawUnavailableMessage } = await import('./withdrawSchedule');
-    if (!isWithdrawDay()) {
-      appAlert('Withdraw Unavailable', withdrawUnavailableMessage());
-      return false;
-    }
+
+    const { buildWithdrawCreditMessage } = await import('./withdrawSchedule');
+    const creditPreview = buildWithdrawCreditMessage(amountInr);
+    const payoutLabel = paymentMethod?.display || 'your verified bank/UPI';
+    const confirmed = await new Promise<boolean>((resolve) => {
+      appAlert(
+        'Confirm Withdrawal',
+        `${creditPreview}\n\nPayout destination: ${payoutLabel}\n\nYour request will be saved for admin review.`,
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Confirm', onPress: () => resolve(true) },
+        ],
+      );
+    });
+    if (!confirmed) return false;
+
     setBusy(true);
     try {
       const res = await apiPost<{
@@ -485,6 +496,8 @@ export function useWallet() {
         diamondsConverted?: number;
         beansUsed?: number;
         message?: string;
+        creditMessage?: string;
+        scheduledCreditLabel?: string;
         status?: string;
         payoutTo?: string;
         utr?: string | null;
@@ -494,23 +507,16 @@ export function useWallet() {
       if (res.success) {
         syncBalances({ diamonds: res.diamonds, beans: res.beans });
         const convertedNote = res.diamondsConverted
-          ? `\n\n${res.diamondsConverted.toLocaleString()} diamonds converted to beans.`
+          ? `\n\n${res.diamondsConverted.toLocaleString()} diamonds converted to beans for withdrawal.`
           : '';
-        const payoutNote = res.payoutTo ? `\n\nSent to: ${res.payoutTo}` : '';
-        const utrNote = res.utr ? `\nUTR: ${res.utr}` : '';
-        const statusNote = res.status === 'pending'
-          ? '\n\nStatus: Pending — admin will transfer to your account within 1–3 business days.'
-          : res.status === 'processing'
-            ? '\n\nStatus: Processing — usually within minutes.'
-            : '';
-        const alertTitle = res.status === 'completed'
-          ? '✅ Withdrawal Complete'
-          : res.status === 'pending'
-            ? '📋 Withdrawal Requested'
-            : '⏳ Withdrawal Initiated';
+        const payoutNote = res.payoutTo ? `\n\nAccount: ${res.payoutTo}` : '';
+        const creditNote = res.creditMessage
+          || (res.scheduledCreditLabel
+            ? `Your amount will be credited on ${res.scheduledCreditLabel}.`
+            : '');
         appAlert(
-          alertTitle,
-          (res.message || 'Withdrawal submitted') + payoutNote + utrNote + statusNote + convertedNote,
+          '📋 Withdrawal Submitted',
+          `${creditNote}${payoutNote}\n\nSaved in admin panel for review.${convertedNote}`,
         );
         await loadWithdrawInfo();
         return true;
@@ -529,7 +535,7 @@ export function useWallet() {
     } finally {
       setBusy(false);
     }
-  }, [token, syncBalances, loadWithdrawInfo]);
+  }, [token, syncBalances, loadWithdrawInfo, paymentMethod]);
 
   return {
     busy,

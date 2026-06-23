@@ -9,7 +9,7 @@ import { useRouter } from 'expo-router';
 import { API_URL } from '../lib/apiClient';
 import { subscribe } from '../lib/realtimeSync';
 import { useAuth } from '../contexts/AuthContext';
-import { playGiftPop } from '../lib/uiSounds';
+
 const { width: SW } = Dimensions.get('window');
 
 interface Sticker {
@@ -33,6 +33,7 @@ interface StickerPanelProps {
     receiverId?: number | string;
     sessionId?: number | string;
     talkSessionId?: string;
+    channelName?: string;
 }
 
 const CATEGORIES = [
@@ -105,6 +106,7 @@ export default function StickerPanel({
     receiverId,
     sessionId,
     talkSessionId,
+    channelName,
 }: StickerPanelProps) {
     const router = useRouter();
     const { updateUser } = useAuth();
@@ -180,6 +182,7 @@ export default function StickerPanel({
                     receiverId,
                     sessionId,
                     talkSessionId: talkSessionId || undefined,
+                    channelName: channelName || undefined,
                 },
                 { headers: { Authorization: `Bearer ${token}` } },
             );
@@ -187,7 +190,6 @@ export default function StickerPanel({
                 setDiamonds(r.data.remainingDiamonds);
                 updateUser({ diamonds: r.data.remainingDiamonds });
             }
-            playGiftPop();
             onSendSticker?.(sticker);
             onClose();
         } catch (e: unknown) {

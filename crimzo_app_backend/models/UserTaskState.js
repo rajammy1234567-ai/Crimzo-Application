@@ -5,6 +5,8 @@ const userTaskStateSchema = new mongoose.Schema({
   last_checkin: { type: String, default: null },
   checkin_streak: { type: Number, default: 0 },
   longest_streak: { type: Number, default: 0 },
+  /** How many 30-day blocks already rewarded on the current streak cycle */
+  streak_milestones_claimed: { type: Number, default: 0 },
   pending_reward: { type: Number, default: 0 },
   pending_diamonds: { type: Number, default: 0 },
   progress: {

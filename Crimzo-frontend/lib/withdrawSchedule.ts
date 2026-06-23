@@ -28,3 +28,13 @@ export function withdrawUnavailableMessage(from: Date = new Date()): string {
   const next = nextWithdrawDate(from);
   return `${WITHDRAW_DAY_MESSAGE}\n\nNext withdrawal date: ${formatWithdrawDate(next)}`;
 }
+
+/** Credit date for requests submitted anytime — 7th of next month */
+export function scheduledCreditDate(from: Date = new Date()): Date {
+  return new Date(from.getFullYear(), from.getMonth() + 1, WITHDRAW_DAY);
+}
+
+export function buildWithdrawCreditMessage(amountInr: number, from: Date = new Date()): string {
+  const when = formatWithdrawDate(scheduledCreditDate(from));
+  return `Your amount of ₹${amountInr.toLocaleString('en-IN')} will be credited on ${when}.`;
+}

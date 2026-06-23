@@ -18,7 +18,7 @@ import RazorpayCheckout from '../../components/payments/RazorpayCheckout';
 import AddMoneyModal from '../../components/payments/AddMoneyModal';
 import SetupPaymentModal from '../../components/payments/SetupPaymentModal';
 import WithdrawModal from '../../components/payments/WithdrawModal';
-import { isWithdrawDay, withdrawUnavailableMessage } from '../../lib/withdrawSchedule';
+
 
 const { width: SW } = Dimensions.get('window');
 const CARD_W = (SW - 48 - 10) / 2;
@@ -95,14 +95,8 @@ export default function WalletScreen() {
   const userBeans = user?.beans ?? 0;
   const withdrawableBeans = totalWithdrawableBeans(userDiamonds, userBeans);
   const withdrawableInr = beansToInr(withdrawableBeans);
-  const withdrawDayOpen = withdrawInfo?.withdrawDayAllowed ?? isWithdrawDay();
-
   const handleWithdrawPress = async () => {
-    const info = await loadWithdrawInfo();
-    if (!(info?.withdrawDayAllowed ?? isWithdrawDay())) {
-      appAlert('Withdraw Unavailable', withdrawUnavailableMessage());
-      return;
-    }
+    await loadWithdrawInfo();
     setShowWithdraw(true);
   };
 
@@ -266,32 +260,30 @@ export default function WalletScreen() {
           {subTab === 'recommend' ? (
             <>
               <TouchableOpacity
-                style={[s.pay, !withdrawDayOpen && s.payDisabled]}
+                style={s.pay}
                 onPress={() => void handleWithdrawPress()}
-                activeOpacity={withdrawDayOpen ? 0.7 : 1}
+                activeOpacity={0.7}
               >
                 <View style={s.payL}>
-                  <View style={[s.payIco, { backgroundColor: withdrawDayOpen ? 'rgba(255,149,0,0.15)' : 'rgba(255,255,255,0.06)' }]}>
-                    <Ionicons name="arrow-down-circle" size={18} color={withdrawDayOpen ? '#FF9500' : 'rgba(255,255,255,0.35)'} />
+                  <View style={[s.payIco, { backgroundColor: 'rgba(255,149,0,0.15)' }]}>
+                    <Ionicons name="arrow-down-circle" size={18} color="#FF9500" />
                   </View>
                   <View>
-                    <Text style={[s.payLbl, !withdrawDayOpen && s.payLblDisabled]}>Withdraw Earnings</Text>
-                    <Text style={{ color: withdrawDayOpen ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.28)', fontSize: 11 }}>
-                      {withdrawDayOpen
-                        ? (userDiamonds > 0
-                          ? `${fmt(userDiamonds)} diamonds → beans → bank`
-                          : 'Beans → real money to bank/UPI')
-                        : 'Available on 7th of every month'}
+                    <Text style={s.payLbl}>Withdraw Earnings</Text>
+                    <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>
+                      {userDiamonds > 0
+                        ? `${fmt(userDiamonds)} diamonds → beans → ₹`
+                        : 'Beans → real money · credited on 7th next month'}
                     </Text>
                   </View>
                 </View>
                 <View style={s.payR}>
-                  <Text style={[s.payChg, { color: withdrawDayOpen ? '#FF9500' : 'rgba(255,255,255,0.35)' }]}>
-                    {withdrawDayOpen
-                      ? (withdrawableInr >= (withdrawInfo?.minWithdraw ?? 500) ? price(withdrawableInr) : `Need ${price(withdrawInfo?.minWithdraw ?? 500)}+`)
-                      : 'Inactive'}
+                  <Text style={[s.payChg, { color: '#FF9500' }]}>
+                    {withdrawableInr >= (withdrawInfo?.minWithdraw ?? 500)
+                      ? price(withdrawableInr)
+                      : `Need ${price(withdrawInfo?.minWithdraw ?? 500)}+`}
                   </Text>
-                  <Ionicons name="chevron-forward" size={15} color={withdrawDayOpen ? '#FF9500' : 'rgba(255,255,255,0.25)'} />
+                  <Ionicons name="chevron-forward" size={15} color="#FF9500" />
                 </View>
               </TouchableOpacity>
 
@@ -371,7 +363,7 @@ export default function WalletScreen() {
                   ['card', '#FF2D55', 'Diamonds/Beans — Pay via Razorpay (UPI, Card, Net Banking)'],
                   ['wallet', '#4CD964', 'Add Money — top up via Razorpay, then buy with wallet balance'],
                   ['diamond', '#FFD700', 'Diamonds are used to send gifts to streamers'],
-                  ['cafe', '#FF9500', 'Beans convert to real money — 5000 beans = ₹100 on withdraw'],
+                  ['cafe', '#FF9500', 'Beans convert to real money — payout credited on 7th of next month'],
                   ['shield-checkmark', '#4CD964', 'All payments secured by Razorpay'],
                 ].map(([ico, col, txt], i) => (
                   <View key={i} style={s.infoR}>

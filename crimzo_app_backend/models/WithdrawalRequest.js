@@ -35,6 +35,8 @@ const withdrawalSchema = new mongoose.Schema({
   utr: { type: String },
   failure_reason: { type: String },
   beans_refunded: { type: Boolean, default: false },
+  /** When admin should transfer — 7th of next month for queued requests */
+  scheduled_credit_date: { type: Date },
   created_at: { type: Date, default: Date.now },
   completed_at: { type: Date },
 });

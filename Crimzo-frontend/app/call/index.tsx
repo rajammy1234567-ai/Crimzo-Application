@@ -24,6 +24,8 @@ import {
   type IRtcEngine,
 } from '../../components/agoraImports';
 import { ensureRtcPermissions, configurePublisherAudio } from '../../lib/agoraRtcHelpers';
+import StickerPanel from '../../components/StickerPanel';
+
 
 export default function VideoCallScreen() {
   const router = useRouter();
@@ -35,6 +37,8 @@ export default function VideoCallScreen() {
     peerName?: string;
     ratePerMin?: string;
     beansPerMin?: string;
+    accepted?: string;
+    fromLive?: string;
   }>();
 
   const channelName = params.channel || '';
@@ -59,7 +63,9 @@ export default function VideoCallScreen() {
   const peerNameRef = useRef(peerName);
   const isCallerRef = useRef(isCaller);
   const [loading, setLoading] = useState(true);
-  const [callPhase, setCallPhase] = useState<CallPhase>(role === 'caller' ? 'ringing' : 'connecting');
+  const [callPhase, setCallPhase] = useState<CallPhase>(
+    role === 'caller' && params.accepted !== '1' ? 'ringing' : 'connecting',
+  );
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
@@ -68,7 +74,10 @@ export default function VideoCallScreen() {
   const [minutesCharged, setMinutesCharged] = useState(0);
   const [totalCharged, setTotalCharged] = useState(0);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [showGifts, setShowGifts] = useState(false);
+  const [giftBanner, setGiftBanner] = useState<string | null>(null);
   const isCaller = role === 'caller';
+  const preAccepted = params.accepted === '1';
   const connected = callPhase === 'connected';
 
   const clearRingTimeout = useCallback(() => {
@@ -251,6 +260,7 @@ export default function VideoCallScreen() {
             offlineGraceRef.current = null;
           }
           setRemoteUid(remoteUserUid);
+          configurePublisherAudio(engine);
           if (isCallerRef.current) void initCallBilling();
         },
         onUserOffline: () => {
@@ -325,6 +335,20 @@ export default function VideoCallScreen() {
         { text: 'OK', onPress: () => endCallRef.current('declined') },
       ]);
     });
+    socket.on('call_gift_received', (data?: {
+      userId?: string;
+      username?: string;
+      stickerName?: string;
+      channelName?: string;
+    }) => {
+      if (data?.channelName && data.channelName !== channelName) return;
+      if (String(data?.userId) === String(user?.id)) return;
+      const label = data?.username && data?.stickerName
+        ? `${data.username} sent ${data.stickerName}`
+        : 'Gift received!';
+      setGiftBanner(label);
+      setTimeout(() => setGiftBanner(null), 3200);
+    });
     socket.on('video_call_accepted', (data?: { channelName?: string }) => {
       if (data?.channelName && data.channelName !== channelName) return;
       clearRingTimeout();
@@ -333,13 +357,14 @@ export default function VideoCallScreen() {
     });
     socketRef.current = socket;
 
-    if (role === 'caller') {
+    if (role === 'caller' && !preAccepted) {
       ringTimeoutRef.current = setTimeout(() => {
         appAlert('No Answer', `${peerNameRef.current} did not answer.`, [
           { text: 'OK', onPress: () => endCallRef.current('no_answer') },
         ]);
       }, CALL_RING_TIMEOUT_MS);
     } else {
+      setCallPhase('connecting');
       void initAgoraRef.current();
     }
 
@@ -360,7 +385,7 @@ export default function VideoCallScreen() {
       }
       socket.disconnect();
     };
-  }, [channelName, token, user?.id, role, clearRingTimeout, clearBillingTimer, router]);
+  }, [channelName, token, user?.id, role, preAccepted, clearRingTimeout, clearBillingTimer, router]);
 
   useEffect(() => {
     if (!connected) return;
@@ -448,6 +473,12 @@ export default function VideoCallScreen() {
             </View>
           )}
 
+          {giftBanner && (
+            <View style={s.giftBanner}>
+              <Text style={s.giftBannerText}>{giftBanner}</Text>
+            </View>
+          )}
+
           <View style={s.topBar}>
             <Text style={s.callTitle}>{peerName}</Text>
             <Text style={s.callSub}>{statusText}</Text>
@@ -476,6 +507,9 @@ export default function VideoCallScreen() {
       <View style={s.controls}>
         {!showRingingUI && (
           <>
+            <TouchableOpacity style={s.ctrlBtn} onPress={() => setShowGifts(true)}>
+              <Ionicons name="gift" size={24} color="#FFD700" />
+            </TouchableOpacity>
             <TouchableOpacity style={s.ctrlBtn} onPress={toggleMic}>
               <Ionicons name={micOn ? 'mic' : 'mic-off'} size={24} color="#FFF" />
             </TouchableOpacity>
@@ -491,6 +525,16 @@ export default function VideoCallScreen() {
           <Ionicons name="call" size={28} color="#FFF" style={{ transform: [{ rotate: '135deg' }] }} />
         </TouchableOpacity>
       </View>
+
+      {token && peerId && (
+        <StickerPanel
+          visible={showGifts}
+          onClose={() => setShowGifts(false)}
+          token={token}
+          receiverId={peerId}
+          channelName={channelName}
+        />
+      )}
     </View>
   );
 }
@@ -517,6 +561,19 @@ const s = StyleSheet.create({
     borderWidth: 2, borderColor: 'rgba(255,255,255,0.2)',
   },
   localVideo: { flex: 1 },
+  giftBanner: {
+    position: 'absolute',
+    top: 110,
+    alignSelf: 'center',
+    zIndex: 30,
+    backgroundColor: 'rgba(255,215,0,0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,215,0,0.45)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  giftBannerText: { color: '#FFD700', fontSize: 14, fontWeight: '800' },
   topBar: { position: 'absolute', top: 50, left: 20 },
   callTitle: { color: '#FFF', fontSize: 20, fontWeight: '800' },
   callSub: { color: '#4CD964', fontSize: 13, fontWeight: '600', marginTop: 4 },

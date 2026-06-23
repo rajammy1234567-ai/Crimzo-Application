@@ -4,7 +4,7 @@ const GiftHistory = require('../models/GiftHistory');
 const mongoose = require('mongoose');
 const { transferDiamonds } = require('../utils/diamondTransfer');
 const { assertCanInteract } = require('../utils/followPermissions');
-const { emitBalanceUpdate, emitNewMessage } = require('../utils/socketEmitter');
+const { emitNewMessage } = require('../utils/socketEmitter');
 
 function formatMessagePayload(populated) {
   const senderRef = populated.sender_id;
@@ -204,8 +204,6 @@ exports.sendDiamondGift = async (req, res) => {
     }
 
     const transfer = await transferDiamonds(senderId, receiverId, amount);
-    emitBalanceUpdate(senderId, { diamonds: transfer.senderDiamonds });
-    emitBalanceUpdate(receiverId, { beans: transfer.receiverBeans });
 
     const sender = await User.findById(senderId).select('username');
     const content = `🎁 Sent ${amount.toLocaleString()} diamonds`;

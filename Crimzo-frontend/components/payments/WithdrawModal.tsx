@@ -25,6 +25,9 @@ export type WithdrawInfo = {
   withdrawDayAllowed?: boolean;
   withdrawDayOfMonth?: number;
   nextWithdrawDay?: string;
+  scheduledCreditDate?: string;
+  scheduledCreditLabel?: string;
+  creditMessage?: string;
 };
 
 type Props = {
@@ -76,8 +79,18 @@ export default function WithdrawModal({
           <View style={s.handle} />
           <Text style={s.title}>Withdraw Earnings</Text>
           <Text style={s.sub}>
-            Diamonds convert to beans, then real money is sent to your verified bank account or UPI ID — not your phone number.
+            See how your diamonds and beans convert to real rupees. Add verified bank/UPI details, then submit — admin will process your payout.
           </Text>
+
+          {withdrawInfo?.creditMessage || withdrawInfo?.scheduledCreditLabel ? (
+            <View style={s.scheduleBanner}>
+              <Ionicons name="calendar-outline" size={18} color="#4CD964" />
+              <Text style={s.scheduleTxt}>
+                {withdrawInfo.creditMessage
+                  || `Amount will be credited on ${withdrawInfo.scheduledCreditLabel}.`}
+              </Text>
+            </View>
+          ) : null}
 
           {diamonds > 0 && (
             <View style={s.convertRow}>
@@ -179,8 +192,8 @@ export default function WithdrawModal({
               ) : (
                 <Text style={s.btnText}>
                   {canWithdraw
-                    ? `Withdraw ₹${(parsed || 0).toLocaleString('en-IN')}`
-                    : 'Verify Bank / UPI'}
+                    ? `Confirm Withdraw ₹${(parsed || 0).toLocaleString('en-IN')}`
+                    : 'Add Bank / UPI Details'}
                 </Text>
               )}
             </LinearGradient>
@@ -195,7 +208,19 @@ const s = StyleSheet.create({
   sheet: { backgroundColor: '#1C1C1E', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40 },
   handle: { width: 44, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginBottom: 20 },
   title: { color: '#FFF', fontSize: 22, fontWeight: '800', textAlign: 'center' },
-  sub: { color: 'rgba(255,255,255,0.5)', fontSize: 13, textAlign: 'center', marginTop: 8, marginBottom: 16, lineHeight: 18 },
+  sub: { color: 'rgba(255,255,255,0.5)', fontSize: 13, textAlign: 'center', marginTop: 8, marginBottom: 12, lineHeight: 18 },
+  scheduleBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: 'rgba(76,217,100,0.1)',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(76,217,100,0.2)',
+  },
+  scheduleTxt: { color: 'rgba(255,255,255,0.82)', fontSize: 12, fontWeight: '600', flex: 1, lineHeight: 17 },
   convertRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center',
     backgroundColor: 'rgba(255,215,0,0.1)', borderRadius: 12, padding: 10, marginBottom: 12,

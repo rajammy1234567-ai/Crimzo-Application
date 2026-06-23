@@ -13,6 +13,10 @@ const MIN_WITHDRAW_BEANS = MIN_WITHDRAW_INR * BEANS_PER_INR;
 /** Preset diamond gift amounts in chat */
 const CHAT_GIFT_PRESETS = [10, 50, 100, 500, 1000];
 
+/** Continuous daily check-in streak — platform owner reward */
+const STREAK_MILESTONE_DAYS = 30;
+const STREAK_MILESTONE_DIAMONDS = 10000;
+
 /** 1-on-1 video call — caller pays from wallet (INR per minute) */
 const VIDEO_CALL_RATE_PER_MIN_INR = 1;
 
@@ -28,6 +32,8 @@ module.exports = {
   BEANS_PER_INR,
   MIN_WITHDRAW_BEANS,
   CHAT_GIFT_PRESETS,
+  STREAK_MILESTONE_DAYS,
+  STREAK_MILESTONE_DIAMONDS,
   VIDEO_CALL_RATE_PER_MIN_INR,
   LIVE_TALK_RATE_PER_MIN_INR,
 };

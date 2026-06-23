@@ -51,6 +51,9 @@ const {
   isManualWithdrawalMode,
   isWithdrawalDayAllowed,
   getNextWithdrawalDate,
+  getScheduledCreditDate,
+  formatScheduledCreditDate,
+  buildWithdrawCreditMessage,
   WITHDRAW_DAY_OF_MONTH,
 } = require('../utils/withdrawalHelpers');
 const { v4: uuidv4 } = require('uuid');
@@ -908,8 +911,7 @@ exports.getWithdrawInfo = async (req, res) => {
     const diamondsAsBeans = diamondsToBeans(diamonds);
     const totalBeans = totalWithdrawableBeans(diamonds, beans);
     const withdrawableInr = beansToInr(totalBeans);
-    const withdrawDayAllowed = isWithdrawalDayAllowed();
-    const nextWithdrawDay = getNextWithdrawalDate();
+    const scheduledCreditDate = getScheduledCreditDate();
     res.json({
       success: true,
       diamonds,
@@ -922,11 +924,12 @@ exports.getWithdrawInfo = async (req, res) => {
       minWithdrawBeans: MIN_WITHDRAW_BEANS,
       maxWithdraw: MAX_WITHDRAW_INR,
       beanTiers: beanTiers(),
-      withdrawDayAllowed,
+      withdrawDayAllowed: true,
       withdrawDayOfMonth: WITHDRAW_DAY_OF_MONTH,
-      nextWithdrawDay: nextWithdrawDay.toISOString(),
-      canWithdraw: withdrawDayAllowed
-        && isWithdrawablePayment(user.linked_bank)
+      scheduledCreditDate: scheduledCreditDate.toISOString(),
+      scheduledCreditLabel: formatScheduledCreditDate(scheduledCreditDate),
+      creditMessage: `Amount will be credited on ${formatScheduledCreditDate(scheduledCreditDate)}.`,
+      canWithdraw: isWithdrawablePayment(user.linked_bank)
         && withdrawableInr >= MIN_WITHDRAW_INR,
       paymentMethod: method,
       hasVerifiedPayment: isWithdrawablePayment(user.linked_bank),
@@ -955,15 +958,6 @@ exports.requestWithdraw = async (req, res) => {
       return res.status(400).json({
         error: `Minimum withdrawal is ₹${MIN_WITHDRAW_INR}`,
         minWithdraw: MIN_WITHDRAW_INR,
-      });
-    }
-    if (!isWithdrawalDayAllowed()) {
-      const nextDay = getNextWithdrawalDate();
-      return res.status(400).json({
-        error: `Withdrawals are only available on the ${WITHDRAW_DAY_OF_MONTH}th of every month.`,
-        code: 'WITHDRAW_DAY_RESTRICTED',
-        withdrawDayOfMonth: WITHDRAW_DAY_OF_MONTH,
-        nextWithdrawDay: nextDay.toISOString(),
       });
     }
     if (amountInr > MAX_WITHDRAW_INR) {
@@ -1013,7 +1007,8 @@ exports.requestWithdraw = async (req, res) => {
     beansDeducted = true;
 
     const idempotencyKey = uuidv4();
-    const useManualPayout = isManualWithdrawalMode();
+    const scheduledCreditDate = getScheduledCreditDate();
+    const creditMessage = buildWithdrawCreditMessage(amountInr, scheduledCreditDate);
 
     withdrawal = await WithdrawalRequest.create({
       user_id: userId,
@@ -1021,11 +1016,12 @@ exports.requestWithdraw = async (req, res) => {
       beans_used: beansNeeded,
       diamonds_deducted: Math.max(0, prevDiamonds - newDiamonds),
       beans_deducted: Math.max(0, prevBeans - newBeans),
-      status: useManualPayout ? 'pending' : 'processing',
+      status: 'pending',
       payout_method: user.linked_bank.type,
       payout_display: method?.display,
-      payout_mode: useManualPayout ? 'manual' : 'razorpay',
+      payout_mode: 'manual',
       payout_snapshot: buildPayoutSnapshot(user.linked_bank),
+      scheduled_credit_date: scheduledCreditDate,
       idempotency_key: idempotencyKey,
     });
 
@@ -1039,45 +1035,8 @@ exports.requestWithdraw = async (req, res) => {
       paid_at: new Date(),
     });
 
-    let payoutMessage = '';
-    let payoutStatus = withdrawal.status;
-
-    if (useManualPayout) {
-      payoutMessage = `₹${amountInr.toLocaleString('en-IN')} withdrawal request submitted. Our team will transfer to ${method?.display} within 1–3 business days.`;
-    } else {
-      const fullUser = await User.findById(userId).select('diamonds beans linked_bank email username');
-      const { fundAccountId } = await ensurePayoutDestination(fullUser);
-
-      const amountPaise = Math.round(amountInr * 100);
-      const payout = await createPayout({
-        fundAccountId,
-        amountPaise,
-        referenceId: withdrawal._id.toString(),
-        linkedType: user.linked_bank.type,
-        idempotencyKey,
-      });
-
-      payoutStatus = mapRazorpayPayoutStatus(payout.status);
-      withdrawal.razorpay_payout_id = payout.id;
-      withdrawal.razorpay_fund_account_id = fundAccountId;
-      withdrawal.razorpay_status = payout.status;
-      withdrawal.razorpay_mode = payout.mode;
-      withdrawal.status = payoutStatus;
-      if (payout.utr) withdrawal.utr = payout.utr;
-      if (payoutStatus === 'completed') withdrawal.completed_at = new Date();
-      if (payoutStatus === 'failed') {
-        withdrawal.failure_reason = payout.status_details?.description || 'Payout failed';
-        await refundWithdrawalBalance(withdrawal);
-        beansDeducted = false;
-      }
-      await withdrawal.save();
-
-      payoutMessage = payoutStatus === 'completed'
-        ? `₹${amountInr.toLocaleString('en-IN')} sent to ${method?.display}${payout.utr ? ` (UTR: ${payout.utr})` : ''}`
-        : payoutStatus === 'failed'
-          ? `Withdrawal failed — beans refunded. ${withdrawal.failure_reason}`
-          : `₹${amountInr.toLocaleString('en-IN')} payout initiated to ${method?.display}. Money will arrive in your bank/UPI shortly.`;
-    }
+    const payoutStatus = withdrawal.status;
+    const payoutMessage = `${creditMessage} Payout will be sent to ${method?.display}. Our admin team has your account details.`;
 
     const finalUser = await User.findById(userId).select('diamonds beans');
 
@@ -1093,6 +1052,9 @@ exports.requestWithdraw = async (req, res) => {
       razorpayStatus: withdrawal.razorpay_status || null,
       utr: withdrawal.utr || null,
       message: payoutMessage,
+      creditMessage,
+      scheduledCreditDate: scheduledCreditDate.toISOString(),
+      scheduledCreditLabel: formatScheduledCreditDate(scheduledCreditDate),
       payoutTo: method?.display,
       payoutDestination: user.linked_bank.type === 'upi' ? 'upi' : 'bank_account',
     });
@@ -1183,6 +1145,8 @@ exports.getWithdrawHistory = async (req, res) => {
         payoutMethod: w.payout_method,
         utr: w.utr || null,
         failureReason: w.failure_reason || null,
+        scheduledCreditDate: w.scheduled_credit_date || null,
+        beansUsed: w.beans_used || 0,
         createdAt: w.created_at,
         completedAt: w.completed_at || null,
       })),
@@ -1208,5 +1172,18 @@ exports.getPaymentHistory = async (req, res) => {
   } catch (error) {
     console.error('Payment history error:', error);
     res.status(500).json({ error: 'Failed to fetch history' });
+  }
+};
+
+const { fetchUserTransactionHistory } = require('../utils/transactionHistory');
+
+exports.getTransactionHistory = async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 100);
+    const { transactions, summary } = await fetchUserTransactionHistory(req.user.id, limit);
+    res.json({ success: true, transactions, summary });
+  } catch (error) {
+    console.error('Transaction history error:', error);
+    res.status(500).json({ error: 'Failed to fetch transaction history' });
   }
 };

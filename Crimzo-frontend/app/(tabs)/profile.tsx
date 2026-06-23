@@ -64,6 +64,10 @@ export default function ProfileScreen() {
     weekDots?: boolean[];
     todayWeekday?: number;
     atRisk?: boolean;
+    milestoneDays?: number;
+    milestoneDiamonds?: number;
+    daysToNextMilestone?: number;
+    progressInBlock?: number;
   } | null>(null);
 
   const resetOverlays = useCallback(() => {
@@ -572,6 +576,17 @@ export default function ProfileScreen() {
                 );
               })}
             </View>
+            {streak.milestoneDays && streak.milestoneDiamonds ? (
+              <View style={s.streakMilestoneRow}>
+                <Ionicons name="diamond" size={12} color="#00BFFF" />
+                <Text style={s.streakMilestoneText}>
+                  {streak.milestoneDays} days → {streak.milestoneDiamonds.toLocaleString()} 💎
+                  {streak.currentStreak > 0
+                    ? ` · ${streak.progressInBlock || 0}/${streak.milestoneDays}`
+                    : ''}
+                </Text>
+              </View>
+            ) : null}
           </TouchableOpacity>
         )}
 
@@ -1225,6 +1240,16 @@ const s = StyleSheet.create({
   streakDotEmoji: { fontSize: 13 },
   streakDayLabel: { color: 'rgba(255,255,255,0.35)', fontSize: 9, fontWeight: '600' },
   streakDayLabelToday: { color: '#FF6B8A', fontWeight: '800' },
+  streakMilestoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+  },
+  streakMilestoneText: { color: 'rgba(255,255,255,0.55)', fontSize: 11, fontWeight: '600', flex: 1 },
 
   // ── Action buttons ──
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 10, marginTop: 14, marginBottom: 14 },

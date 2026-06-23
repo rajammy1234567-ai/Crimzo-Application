@@ -26,6 +26,10 @@ import {
   respondLiveTalk,
   getLiveTalkStatus,
 } from '../../lib/liveTalkBilling';
+import {
+  respondLiveCall,
+  getLiveCallStatus,
+} from '../../lib/liveCallRequest';
 import { resolveRates } from '../../lib/userRates';
 
 const LIVE_START_TIMEOUT_MS = 10000;
@@ -175,6 +179,13 @@ export default function BroadcastScreen() {
     requesterName?: string;
     requesterAvatar?: string | null;
   }>>([]);
+  const [pendingCallRequests, setPendingCallRequests] = useState<Array<{
+    id: string;
+    requesterId?: string;
+    requesterName?: string;
+    requesterAvatar?: string | null;
+    channelName?: string;
+  }>>([]);
   const [hostChatBeansEarned, setHostChatBeansEarned] = useState(0);
   const [activeChatCount, setActiveChatCount] = useState(0);
   const [privateChats, setPrivateChats] = useState<Array<{
@@ -186,6 +197,8 @@ export default function BroadcastScreen() {
   const [myRates, setMyRates] = useState(() => resolveRates(1, 1));
   const handledTalkRequestIds = useRef<Set<string>>(new Set());
   const promptedTalkRequestIds = useRef<Set<string>>(new Set());
+  const handledCallRequestIds = useRef<Set<string>>(new Set());
+  const promptedCallRequestIds = useRef<Set<string>>(new Set());
 
   // Entrance animation
   const fadeIn = useRef(new Animated.Value(0)).current;
@@ -250,6 +263,106 @@ export default function BroadcastScreen() {
       appAlert('Error', e instanceof ApiError ? e.message : `Could not ${action} request`);
     }
   }, [token]);
+
+  const joinAcceptedCallAsHost = useCallback((data: {
+    channelName?: string;
+    requesterId?: string;
+    requesterName?: string;
+    requesterAvatar?: string | null;
+    ratePerMin?: number;
+    beansPerMin?: number;
+  }) => {
+    if (!data?.channelName || !data?.requesterId) return;
+    router.push({
+      pathname: '/call',
+      params: {
+        channel: data.channelName,
+        role: 'callee',
+        peerId: String(data.requesterId),
+        peerName: data.requesterName || 'Viewer',
+        peerAvatar: data.requesterAvatar || '',
+        ratePerMin: data.ratePerMin != null ? String(data.ratePerMin) : String(myRates.voiceRatePerMin),
+        beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : String(myRates.voiceBeansPerMin),
+        fromLive: '1',
+        accepted: '1',
+        sessionId: sessionId || '',
+      },
+    } as any);
+  }, [router, myRates, sessionId]);
+
+  const handleCallRequestAction = useCallback(async (
+    requestId: string,
+    action: 'accept' | 'reject',
+    meta?: {
+      requesterId?: string;
+      requesterName?: string;
+      requesterAvatar?: string | null;
+      channelName?: string;
+      ratePerMin?: number;
+      beansPerMin?: number;
+    },
+  ) => {
+    if (!token) return;
+    try {
+      const res = await respondLiveCall(token, requestId, action);
+      handledCallRequestIds.current.add(requestId);
+      promptedCallRequestIds.current.add(requestId);
+      setPendingCallRequests((prev) => prev.filter((r) => r.id !== requestId));
+      if (action === 'accept') {
+        joinAcceptedCallAsHost({
+          channelName: res.channelName || meta?.channelName,
+          requesterId: res.requesterId || meta?.requesterId,
+          requesterName: res.requesterName || meta?.requesterName,
+          requesterAvatar: meta?.requesterAvatar,
+          ratePerMin: res.ratePerMin ?? meta?.ratePerMin,
+          beansPerMin: res.beansPerMin ?? meta?.beansPerMin,
+        });
+      }
+    } catch (e) {
+      appAlert('Error', e instanceof ApiError ? e.message : `Could not ${action} call request`);
+    }
+  }, [token, joinAcceptedCallAsHost]);
+
+  const promptCallRequest = useCallback((data: {
+    requestId?: string;
+    requesterId?: string;
+    requesterName?: string;
+    requesterAvatar?: string | null;
+    channelName?: string;
+    ratePerMin?: number;
+    beansPerMin?: number;
+  }) => {
+    if (!data?.requestId || handledCallRequestIds.current.has(data.requestId)) return;
+    if (promptedCallRequestIds.current.has(data.requestId)) return;
+    promptedCallRequestIds.current.add(data.requestId);
+    const rate = data.ratePerMin || myRates.voiceRatePerMin;
+    const beans = data.beansPerMin || myRates.voiceBeansPerMin;
+    setPendingCallRequests((prev) => {
+      if (prev.some((r) => r.id === data.requestId)) return prev;
+      return [...prev, {
+        id: data.requestId!,
+        requesterId: data.requesterId,
+        requesterName: data.requesterName,
+        requesterAvatar: data.requesterAvatar,
+        channelName: data.channelName,
+      }];
+    });
+    appAlert(
+      'Call Request',
+      `${data.requesterName || 'A viewer'} wants a private voice call.\n\nViewer pays ₹${rate}/min from wallet.\nYou earn ${beans} beans/min.`,
+      [
+        {
+          text: 'Decline',
+          style: 'cancel',
+          onPress: () => void handleCallRequestAction(data.requestId!, 'reject', data),
+        },
+        {
+          text: 'Accept',
+          onPress: () => void handleCallRequestAction(data.requestId!, 'accept', data),
+        },
+      ],
+    );
+  }, [handleCallRequestAction, myRates]);
 
   const promptTalkRequest = useCallback((data: {
     requestId?: string;
@@ -330,6 +443,29 @@ export default function BroadcastScreen() {
             });
           }
         });
+
+        const callStatus = await getLiveCallStatus(token, sessionId);
+        const pendingCalls = callStatus.pendingRequests || [];
+        setPendingCallRequests(pendingCalls.map((r) => ({
+          id: r.id,
+          requesterId: r.requesterId,
+          requesterName: r.requesterName,
+          requesterAvatar: r.requesterAvatar,
+          channelName: r.channelName,
+        })));
+        pendingCalls.forEach((r) => {
+          if (!promptedCallRequestIds.current.has(r.id) && !handledCallRequestIds.current.has(r.id)) {
+            promptCallRequest({
+              requestId: r.id,
+              requesterId: r.requesterId,
+              requesterName: r.requesterName,
+              requesterAvatar: r.requesterAvatar,
+              channelName: r.channelName,
+              ratePerMin: callStatus.ratePerMin,
+              beansPerMin: callStatus.beansPerMin,
+            });
+          }
+        });
       } catch {
         // non-fatal
       }
@@ -337,7 +473,7 @@ export default function BroadcastScreen() {
     void refreshPendingTalkRequests();
     const interval = setInterval(() => { void refreshPendingTalkRequests(); }, 5000);
     return () => clearInterval(interval);
-  }, [isLive, sessionId, token, promptTalkRequest]);
+  }, [isLive, sessionId, token, promptTalkRequest, promptCallRequest]);
 
   // Socket for viewer count
   useEffect(() => {
@@ -364,6 +500,30 @@ export default function BroadcastScreen() {
       ratePerMin?: number;
     }) => {
       promptTalkRequest(data);
+    });
+    s.on('live_call_incoming', (data: {
+      requestId?: string;
+      requesterId?: string;
+      requesterName?: string;
+      requesterAvatar?: string | null;
+      channelName?: string;
+      ratePerMin?: number;
+      beansPerMin?: number;
+    }) => {
+      promptCallRequest(data);
+    });
+    s.on('live_call_accepted', (data: {
+      channelName?: string;
+      requesterId?: string;
+      requesterName?: string;
+      requesterAvatar?: string | null;
+      ratePerMin?: number;
+      beansPerMin?: number;
+      role?: string;
+    }) => {
+      if (data?.role === 'callee') {
+        joinAcceptedCallAsHost(data);
+      }
     });
     s.on('talk_private_ready', (data: {
       talkSessionId?: string;
@@ -430,7 +590,7 @@ export default function BroadcastScreen() {
       socketRef.current = null;
       setLiveSocket(null);
     };
-  }, [isLive, sessionId, user?.id, user?.username, token, router, promptTalkRequest, updateUser]);
+  }, [isLive, sessionId, user?.id, user?.username, token, router, promptTalkRequest, promptCallRequest, joinAcceptedCallAsHost, updateUser]);
 
   const handleTimerExpired = useCallback(() => {
     if (timerExpired) return;
@@ -781,6 +941,32 @@ export default function BroadcastScreen() {
                     onPress={() => void handleTalkRequestAction(req.id, 'accept')}
                   >
                     <Text style={st.talkAcceptText}>Accept</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {isLive && pendingCallRequests.length > 0 && (
+          <View style={[st.talkRequestBanner, { top: pendingTalkRequests.length > 0 ? 200 : 120 }]}>
+            {pendingCallRequests.map((req) => (
+              <View key={req.id} style={[st.talkRequestCard, { borderColor: 'rgba(16,185,129,0.35)' }]}>
+                <Text style={[st.talkRequestText, { color: '#6EE7B7' }]}>
+                  {req.requesterName || 'A viewer'} wants a voice call · ₹{myRates.voiceRatePerMin}/min · you earn {myRates.voiceBeansPerMin} beans/min
+                </Text>
+                <View style={st.talkRequestActions}>
+                  <TouchableOpacity
+                    style={st.talkRejectBtn}
+                    onPress={() => void handleCallRequestAction(req.id, 'reject', req)}
+                  >
+                    <Text style={st.talkRejectText}>Decline</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[st.talkAcceptBtn, { backgroundColor: 'rgba(16,185,129,0.25)' }]}
+                    onPress={() => void handleCallRequestAction(req.id, 'accept', req)}
+                  >
+                    <Text style={[st.talkAcceptText, { color: '#6EE7B7' }]}>Accept Call</Text>
                   </TouchableOpacity>
                 </View>
               </View>

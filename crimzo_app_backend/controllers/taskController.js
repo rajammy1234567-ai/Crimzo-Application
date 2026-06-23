@@ -9,6 +9,7 @@ const {
   monthKey,
   getStreakSnapshot,
   applyCheckinStreak,
+  applyStreakMilestoneReward,
 } = require('../utils/taskProgress');
 
 function computeNewbieProgress(user) {
@@ -152,10 +153,16 @@ exports.checkIn = async (req, res) => {
       });
     }
 
+    if (streakUpdate.streakReset) {
+      state.streak_milestones_claimed = 0;
+    }
+
     state.last_checkin = today;
     state.checkin_streak = streakUpdate.streak;
     state.longest_streak = streakUpdate.longest;
     state.pending_reward = (state.pending_reward || 0) + 50;
+
+    const milestone = applyStreakMilestoneReward(state, streakUpdate.streak);
     state.updated_at = new Date();
     await state.save();
 
@@ -164,6 +171,7 @@ exports.checkIn = async (req, res) => {
       added: 50,
       pendingReward: state.pending_reward,
       pendingDiamonds: state.pending_diamonds || 0,
+      streakMilestoneReward: milestone.diamondsAwarded,
       streak: getStreakSnapshot(state),
     });
   } catch (error) {

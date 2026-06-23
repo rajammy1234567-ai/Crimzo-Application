@@ -12,7 +12,7 @@ const { finalizeLiveSessionEnd } = require('../controllers/liveController');
 const PKBattle = require('../models/PKBattle');
 const Sticker = require('../models/Sticker');
 const GiftHistory = require('../models/GiftHistory');
-const { userRoom, emitBalanceUpdate, emitOnlineCountUpdate } = require('../utils/socketEmitter');
+const { userRoom, emitOnlineCountUpdate } = require('../utils/socketEmitter');
 const {
   registerPresence,
   touchPresence,
@@ -50,9 +50,6 @@ async function processStickerGift({ senderId, receiverId, stickerId, sessionId }
     beans_earned: transfer.beansEarned,
     session_id: sessionId || null,
   });
-
-  emitBalanceUpdate(senderId, { diamonds: transfer.senderDiamonds });
-  emitBalanceUpdate(receiverId, { beans: transfer.receiverBeans });
 
   return { sticker, transfer };
 }
@@ -308,8 +305,6 @@ module.exports = (io) => {
           senderDiamonds: transfer.senderDiamonds,
         });
 
-        emitBalanceUpdate(senderId, { diamonds: transfer.senderDiamonds });
-        emitBalanceUpdate(hostId, { beans: transfer.receiverBeans });
         socket.emit('diamond_update', { diamonds: transfer.senderDiamonds });
       } catch (error) {
         console.error('Send gift error:', error);

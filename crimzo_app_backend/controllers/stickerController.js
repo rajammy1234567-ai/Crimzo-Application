@@ -4,8 +4,9 @@ const User = require('../models/User');
 const UserSticker = require('../models/UserSticker');
 const GiftHistory = require('../models/GiftHistory');
 const { transferGift } = require('../utils/diamondTransfer');
-const { emitBalanceUpdate, getIo } = require('../utils/socketEmitter');
+const { getIo } = require('../utils/socketEmitter');
 const { privateTalkRoom, verifyPrivateTalkAccess } = require('./liveTalkController');
+const { userRoom } = require('../utils/socketEmitter');
 
 function stickerPublicId(doc) {
   if (!doc) return null;
@@ -162,10 +163,12 @@ exports.getCollected = async (req, res) => {
 async function broadcastStickerGift({
   senderId,
   senderUsername,
+  receiverId,
   sticker,
   stickerId,
   sessionId,
   talkSessionId,
+  channelName,
 }) {
   const io = getIo();
   if (!io) return;
@@ -195,6 +198,15 @@ async function broadcastStickerGift({
     return;
   }
 
+  if (channelName) {
+    const payload = { ...base, channelName: String(channelName) };
+    io.to(userRoom(senderId)).emit('call_gift_received', payload);
+    if (receiverId) {
+      io.to(userRoom(receiverId)).emit('call_gift_received', payload);
+    }
+    return;
+  }
+
   if (sessionId) {
     io.to(`live_${String(sessionId)}`).emit('live_chat_message', base);
   }
@@ -204,7 +216,7 @@ exports.sendSticker = async (req, res) => {
   try {
     const senderId = req.user.id;
     const stickerId = req.body.stickerId || req.body.sticker_id;
-    const { receiverId, sessionId, talkSessionId } = req.body;
+    const { receiverId, sessionId, talkSessionId, channelName } = req.body;
 
     if (!stickerId) {
       return res.status(400).json({ error: 'Sticker ID required' });
@@ -222,8 +234,6 @@ exports.sendSticker = async (req, res) => {
     const senderDiamonds = transfer.senderDiamonds;
     const receiverBeans = transfer.receiverBeans;
     const beansEarned = transfer.beansEarned;
-    emitBalanceUpdate(senderId, { diamonds: senderDiamonds });
-    emitBalanceUpdate(receiverId, { beans: receiverBeans });
 
     const sender = await User.findById(senderId).select('username').lean();
 
@@ -233,17 +243,21 @@ exports.sendSticker = async (req, res) => {
       sticker_id: stickerId,
       diamonds_spent: sticker.price,
       beans_earned: beansEarned,
-      session_id: talkSessionId ? `talk_${talkSessionId}` : (sessionId || null),
+      session_id: talkSessionId
+        ? `talk_${talkSessionId}`
+        : (channelName ? `call_${channelName}` : (sessionId || null)),
     });
 
     try {
       await broadcastStickerGift({
         senderId,
         senderUsername: sender?.username,
+        receiverId,
         sticker,
         stickerId,
         sessionId,
         talkSessionId,
+        channelName,
       });
     } catch (broadcastErr) {
       console.error('Gift broadcast error (transfer ok):', broadcastErr.message);

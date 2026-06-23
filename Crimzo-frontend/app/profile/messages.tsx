@@ -8,7 +8,7 @@ import { KEYBOARD_BEHAVIOR } from '../../components/KeyboardAware';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { apiGet, apiPost, ApiError } from '../../lib/apiClient';
-import { playGiftPop, playMessageReceivePop, playMessageSendPop } from '../../lib/uiSounds';
+import { playMessageReceivePop, playMessageSendPop } from '../../lib/uiSounds';
 import { useVideoCall } from '../../contexts/VideoCallContext';
 import { subscribe } from '../../lib/realtimeSync';
 
@@ -145,8 +145,7 @@ export default function MessagesScreen() {
       });
 
       if (chatOpen && isIncoming) {
-        if (msg.message_type === 'gift') playGiftPop();
-        else playMessageReceivePop();
+        if (msg.message_type !== 'gift') playMessageReceivePop();
         setChatMessages((prev) => {
           if (prev.some((m) => String(m.id) === String(msg.id))) return prev;
           return [...prev, msg];
@@ -280,7 +279,6 @@ export default function MessagesScreen() {
           updateUser({ diamonds: data.senderDiamonds });
         }
         setShowGift(false);
-        playGiftPop();
       }
     } catch (e: unknown) {
       appAlert('Gift Failed', e instanceof ApiError ? e.message : 'Could not send gift');

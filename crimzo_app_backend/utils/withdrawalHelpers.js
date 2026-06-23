@@ -53,11 +53,32 @@ function getNextWithdrawalDate(from = new Date()) {
   return new Date(year, month + 1, WITHDRAW_DAY_OF_MONTH);
 }
 
+/** Payout credit date for requests submitted anytime — always 7th of next month */
+function getScheduledCreditDate(from = new Date()) {
+  return new Date(from.getFullYear(), from.getMonth() + 1, WITHDRAW_DAY_OF_MONTH);
+}
+
+function formatScheduledCreditDate(date = getScheduledCreditDate()) {
+  return date.toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function buildWithdrawCreditMessage(amountInr, creditDate = getScheduledCreditDate()) {
+  const when = formatScheduledCreditDate(creditDate);
+  return `Your amount of ₹${Number(amountInr).toLocaleString('en-IN')} will be credited on ${when}.`;
+}
+
 module.exports = {
   refundWithdrawalBalance,
   buildPayoutSnapshot,
   isManualWithdrawalMode,
   isWithdrawalDayAllowed,
   getNextWithdrawalDate,
+  getScheduledCreditDate,
+  formatScheduledCreditDate,
+  buildWithdrawCreditMessage,
   WITHDRAW_DAY_OF_MONTH,
 };

@@ -90,6 +90,16 @@ function emitNewMessage(userId, message) {
   _io.to(userRoom(userId)).emit('new_message', message);
 }
 
+/** Notify gift receiver — plays pop sound on their device */
+function emitGiftReceived(receiverId, payload = {}) {
+  if (!_io || !receiverId) return;
+  _io.to(userRoom(receiverId)).emit('gift_received', {
+    receiverId: String(receiverId),
+    at: Date.now(),
+    ...payload,
+  });
+}
+
 module.exports = {
   setIo,
   getIo,
@@ -107,4 +117,5 @@ module.exports = {
   emitFollowStatusChanged,
   emitOnlineCountUpdate,
   emitNewMessage,
+  emitGiftReceived,
 };

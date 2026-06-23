@@ -1,5 +1,9 @@
 const Task = require('../models/Task');
 const UserTaskState = require('../models/UserTaskState');
+const {
+  STREAK_MILESTONE_DAYS,
+  STREAK_MILESTONE_DIAMONDS,
+} = require('../config/walletConfig');
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -57,6 +61,18 @@ function getStreakSnapshot(state) {
   const weekDots = buildWeekDots(currentStreak, anchorDay, today);
   const todayWeekday = weekdayIndexMon0(today);
 
+  const milestoneDays = STREAK_MILESTONE_DAYS;
+  const milestoneDiamonds = STREAK_MILESTONE_DIAMONDS;
+  const nextMilestoneAt = currentStreak > 0
+    ? Math.ceil(currentStreak / milestoneDays) * milestoneDays
+    : milestoneDays;
+  const daysToNextMilestone = currentStreak > 0
+    ? nextMilestoneAt - currentStreak
+    : milestoneDays;
+  const progressInBlock = currentStreak > 0
+    ? (currentStreak % milestoneDays || milestoneDays)
+    : 0;
+
   return {
     currentStreak,
     longestStreak: state?.longest_streak || 0,
@@ -65,6 +81,11 @@ function getStreakSnapshot(state) {
     weekDots,
     todayWeekday,
     atRisk: !checkedInToday && last === yesterday && currentStreak > 0,
+    milestoneDays,
+    milestoneDiamonds,
+    nextMilestoneAt,
+    daysToNextMilestone,
+    progressInBlock,
   };
 }
 
@@ -73,17 +94,50 @@ function applyCheckinStreak(state, today) {
   let streak = state.checkin_streak || 0;
 
   if (state.last_checkin === today) {
-    return { streak, longest: state.longest_streak || streak, alreadyCheckedIn: true };
+    return {
+      streak,
+      longest: state.longest_streak || streak,
+      alreadyCheckedIn: true,
+      streakReset: false,
+    };
   }
 
+  let streakReset = false;
   if (state.last_checkin === yesterday) {
     streak += 1;
   } else {
     streak = 1;
+    streakReset = true;
   }
 
   const longest = Math.max(state.longest_streak || 0, streak);
-  return { streak, longest, alreadyCheckedIn: false };
+  return { streak, longest, alreadyCheckedIn: false, streakReset };
+}
+
+/** Award owner/platform diamonds when user hits each 30-day streak block */
+function applyStreakMilestoneReward(state, streak) {
+  const claimed = state.streak_milestones_claimed || 0;
+  const earned = Math.floor(streak / STREAK_MILESTONE_DAYS);
+  const newMilestones = earned - claimed;
+  if (newMilestones <= 0) {
+    return {
+      diamondsAwarded: 0,
+      milestonesClaimed: claimed,
+      milestoneDays: STREAK_MILESTONE_DAYS,
+      milestoneDiamonds: STREAK_MILESTONE_DIAMONDS,
+    };
+  }
+
+  const diamondsAwarded = newMilestones * STREAK_MILESTONE_DIAMONDS;
+  state.streak_milestones_claimed = earned;
+  state.pending_diamonds = (state.pending_diamonds || 0) + diamondsAwarded;
+
+  return {
+    diamondsAwarded,
+    milestonesClaimed: earned,
+    milestoneDays: STREAK_MILESTONE_DAYS,
+    milestoneDiamonds: STREAK_MILESTONE_DIAMONDS,
+  };
 }
 
 function monthKey() {
@@ -170,7 +224,9 @@ module.exports = {
   setProgressEntry,
   recordTaskAction,
   todayKey,
+  yesterdayKey,
   monthKey,
   getStreakSnapshot,
   applyCheckinStreak,
+  applyStreakMilestoneReward,
 };
