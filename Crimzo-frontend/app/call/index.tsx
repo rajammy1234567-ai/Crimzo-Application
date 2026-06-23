@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { appAlert } from '../../lib/appAlert';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, PermissionsAndroid, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, StatusBar } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,6 +23,7 @@ import {
   isAgoraNativeLinked,
   type IRtcEngine,
 } from '../../components/agoraImports';
+import { ensureRtcPermissions, configurePublisherAudio } from '../../lib/agoraRtcHelpers';
 
 export default function VideoCallScreen() {
   const router = useRouter();
@@ -51,6 +52,12 @@ export default function VideoCallScreen() {
   const billingStartedRef = useRef(false);
   const elapsedSecRef = useRef(0);
   const callEndedRef = useRef(false);
+  const offlineGraceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const endCallRef = useRef<(reason?: 'balance_exhausted' | 'no_answer' | 'declined') => void>(() => {});
+  const initAgoraRef = useRef<() => Promise<void>>(async () => {});
+  const finalizeBillingRef = useRef<() => Promise<void>>(async () => {});
+  const peerNameRef = useRef(peerName);
+  const isCallerRef = useRef(isCaller);
   const [loading, setLoading] = useState(true);
   const [callPhase, setCallPhase] = useState<CallPhase>(role === 'caller' ? 'ringing' : 'connecting');
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
@@ -188,11 +195,14 @@ export default function VideoCallScreen() {
     if (!channelName || !token || !user?.id || engineRef.current) return;
 
     try {
-      if (Platform.OS === 'android') {
-        await PermissionsAndroid.requestMultiple([
-          PermissionsAndroid.PERMISSIONS.CAMERA,
-          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-        ]);
+      const perms = await ensureRtcPermissions();
+      if (!perms.mic) {
+        appAlert(
+          'Microphone Required',
+          'Allow microphone access so the other person can hear you on this call.',
+          [{ text: 'OK', onPress: () => endCall() }],
+        );
+        return;
       }
 
       const creds = await apiPost<{
@@ -231,18 +241,27 @@ export default function VideoCallScreen() {
 
       engine.registerEventHandler({
         onJoinChannelSuccess: () => {
+          configurePublisherAudio(engine);
           setCallPhase('connected');
           setLoading(false);
         },
         onUserJoined: (_conn: unknown, remoteUserUid: number) => {
+          if (offlineGraceRef.current) {
+            clearTimeout(offlineGraceRef.current);
+            offlineGraceRef.current = null;
+          }
           setRemoteUid(remoteUserUid);
-          if (isCaller) void initCallBilling();
+          if (isCallerRef.current) void initCallBilling();
         },
         onUserOffline: () => {
-          setRemoteUid(null);
-          appAlert('Call Ended', `${peerName} left the call`, [
-            { text: 'OK', onPress: () => endCall() },
-          ]);
+          if (offlineGraceRef.current) clearTimeout(offlineGraceRef.current);
+          offlineGraceRef.current = setTimeout(() => {
+            if (callEndedRef.current) return;
+            setRemoteUid(null);
+            appAlert('Call Ended', `${peerNameRef.current} left the call`, [
+              { text: 'OK', onPress: () => endCallRef.current() },
+            ]);
+          }, 8000);
         },
         onError: (err: unknown) => console.error('[VideoCall] Agora error:', err),
       });
@@ -253,6 +272,7 @@ export default function VideoCallScreen() {
         autoSubscribeAudio: true,
         autoSubscribeVideo: true,
       });
+      configurePublisherAudio(engine);
 
       engineRef.current = engine;
     } catch (e: unknown) {
@@ -275,6 +295,12 @@ export default function VideoCallScreen() {
     }
   }, [channelName, token, user?.id, peerName, role, peerId, isCaller, initCallBilling, endCall, router]);
 
+  endCallRef.current = endCall;
+  finalizeBillingRef.current = finalizeBilling;
+  initAgoraRef.current = initAgora;
+  peerNameRef.current = peerName;
+  isCallerRef.current = isCaller;
+
   useEffect(() => {
     if (Platform.OS === 'web') {
       appAlert('Mobile Only', '1-on-1 video call requires the Android/iOS app with Agora dev build.', [
@@ -290,35 +316,43 @@ export default function VideoCallScreen() {
 
     const socket = io(API_URL, { transports: ['websocket'], auth: { token } });
     socket.on('connect', () => socket.emit('join_user', { userId: user.id }));
-    socket.on('video_call_ended', () => endCall());
+    socket.on('video_call_ended', () => {
+      if (!callEndedRef.current) endCallRef.current();
+    });
     socket.on('video_call_rejected', () => {
       clearRingTimeout();
       appAlert('Call Declined', 'The other person declined your call.', [
-        { text: 'OK', onPress: () => endCall('declined') },
+        { text: 'OK', onPress: () => endCallRef.current('declined') },
       ]);
     });
     socket.on('video_call_accepted', (data?: { channelName?: string }) => {
       if (data?.channelName && data.channelName !== channelName) return;
       clearRingTimeout();
       setCallPhase('connecting');
-      void initAgora();
+      void initAgoraRef.current();
     });
     socketRef.current = socket;
 
-    if (isCaller) {
+    if (role === 'caller') {
       ringTimeoutRef.current = setTimeout(() => {
-        appAlert('No Answer', `${peerName} did not answer.`, [
-          { text: 'OK', onPress: () => endCall('no_answer') },
+        appAlert('No Answer', `${peerNameRef.current} did not answer.`, [
+          { text: 'OK', onPress: () => endCallRef.current('no_answer') },
         ]);
       }, CALL_RING_TIMEOUT_MS);
     } else {
-      void initAgora();
+      void initAgoraRef.current();
     }
 
     return () => {
+      if (offlineGraceRef.current) {
+        clearTimeout(offlineGraceRef.current);
+        offlineGraceRef.current = null;
+      }
       clearRingTimeout();
       clearBillingTimer();
-      void finalizeBilling();
+      if (!callEndedRef.current) {
+        void finalizeBillingRef.current();
+      }
       if (engineRef.current) {
         engineRef.current.leaveChannel();
         engineRef.current.release();
@@ -326,19 +360,7 @@ export default function VideoCallScreen() {
       }
       socket.disconnect();
     };
-  }, [
-    channelName,
-    token,
-    user?.id,
-    peerName,
-    isCaller,
-    endCall,
-    router,
-    initAgora,
-    clearRingTimeout,
-    clearBillingTimer,
-    finalizeBilling,
-  ]);
+  }, [channelName, token, user?.id, role, clearRingTimeout, clearBillingTimer, router]);
 
   useEffect(() => {
     if (!connected) return;
@@ -357,8 +379,13 @@ export default function VideoCallScreen() {
 
   const toggleMic = () => {
     setMicOn((prev) => {
-      engineRef.current?.muteLocalAudioStream(prev);
-      return !prev;
+      const nextOn = !prev;
+      if (nextOn) {
+        configurePublisherAudio(engineRef.current);
+      } else {
+        engineRef.current?.muteLocalAudioStream(true);
+      }
+      return nextOn;
     });
   };
 

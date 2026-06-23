@@ -16,6 +16,7 @@ router.get('/dashboard', adminController.getDashboardStats);
 router.get('/billing/settings', adminController.getBillingSettings);
 router.put('/billing/settings', adminController.updateBillingSettings);
 router.get('/billing/sessions', adminController.getBillingSessions);
+router.get('/billing/earnings', adminController.getBillingEarnings);
 
 // Withdrawals (manual UPI/bank payouts)
 router.get('/withdrawals', adminController.getWithdrawals);

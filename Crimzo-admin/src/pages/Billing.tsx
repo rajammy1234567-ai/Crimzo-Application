@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { IndianRupee, Video, MessageCircle, Save, ToggleLeft, ToggleRight } from 'lucide-react';
+import { IndianRupee, Video, MessageCircle, Save, ToggleLeft, ToggleRight, Coins, Users } from 'lucide-react';
 import { api, authHeaders } from '../lib/api';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { StatCard } from '../components/ui/StatCard';
 import { LoadingSpinner } from '../components/ui/LoadingState';
-import type { BillingSettings, BillingStats, BillingSessionRow } from '../types';
+import type { BillingSettings, BillingStats, BillingSessionRow, UserEarningsRow, OwnerEarnings } from '../types';
+import { formatNumber } from '../lib/utils';
 
 const Billing = () => {
     const { token } = useAuth();
@@ -21,6 +22,8 @@ const Billing = () => {
         videoCalls: [],
         liveTalks: [],
     });
+    const [userEarnings, setUserEarnings] = useState<UserEarningsRow[]>([]);
+    const [ownerEarnings, setOwnerEarnings] = useState<OwnerEarnings | null>(null);
 
     const [videoRate, setVideoRate] = useState('1');
     const [liveRate, setLiveRate] = useState('1');
@@ -46,6 +49,8 @@ const Billing = () => {
                 videoCalls: sessionsRes.data.videoCalls || [],
                 liveTalks: sessionsRes.data.liveTalks || [],
             });
+            setUserEarnings(settingsRes.data.userEarnings || []);
+            setOwnerEarnings(settingsRes.data.ownerEarnings || null);
         } catch {
             toast.error('Failed to load billing settings');
         } finally {
@@ -81,9 +86,42 @@ const Billing = () => {
         <div>
             <PageHeader
                 title="Billing & Rates"
-                description="Control ₹/min rates for video calls and live talk. Users must recharge their wallet to use paid features."
+                description="Control ₹/min rates for video calls and live talk. 70% beans go to the host/callee, 30% stays with platform (owner)."
                 breadcrumbs={[{ label: 'Dashboard', to: '/dashboard' }, { label: 'Billing' }]}
             />
+
+            {ownerEarnings && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+                    <StatCard
+                        title="Owner Platform Beans"
+                        value={ownerEarnings.totalPlatformBeans}
+                        icon={Coins}
+                        colorClass="bg-emerald-500/10 text-emerald-400"
+                        subtitle={`${Math.round((ownerEarnings.platformShare || 0.3) * 100)}% of all paid minutes`}
+                    />
+                    <StatCard
+                        title="Owner — Video Calls"
+                        value={ownerEarnings.videoCallPlatformBeans}
+                        icon={Video}
+                        colorClass="bg-blue-500/10 text-blue-400"
+                        subtitle="Platform share from 1-on-1 calls"
+                    />
+                    <StatCard
+                        title="Owner — Live Talk"
+                        value={ownerEarnings.liveTalkPlatformBeans}
+                        icon={MessageCircle}
+                        colorClass="bg-amber-500/10 text-amber-400"
+                        subtitle="Platform share from live chat"
+                    />
+                    <StatCard
+                        title="Users Total Earned"
+                        value={stats?.totalUserBeansEarned || 0}
+                        icon={Users}
+                        colorClass="bg-purple-500/10 text-purple-400"
+                        subtitle={`${Math.round((ownerEarnings.receiverShare || 0.7) * 100)}% to hosts/callees`}
+                    />
+                </div>
+            )}
 
             {stats && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
@@ -188,9 +226,54 @@ const Billing = () => {
                 </Button>
             </div>
 
+            <Card padding className="mb-8">
+                <CardHeader
+                    title="User Earnings (Hosts & Callees)"
+                    description="Per-user beans earned from video calls and live talk — 70% of each paid minute"
+                    icon={<Users size={18} />}
+                />
+                <div className="mt-4 overflow-x-auto">
+                    {userEarnings.length === 0 ? (
+                        <p className="text-sm text-gray-500 py-6 text-center">No user earnings recorded yet</p>
+                    ) : (
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="text-left text-xs text-gray-500 uppercase tracking-wider border-b border-dark-border">
+                                    <th className="pb-3 pr-4">User</th>
+                                    <th className="pb-3 pr-4">Video Call</th>
+                                    <th className="pb-3 pr-4">Live Talk</th>
+                                    <th className="pb-3 pr-4">Total Beans</th>
+                                    <th className="pb-3">Revenue (₹)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {userEarnings.map(row => (
+                                    <tr key={row.userId} className="border-b border-dark-border/50 hover:bg-white/[0.02]">
+                                        <td className="py-3 pr-4">
+                                            <p className="font-semibold text-white">@{row.username || '—'}</p>
+                                            <p className="text-xs text-gray-500">{row.crimzoId || row.userId}</p>
+                                        </td>
+                                        <td className="py-3 pr-4 text-blue-300">
+                                            {formatNumber(row.videoCallBeans)} beans
+                                            <span className="block text-xs text-gray-500">{row.videoCallSessions} sessions</span>
+                                        </td>
+                                        <td className="py-3 pr-4 text-amber-300">
+                                            {formatNumber(row.liveTalkBeans)} beans
+                                            <span className="block text-xs text-gray-500">{row.liveTalkSessions} sessions</span>
+                                        </td>
+                                        <td className="py-3 pr-4 font-bold text-emerald-400">{formatNumber(row.totalBeans)}</td>
+                                        <td className="py-3 text-amber-400">₹{formatNumber(row.totalRevenue)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            </Card>
+
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                 <Card padding>
-                    <CardHeader title="Recent Video Calls" description="Wallet charges" />
+                    <CardHeader title="Recent Video Calls" description="Wallet charges · 70% callee / 30% owner" />
                     <div className="mt-4 space-y-2 max-h-80 overflow-y-auto custom-scrollbar">
                         {sessions.videoCalls.length === 0 ? (
                             <p className="text-sm text-gray-500 py-6 text-center">No video call sessions yet</p>
@@ -200,14 +283,22 @@ const Billing = () => {
                                     <span className="font-semibold text-white">@{row.payer || 'User'}</span>
                                     <span className="text-amber-400 font-bold">₹{row.totalCharged}</span>
                                 </div>
-                                <p className="text-xs text-gray-500 mt-1">{row.minutesCharged} min · ₹{row.ratePerMin}/min · {row.status}</p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Callee: @{row.peer || '—'} · {row.minutesCharged} min · ₹{row.ratePerMin}/min
+                                </p>
+                                <p className="text-xs mt-1">
+                                    <span className="text-emerald-400">{formatNumber(row.receiverBeans || 0)} beans → callee</span>
+                                    <span className="text-gray-600 mx-1">·</span>
+                                    <span className="text-amber-400">{formatNumber(row.platformBeans || 0)} beans → owner</span>
+                                    <span className="text-gray-600 ml-1">· {row.status}</span>
+                                </p>
                             </div>
                         ))}
                     </div>
                 </Card>
 
                 <Card padding>
-                    <CardHeader title="Recent Live Talks" description="Popular live chat charges" />
+                    <CardHeader title="Recent Live Talks" description="Popular live chat · 70% host / 30% owner" />
                     <div className="mt-4 space-y-2 max-h-80 overflow-y-auto custom-scrollbar">
                         {sessions.liveTalks.length === 0 ? (
                             <p className="text-sm text-gray-500 py-6 text-center">No live talk sessions yet</p>
@@ -218,7 +309,13 @@ const Billing = () => {
                                     <span className="text-amber-400 font-bold">₹{row.totalCharged}</span>
                                 </div>
                                 <p className="text-xs text-gray-500 mt-1">
-                                    Host: @{row.host || '—'} · {row.minutesCharged} min · {row.status}
+                                    Host: @{row.host || '—'} · {row.minutesCharged} min · ₹{row.ratePerMin}/min
+                                </p>
+                                <p className="text-xs mt-1">
+                                    <span className="text-emerald-400">{formatNumber(row.receiverBeans || 0)} beans → host</span>
+                                    <span className="text-gray-600 mx-1">·</span>
+                                    <span className="text-amber-400">{formatNumber(row.platformBeans || 0)} beans → owner</span>
+                                    <span className="text-gray-600 ml-1">· {row.status}</span>
                                 </p>
                             </div>
                         ))}

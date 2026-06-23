@@ -11,6 +11,98 @@ const {
   getBillingSettings,
   updateBillingSettings,
 } = require('../utils/billingSettings');
+const mongoose = require('mongoose');
+
+async function aggregateUserEarnings() {
+  const [videoByPeer, liveByHost] = await Promise.all([
+    VideoCallSession.aggregate([
+      { $match: { peerId: { $nin: [null, ''] } } },
+      {
+        $group: {
+          _id: '$peerId',
+          videoCallBeans: { $sum: '$peer_beans_earned' },
+          videoCallSessions: { $sum: 1 },
+          videoCallRevenue: { $sum: '$totalCharged' },
+        },
+      },
+    ]),
+    LiveTalkSession.aggregate([
+      {
+        $group: {
+          _id: '$host_id',
+          liveTalkBeans: { $sum: '$host_beans_earned' },
+          liveTalkSessions: { $sum: 1 },
+          liveTalkRevenue: { $sum: '$total_charged' },
+        },
+      },
+    ]),
+  ]);
+
+  const merged = new Map();
+
+  for (const row of videoByPeer) {
+    const id = String(row._id);
+    merged.set(id, {
+      userId: id,
+      videoCallBeans: row.videoCallBeans || 0,
+      liveTalkBeans: 0,
+      videoCallSessions: row.videoCallSessions || 0,
+      liveTalkSessions: 0,
+      videoCallRevenue: row.videoCallRevenue || 0,
+      liveTalkRevenue: 0,
+    });
+  }
+
+  for (const row of liveByHost) {
+    const id = String(row._id);
+    const existing = merged.get(id) || {
+      userId: id,
+      videoCallBeans: 0,
+      liveTalkBeans: 0,
+      videoCallSessions: 0,
+      liveTalkSessions: 0,
+      videoCallRevenue: 0,
+      liveTalkRevenue: 0,
+    };
+    existing.liveTalkBeans = row.liveTalkBeans || 0;
+    existing.liveTalkSessions = row.liveTalkSessions || 0;
+    existing.liveTalkRevenue = row.liveTalkRevenue || 0;
+    merged.set(id, existing);
+  }
+
+  const userIds = [...merged.keys()]
+    .filter((id) => mongoose.Types.ObjectId.isValid(id))
+    .map((id) => new mongoose.Types.ObjectId(id));
+
+  const users = userIds.length
+    ? await User.find({ _id: { $in: userIds } }).select('username crimzo_id').lean()
+    : [];
+  const userMap = new Map(users.map((u) => [u._id.toString(), u]));
+
+  return [...merged.values()]
+    .map((row) => {
+      const user = userMap.get(row.userId);
+      const totalBeans = (row.videoCallBeans || 0) + (row.liveTalkBeans || 0);
+      const totalSessions = (row.videoCallSessions || 0) + (row.liveTalkSessions || 0);
+      const totalRevenue = (row.videoCallRevenue || 0) + (row.liveTalkRevenue || 0);
+      return {
+        userId: row.userId,
+        username: user?.username || null,
+        crimzoId: user?.crimzo_id || null,
+        videoCallBeans: row.videoCallBeans || 0,
+        liveTalkBeans: row.liveTalkBeans || 0,
+        totalBeans,
+        videoCallSessions: row.videoCallSessions || 0,
+        liveTalkSessions: row.liveTalkSessions || 0,
+        totalSessions,
+        videoCallRevenue: row.videoCallRevenue || 0,
+        liveTalkRevenue: row.liveTalkRevenue || 0,
+        totalRevenue,
+      };
+    })
+    .filter((row) => row.totalBeans > 0 || row.totalRevenue > 0)
+    .sort((a, b) => b.totalBeans - a.totalBeans);
+}
 const jwt = require('jsonwebtoken');
 const {
   emitStreamEnded,
@@ -69,9 +161,22 @@ exports.getDashboardStats = async (req, res) => {
       },
     ]);
     const liveTalkRevenueAgg = await LiveTalkSession.aggregate([
-      { $group: { _id: null, total: { $sum: '$total_charged' }, sessions: { $sum: 1 } } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: '$total_charged' },
+          sessions: { $sum: 1 },
+          hostBeans: { $sum: '$host_beans_earned' },
+          platformBeans: { $sum: '$platform_beans_earned' },
+        },
+      },
     ]);
     const billingSettings = await getBillingSettings();
+    const videoPeerBeans = videoCallRevenueAgg[0]?.peerBeans || 0;
+    const videoPlatformBeans = videoCallRevenueAgg[0]?.platformBeans || 0;
+    const liveHostBeans = liveTalkRevenueAgg[0]?.hostBeans || 0;
+    const livePlatformBeans = liveTalkRevenueAgg[0]?.platformBeans || 0;
+    const ownerPlatformBeans = billingSettings.platformBeansEarned || 0;
 
     // Chart Data (Last 7 Days User Registration) - Mongo version
     const sevenDaysAgo = new Date();
@@ -96,9 +201,15 @@ exports.getDashboardStats = async (req, res) => {
         totalWalletBalance,
         videoCallRevenue: videoCallRevenueAgg[0]?.total || 0,
         videoCallSessions: videoCallRevenueAgg[0]?.sessions || 0,
-        videoCallPeerBeans: videoCallRevenueAgg[0]?.peerBeans || 0,
-        videoCallPlatformBeans: videoCallRevenueAgg[0]?.platformBeans || 0,
-        platformBeansEarned: billingSettings.platformBeansEarned || 0,
+        videoCallPeerBeans: videoPeerBeans,
+        videoCallPlatformBeans: videoPlatformBeans,
+        liveTalkHostBeans: liveHostBeans,
+        liveTalkPlatformBeans: livePlatformBeans,
+        platformBeansEarned: ownerPlatformBeans,
+        totalUserBeansEarned: videoPeerBeans + liveHostBeans,
+        totalOwnerBeans: ownerPlatformBeans,
+        receiverShare: billingSettings.callReceiverShare ?? 0.7,
+        platformShare: billingSettings.callPlatformShare ?? 0.3,
         liveTalkRevenue: liveTalkRevenueAgg[0]?.total || 0,
         liveTalkSessions: liveTalkRevenueAgg[0]?.sessions || 0,
         pendingTalkRequests: await LiveTalkRequest.countDocuments({ status: 'pending' }),
@@ -247,15 +358,39 @@ exports.updateDiamonds = async (req, res) => {
 exports.getBillingSettings = async (req, res) => {
   try {
     const settings = await getBillingSettings();
-    const [videoStats, talkStats, pendingRequests] = await Promise.all([
+    const [videoStats, talkStats, pendingRequests, userEarnings] = await Promise.all([
       VideoCallSession.aggregate([
-        { $group: { _id: null, revenue: { $sum: '$totalCharged' }, minutes: { $sum: '$minutesCharged' }, count: { $sum: 1 } } },
+        {
+          $group: {
+            _id: null,
+            revenue: { $sum: '$totalCharged' },
+            minutes: { $sum: '$minutesCharged' },
+            count: { $sum: 1 },
+            peerBeans: { $sum: '$peer_beans_earned' },
+            platformBeans: { $sum: '$platform_beans_earned' },
+          },
+        },
       ]),
       LiveTalkSession.aggregate([
-        { $group: { _id: null, revenue: { $sum: '$total_charged' }, minutes: { $sum: '$minutes_charged' }, count: { $sum: 1 } } },
+        {
+          $group: {
+            _id: null,
+            revenue: { $sum: '$total_charged' },
+            minutes: { $sum: '$minutes_charged' },
+            count: { $sum: 1 },
+            hostBeans: { $sum: '$host_beans_earned' },
+            platformBeans: { $sum: '$platform_beans_earned' },
+          },
+        },
       ]),
       LiveTalkRequest.countDocuments({ status: 'pending' }),
+      aggregateUserEarnings(),
     ]);
+
+    const videoPeerBeans = videoStats[0]?.peerBeans || 0;
+    const videoPlatformBeans = videoStats[0]?.platformBeans || 0;
+    const liveHostBeans = talkStats[0]?.hostBeans || 0;
+    const livePlatformBeans = talkStats[0]?.platformBeans || 0;
 
     res.json({
       settings: {
@@ -264,15 +399,31 @@ exports.getBillingSettings = async (req, res) => {
         video_call_billing_enabled: settings.videoCallBillingEnabled,
         live_talk_billing_enabled: settings.liveTalkBillingEnabled,
         updated_at: settings.updated_at,
+        receiver_share: settings.callReceiverShare ?? 0.7,
+        platform_share: settings.callPlatformShare ?? 0.3,
       },
       stats: {
         videoCallRevenue: videoStats[0]?.revenue || 0,
         videoCallMinutes: videoStats[0]?.minutes || 0,
         videoCallSessions: videoStats[0]?.count || 0,
+        videoCallPeerBeans: videoPeerBeans,
+        videoCallPlatformBeans: videoPlatformBeans,
         liveTalkRevenue: talkStats[0]?.revenue || 0,
         liveTalkMinutes: talkStats[0]?.minutes || 0,
         liveTalkSessions: talkStats[0]?.count || 0,
+        liveTalkHostBeans: liveHostBeans,
+        liveTalkPlatformBeans: livePlatformBeans,
+        totalUserBeansEarned: videoPeerBeans + liveHostBeans,
+        totalOwnerBeans: settings.platformBeansEarned || 0,
         pendingTalkRequests: pendingRequests,
+      },
+      userEarnings,
+      ownerEarnings: {
+        totalPlatformBeans: settings.platformBeansEarned || 0,
+        videoCallPlatformBeans: videoPlatformBeans,
+        liveTalkPlatformBeans: livePlatformBeans,
+        receiverShare: settings.callReceiverShare ?? 0.7,
+        platformShare: settings.callPlatformShare ?? 0.3,
       },
     });
   } catch (err) {
@@ -328,6 +479,18 @@ exports.getBillingSessions = async (req, res) => {
         .limit(type === 'video' ? limitNum : 10)
         .populate('payerId', 'username crimzo_id')
         .lean();
+
+      const peerIds = [...new Set(
+        videoCalls.map((s) => s.peerId).filter((id) => id && mongoose.Types.ObjectId.isValid(id)),
+      )];
+      if (peerIds.length) {
+        const peers = await User.find({ _id: { $in: peerIds } }).select('username crimzo_id').lean();
+        const peerMap = new Map(peers.map((u) => [u._id.toString(), u]));
+        videoCalls = videoCalls.map((s) => ({
+          ...s,
+          peerUser: s.peerId ? peerMap.get(String(s.peerId)) : null,
+        }));
+      }
     }
 
     if (type === 'all' || type === 'talk') {
@@ -346,10 +509,15 @@ exports.getBillingSessions = async (req, res) => {
         id: s._id.toString(),
         type: 'video_call',
         payer: s.payerId?.username,
+        payerCrimzoId: s.payerId?.crimzo_id,
+        peer: s.peerUser?.username || null,
+        peerCrimzoId: s.peerUser?.crimzo_id || null,
         crimzo_id: s.payerId?.crimzo_id,
         channelName: s.channelName,
         minutesCharged: s.minutesCharged,
         totalCharged: s.totalCharged,
+        receiverBeans: s.peer_beans_earned || 0,
+        platformBeans: s.platform_beans_earned || 0,
         ratePerMin: s.ratePerMin,
         status: s.status,
         startedAt: s.startedAt,
@@ -359,14 +527,45 @@ exports.getBillingSessions = async (req, res) => {
         type: 'live_talk',
         talker: s.talker_id?.username,
         host: s.host_id?.username,
+        hostCrimzoId: s.host_id?.crimzo_id,
         crimzo_id: s.talker_id?.crimzo_id,
         sessionStatus: s.session_id?.status,
         minutesCharged: s.minutes_charged,
         totalCharged: s.total_charged,
+        receiverBeans: s.host_beans_earned || 0,
+        platformBeans: s.platform_beans_earned || 0,
         ratePerMin: s.rate_per_min,
         status: s.status,
         startedAt: s.started_at,
       })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.getBillingEarnings = async (req, res) => {
+  try {
+    const settings = await getBillingSettings();
+    const [videoPlatformAgg, livePlatformAgg, userEarnings] = await Promise.all([
+      VideoCallSession.aggregate([
+        { $group: { _id: null, platformBeans: { $sum: '$platform_beans_earned' } } },
+      ]),
+      LiveTalkSession.aggregate([
+        { $group: { _id: null, platformBeans: { $sum: '$platform_beans_earned' } } },
+      ]),
+      aggregateUserEarnings(),
+    ]);
+
+    res.json({
+      ownerEarnings: {
+        totalPlatformBeans: settings.platformBeansEarned || 0,
+        videoCallPlatformBeans: videoPlatformAgg[0]?.platformBeans || 0,
+        liveTalkPlatformBeans: livePlatformAgg[0]?.platformBeans || 0,
+        receiverShare: settings.callReceiverShare ?? 0.7,
+        platformShare: settings.callPlatformShare ?? 0.3,
+      },
+      userEarnings,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

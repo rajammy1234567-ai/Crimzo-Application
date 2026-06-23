@@ -45,8 +45,12 @@ async function finalizeLiveSessionEnd(sessionId, io, options = {}) {
 
 exports.finalizeLiveSessionEnd = finalizeLiveSessionEnd;
 
-/** End sessions that are marked active but host is no longer live (crash / disconnect). */
+const LIVE_ROOM_GRACE_MS = 3 * 60 * 1000;
+
+/** End sessions only when truly abandoned (max duration or host gone from room). */
 exports.cleanupStaleLiveSessions = async (io) => {
+  if (!io) return 0;
+
   const cutoff = new Date(Date.now() - STALE_LIVE_MS);
   const activeSessions = await LiveSession.find({ status: 'active' })
     .select('_id user_id started_at')
@@ -54,23 +58,33 @@ exports.cleanupStaleLiveSessions = async (io) => {
 
   if (!activeSessions.length) return 0;
 
-  const hostIds = [...new Set(activeSessions.map((s) => String(s.user_id)))];
-  const hosts = await User.find({ _id: { $in: hostIds } }).select('_id status').lean();
-  const liveHostIds = new Set(
-    hosts.filter((h) => h.status === 'live').map((h) => String(h._id)),
-  );
-
   let ended = 0;
   for (const session of activeSessions) {
+    const sessionId = String(session._id);
+    const hostId = String(session.user_id);
     const isOld = session.started_at && new Date(session.started_at) < cutoff;
-    const hostOffline = !liveHostIds.has(String(session.user_id));
-    if (isOld || hostOffline) {
+
+    if (isOld) {
       const ok = await finalizeLiveSessionEnd(session._id, io, {
         message: 'This live stream has ended.',
         notifyViewers: true,
       });
       if (ok) ended += 1;
+      continue;
     }
+
+    const clients = await io.in(`live_${sessionId}`).fetchSockets();
+    const hostInRoom = clients.some((c) => String(c.crimzoUserId) === hostId);
+    if (hostInRoom) continue;
+
+    const startedMs = session.started_at ? new Date(session.started_at).getTime() : 0;
+    if (Date.now() - startedMs < LIVE_ROOM_GRACE_MS) continue;
+
+    const ok = await finalizeLiveSessionEnd(session._id, io, {
+      message: 'This live stream has ended.',
+      notifyViewers: true,
+    });
+    if (ok) ended += 1;
   }
   return ended;
 };
@@ -316,11 +330,12 @@ exports.joinLive = async (req, res) => {
     }
 
     const host = session.user_id || {};
+    const hostIdStr = String(host._id || hostId || '');
     const billingSettings = await getBillingSettings();
     const hostRates = resolveUserRates(host, billingSettings);
     res.json({
       success: true, channelName, token, appId, uid,
-      sessionId: session.id, hostId: host.id || session.user_id, hostUsername: host.username,
+      sessionId: session.id, hostId: hostIdStr, hostUsername: host.username,
       hostAvatar: host.avatar || null, hostFollowers: host.followers_count || 0,
       hostVoiceRatePerMin: hostRates.voiceRatePerMin,
       hostChatRatePerMin: hostRates.chatRatePerMin,

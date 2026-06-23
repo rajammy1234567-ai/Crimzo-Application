@@ -18,6 +18,7 @@ import RazorpayCheckout from '../../components/payments/RazorpayCheckout';
 import AddMoneyModal from '../../components/payments/AddMoneyModal';
 import SetupPaymentModal from '../../components/payments/SetupPaymentModal';
 import WithdrawModal from '../../components/payments/WithdrawModal';
+import { isWithdrawDay, withdrawUnavailableMessage } from '../../lib/withdrawSchedule';
 
 const { width: SW } = Dimensions.get('window');
 const CARD_W = (SW - 48 - 10) / 2;
@@ -94,6 +95,16 @@ export default function WalletScreen() {
   const userBeans = user?.beans ?? 0;
   const withdrawableBeans = totalWithdrawableBeans(userDiamonds, userBeans);
   const withdrawableInr = beansToInr(withdrawableBeans);
+  const withdrawDayOpen = withdrawInfo?.withdrawDayAllowed ?? isWithdrawDay();
+
+  const handleWithdrawPress = async () => {
+    const info = await loadWithdrawInfo();
+    if (!(info?.withdrawDayAllowed ?? isWithdrawDay())) {
+      appAlert('Withdraw Unavailable', withdrawUnavailableMessage());
+      return;
+    }
+    setShowWithdraw(true);
+  };
 
   const [curTab, setCurTab] = useState<'diamonds' | 'beans'>('diamonds');
   const [subTab, setSubTab] = useState<'recommend' | 'helper'>('recommend');
@@ -255,31 +266,32 @@ export default function WalletScreen() {
           {subTab === 'recommend' ? (
             <>
               <TouchableOpacity
-                style={s.pay}
-                onPress={async () => {
-                  await loadWithdrawInfo();
-                  setShowWithdraw(true);
-                }}
-                activeOpacity={0.7}
+                style={[s.pay, !withdrawDayOpen && s.payDisabled]}
+                onPress={() => void handleWithdrawPress()}
+                activeOpacity={withdrawDayOpen ? 0.7 : 1}
               >
                 <View style={s.payL}>
-                  <View style={[s.payIco, { backgroundColor: 'rgba(255,149,0,0.15)' }]}>
-                    <Ionicons name="arrow-down-circle" size={18} color="#FF9500" />
+                  <View style={[s.payIco, { backgroundColor: withdrawDayOpen ? 'rgba(255,149,0,0.15)' : 'rgba(255,255,255,0.06)' }]}>
+                    <Ionicons name="arrow-down-circle" size={18} color={withdrawDayOpen ? '#FF9500' : 'rgba(255,255,255,0.35)'} />
                   </View>
                   <View>
-                    <Text style={s.payLbl}>Withdraw Earnings</Text>
-                    <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>
-                      {userDiamonds > 0
-                        ? `${fmt(userDiamonds)} diamonds → beans → bank`
-                        : 'Beans → real money to bank/UPI'}
+                    <Text style={[s.payLbl, !withdrawDayOpen && s.payLblDisabled]}>Withdraw Earnings</Text>
+                    <Text style={{ color: withdrawDayOpen ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.28)', fontSize: 11 }}>
+                      {withdrawDayOpen
+                        ? (userDiamonds > 0
+                          ? `${fmt(userDiamonds)} diamonds → beans → bank`
+                          : 'Beans → real money to bank/UPI')
+                        : 'Available on 7th of every month'}
                     </Text>
                   </View>
                 </View>
                 <View style={s.payR}>
-                  <Text style={[s.payChg, { color: '#FF9500' }]}>
-                    {withdrawableInr >= (withdrawInfo?.minWithdraw ?? 500) ? price(withdrawableInr) : `Need ${price(withdrawInfo?.minWithdraw ?? 500)}+`}
+                  <Text style={[s.payChg, { color: withdrawDayOpen ? '#FF9500' : 'rgba(255,255,255,0.35)' }]}>
+                    {withdrawDayOpen
+                      ? (withdrawableInr >= (withdrawInfo?.minWithdraw ?? 500) ? price(withdrawableInr) : `Need ${price(withdrawInfo?.minWithdraw ?? 500)}+`)
+                      : 'Inactive'}
                   </Text>
-                  <Ionicons name="chevron-forward" size={15} color="#FF9500" />
+                  <Ionicons name="chevron-forward" size={15} color={withdrawDayOpen ? '#FF9500' : 'rgba(255,255,255,0.25)'} />
                 </View>
               </TouchableOpacity>
 
@@ -556,6 +568,8 @@ const s = StyleSheet.create({
 
   // ── payment selector ──
   pay: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
+  payDisabled: { opacity: 0.55, backgroundColor: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.04)' },
+  payLblDisabled: { color: 'rgba(255,255,255,0.45)' },
   payL: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   payIco: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,45,85,0.1)', alignItems: 'center', justifyContent: 'center' },
   payLbl: { color: '#FFF', fontSize: 15, fontWeight: '700' },

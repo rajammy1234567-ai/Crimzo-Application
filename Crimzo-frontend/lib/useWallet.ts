@@ -471,6 +471,11 @@ export function useWallet() {
       appAlert('Login Required', 'Please log in first.');
       return false;
     }
+    const { isWithdrawDay, withdrawUnavailableMessage } = await import('./withdrawSchedule');
+    if (!isWithdrawDay()) {
+      appAlert('Withdraw Unavailable', withdrawUnavailableMessage());
+      return false;
+    }
     setBusy(true);
     try {
       const res = await apiPost<{

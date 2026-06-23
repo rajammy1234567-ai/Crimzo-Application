@@ -378,6 +378,7 @@ exports.startTalkBilling = async (req, res) => {
       minutes_charged: 1,
       total_charged: rate,
       host_beans_earned: chargeResult.beansEarned,
+      platform_beans_earned: chargeResult.platformBeans || 0,
       status: 'active',
     });
 
@@ -466,6 +467,7 @@ exports.tickTalkBilling = async (req, res) => {
     talkSession.minutes_charged += 1;
     talkSession.total_charged += rate;
     talkSession.host_beans_earned = (talkSession.host_beans_earned || 0) + chargeResult.beansEarned;
+    talkSession.platform_beans_earned = (talkSession.platform_beans_earned || 0) + (chargeResult.platformBeans || 0);
     talkSession.last_tick_at = new Date();
     await talkSession.save();
 

@@ -9,6 +9,7 @@ const liveTalkSessionSchema = new mongoose.Schema({
   minutes_charged: { type: Number, default: 0 },
   total_charged: { type: Number, default: 0 },
   host_beans_earned: { type: Number, default: 0 },
+  platform_beans_earned: { type: Number, default: 0 },
   status: {
     type: String,
     enum: ['active', 'ended', 'ended_insufficient'],

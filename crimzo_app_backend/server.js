@@ -210,10 +210,18 @@ async function connectWithRetry(attemptsLeft = 8, delayMs = 4000) {
       const User = require("./models/User");
       const { clearAllPresence } = require("./utils/presenceTracker");
       clearAllPresence();
+      const LiveSession = require("./models/LiveSession");
+      const activeLiveHostIds = await LiveSession.find({ status: "active" }).distinct("user_id");
       const reset = await User.updateMany(
-        { is_online: true },
+        { is_online: true, _id: { $nin: activeLiveHostIds } },
         { $set: { is_online: false, status: "offline" } },
       );
+      if (activeLiveHostIds.length) {
+        await User.updateMany(
+          { _id: { $in: activeLiveHostIds } },
+          { $set: { status: "live", is_online: true } },
+        );
+      }
       if (reset.modifiedCount > 0) {
         console.log(`🧹 Reset ${reset.modifiedCount} stale is_online user(s)`);
       }

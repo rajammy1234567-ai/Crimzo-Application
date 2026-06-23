@@ -22,6 +22,9 @@ export type WithdrawInfo = {
   withdrawableInr?: number;
   beansPerInr?: number;
   minWithdraw?: number;
+  withdrawDayAllowed?: boolean;
+  withdrawDayOfMonth?: number;
+  nextWithdrawDay?: string;
 };
 
 type Props = {

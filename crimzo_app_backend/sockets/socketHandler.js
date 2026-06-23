@@ -53,6 +53,44 @@ async function resolveStickerId(stickerId, giftValue) {
   return null;
 }
 
+/** Grace period before ending live when host socket drops (network blip). */
+const LIVE_HOST_END_GRACE_MS = 45 * 1000;
+const pendingLiveEnd = new Map();
+
+function cancelPendingLiveEnd(sessionId) {
+  const key = String(sessionId);
+  const timer = pendingLiveEnd.get(key);
+  if (timer) {
+    clearTimeout(timer);
+    pendingLiveEnd.delete(key);
+  }
+}
+
+function scheduleLiveEndIfHostGone(io, sessionId, hostId) {
+  const key = String(sessionId);
+  if (pendingLiveEnd.has(key)) return;
+
+  pendingLiveEnd.set(
+    key,
+    setTimeout(async () => {
+      pendingLiveEnd.delete(key);
+      try {
+        const clients = await io.in(`live_${key}`).fetchSockets();
+        const hostStillPresent = clients.some(
+          (client) => String(client.crimzoUserId) === String(hostId),
+        );
+        if (!hostStillPresent) {
+          await finalizeLiveSessionEnd(key, io, {
+            message: 'The host has ended the live stream.',
+          });
+        }
+      } catch (err) {
+        console.error('delayed live end error:', err.message);
+      }
+    }, LIVE_HOST_END_GRACE_MS),
+  );
+}
+
 // All DB operations now use Mongoose models directly for proper persistence
 
 module.exports = (io) => {
@@ -63,10 +101,25 @@ module.exports = (io) => {
     if (!removedUserIds.length) return;
     emitOnlineCountUpdate(count);
     try {
-      await User.updateMany(
-        { _id: { $in: removedUserIds } },
-        { $set: { is_online: false, status: 'offline' } },
-      );
+      const activeLiveHostIds = await LiveSession.find({
+        status: 'active',
+        user_id: { $in: removedUserIds },
+      }).distinct('user_id');
+      const liveHostSet = new Set(activeLiveHostIds.map((id) => String(id)));
+      const offlineIds = removedUserIds.filter((id) => !liveHostSet.has(String(id)));
+
+      if (offlineIds.length) {
+        await User.updateMany(
+          { _id: { $in: offlineIds }, status: { $nin: ['live'] } },
+          { $set: { is_online: false, status: 'offline' } },
+        );
+      }
+      if (liveHostSet.size) {
+        await User.updateMany(
+          { _id: { $in: [...liveHostSet] } },
+          { $set: { status: 'live', is_online: true } },
+        );
+      }
     } catch (err) {
       console.error('presence prune db sync error:', err.message);
     }
@@ -297,29 +350,35 @@ module.exports = (io) => {
 
     // ── Live stream events ──
     socket.on('join_live', async (data) => {
-      const { sessionId, userId, username } = data;
-      if (!sessionId) return;
-      socket.join(`live_${sessionId}`);
+      const { sessionId, username } = data || {};
+      const userId = socket.authenticatedUserId || data?.userId;
+      if (!sessionId || !userId) return;
+      const room = `live_${String(sessionId)}`;
+      cancelPendingLiveEnd(sessionId);
+      socket.join(room);
       socket.userId = userId;
       socket.crimzoUserId = userId != null ? String(userId) : undefined;
       socket.liveSessionId = String(sessionId);
       socket.username = username;
-      console.log(`User ${username} joined live_${sessionId}`);
+      console.log(`User ${username} joined ${room}`);
 
       try {
         const session = await LiveSession.findById(sessionId).select('user_id status');
         if (session?.status === 'active' && String(session.user_id) === String(userId)) {
           socket.isLiveHost = true;
+          registerPresence(userId, socket.id);
+          touchPresence(userId, socket.id);
+          await User.findByIdAndUpdate(userId, { status: 'live', is_online: true });
         }
-        const clients = await io.in(`live_${sessionId}`).fetchSockets();
+        const clients = await io.in(room).fetchSockets();
         const count = clients.length;
         await LiveSession.findByIdAndUpdate(sessionId, { viewers_count: count });
-        io.to(`live_${sessionId}`).emit('viewer_count_update', { count });
+        io.to(room).emit('viewer_count_update', { count });
       } catch (err) {
         console.error('join_live error:', err.message);
       }
 
-      io.to(`live_${sessionId}`).emit('live_system_message', {
+      io.to(room).emit('live_system_message', {
         type: 'join',
         username: username || 'Someone',
         message: `${username || 'Someone'} joined the stream`
@@ -343,7 +402,8 @@ module.exports = (io) => {
     });
 
     socket.on('live_chat_message', async (data) => {
-      const { sessionId, userId, username, message } = data;
+      const { sessionId, username, message } = data || {};
+      const userId = socket.authenticatedUserId || data?.userId;
       if (!sessionId || !userId || !message?.trim()) return;
 
       try {
@@ -366,11 +426,11 @@ module.exports = (io) => {
         const { recordTaskAction } = require('../utils/taskProgress');
         void recordTaskAction(userId, 'live_message', 1).catch(() => {});
       } catch (_) { /* ignore */ }
-      io.to(`live_${sessionId}`).emit('live_chat_message', {
+      io.to(`live_${String(sessionId)}`).emit('live_chat_message', {
         id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         type: 'text',
-        userId,
-        username,
+        userId: String(userId),
+        username: username || socket.authenticatedUsername || 'User',
         message: message.trim(),
         timestamp: Date.now()
       });
@@ -540,7 +600,15 @@ module.exports = (io) => {
 
         if (userFullyOffline) {
           try {
-            await User.findByIdAndUpdate(presenceUserId, { is_online: false, status: 'offline' });
+            const hostingLive = await LiveSession.findOne({
+              user_id: presenceUserId,
+              status: 'active',
+            }).select('_id');
+            if (!hostingLive) {
+              await User.findByIdAndUpdate(presenceUserId, { is_online: false, status: 'offline' });
+            } else {
+              await User.findByIdAndUpdate(presenceUserId, { status: 'live', is_online: true });
+            }
           } catch (err) {
             console.error('disconnect presence update error:', err.message);
           }
@@ -557,9 +625,7 @@ module.exports = (io) => {
             (client) => String(client.crimzoUserId) === String(userId),
           );
           if (!hostStillPresent) {
-            await finalizeLiveSessionEnd(sessionId, io, {
-              message: 'The host has ended the live stream.',
-            });
+            scheduleLiveEndIfHostGone(io, sessionId, userId);
           }
         } else {
           const clients = await io.in(`live_${sessionId}`).fetchSockets();

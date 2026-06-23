@@ -16,7 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import io from 'socket.io-client';
+import io, { type Socket } from 'socket.io-client';
 
 import { API_URL } from '../lib/apiClient';
 import { KEYBOARD_BEHAVIOR } from './KeyboardAware';
@@ -59,7 +59,30 @@ interface LiveChatProps {
     hostUserId?: string | number;
     canChat?: boolean;
     talkRatePerMin?: number;
+    sharedSocket?: Socket | null;
     onStickerPress: () => void;
+}
+
+function normalizeSessionId(sessionId: string | number): string {
+    return String(sessionId);
+}
+
+function appendChatMessage(prev: ChatMessage[], data: ChatMessage): ChatMessage[] {
+    if (data.id && prev.some((m) => m.id === data.id)) return prev;
+    if (data.type === 'text' && data.message) {
+        const dupIdx = prev.findIndex((m) =>
+            m.id.startsWith('local_')
+            && String(m.userId) === String(data.userId)
+            && m.message === data.message
+            && Math.abs(m.timestamp - (data.timestamp || Date.now())) < 5000,
+        );
+        if (dupIdx >= 0) {
+            const next = [...prev];
+            next[dupIdx] = data;
+            return next;
+        }
+    }
+    return [...prev.slice(-60), data];
 }
 
 // ── Username Colors ──
@@ -200,7 +223,7 @@ const msgS = StyleSheet.create({
 // ═══════════════════════════════════════════════════
 export default function LiveChat({
     sessionId, userId, username, token, isHost = false, hostUserId,
-    canChat = true, talkRatePerMin = 1, onStickerPress,
+    canChat = true, talkRatePerMin = 1, sharedSocket, onStickerPress,
 }: LiveChatProps) {
     const insets = useSafeAreaInsets();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -254,52 +277,105 @@ export default function LiveChat({
         });
     }, []);
 
-    // Socket connection
+    const joinLiveRoom = useCallback((s: Socket) => {
+        s.emit('join_live', {
+            sessionId: normalizeSessionId(sessionId),
+            userId,
+            username,
+        });
+    }, [sessionId, userId, username]);
+
+    // Socket connection (reuse parent socket when provided — keeps room in sync)
     useEffect(() => {
-        if (!sessionId || !API_URL || !token) return;
+        if (!sessionId || !token) return;
+
+        const attachListeners = (s: Socket) => {
+            const onChat = (data: ChatMessage) => {
+                setMessages((prev) => appendChatMessage(prev, data));
+                if (data.type === 'sticker') addFloatingGift(data);
+            };
+            const onSystem = (data: { message?: string; username?: string }) => {
+                setMessages((prev) => appendChatMessage(prev, {
+                    id: `sys_${Date.now()}`,
+                    type: 'system',
+                    message: data.message,
+                    username: data.username,
+                    timestamp: Date.now(),
+                }));
+            };
+            const onError = (data?: { code?: string; message?: string }) => {
+                if (data?.message) {
+                    setMessages((prev) => appendChatMessage(prev, {
+                        id: `err_${Date.now()}`,
+                        type: 'system',
+                        message: data.message,
+                        username: 'System',
+                        timestamp: Date.now(),
+                    }));
+                }
+            };
+
+            s.on('live_chat_message', onChat);
+            s.on('live_system_message', onSystem);
+            s.on('live_chat_error', onError);
+
+            return () => {
+                s.off('live_chat_message', onChat);
+                s.off('live_system_message', onSystem);
+                s.off('live_chat_error', onError);
+            };
+        };
+
+        if (sharedSocket) {
+            setSocket(sharedSocket);
+            const detach = attachListeners(sharedSocket);
+            const onConnect = () => joinLiveRoom(sharedSocket);
+            if (sharedSocket.connected) onConnect();
+            sharedSocket.on('connect', onConnect);
+            return () => {
+                sharedSocket.off('connect', onConnect);
+                detach();
+            };
+        }
+
+        if (!API_URL) return;
         const s = io(API_URL, { transports: ['websocket'], auth: { token } });
+        const detach = attachListeners(s);
         s.on('connect', () => {
             console.log('[LiveChat] socket connected, joining live');
-            s.emit('join_live', { sessionId, userId, username });
+            joinLiveRoom(s);
         });
         s.on('connect_error', (err) => {
             console.error('[LiveChat] socket connect error:', err.message || err);
         });
 
-        s.on('live_chat_message', (data: ChatMessage) => {
-            setMessages(prev => [...prev.slice(-60), data]);
-            if (data.type === 'sticker') addFloatingGift(data);
-        });
-
-        s.on('live_system_message', (data: any) => {
-            setMessages(prev => [...prev.slice(-60), {
-                id: `sys_${Date.now()}`, type: 'system',
-                message: data.message, username: data.username, timestamp: Date.now(),
-            }]);
-        });
-
-        s.on('live_chat_error', (data?: { code?: string; message?: string }) => {
-            if (data?.message) {
-                setMessages(prev => [...prev.slice(-60), {
-                    id: `err_${Date.now()}`,
-                    type: 'system',
-                    message: data.message,
-                    username: 'System',
-                    timestamp: Date.now(),
-                }]);
-            }
-        });
-
         setSocket(s);
-        return () => { 
-            try { s.emit('leave_live', { sessionId }); } catch {}
-            s.disconnect(); 
+        return () => {
+            detach();
+            try { s.emit('leave_live', { sessionId: normalizeSessionId(sessionId) }); } catch {}
+            s.disconnect();
         };
-    }, [sessionId, token, userId, username]);
+    }, [sessionId, token, sharedSocket, joinLiveRoom, addFloatingGift]);
 
     const sendMessage = useCallback(() => {
-        if (!inputText.trim() || !socket || (!isHost && !canChat)) return;
-        socket.emit('live_chat_message', { sessionId, userId, username, message: inputText.trim() });
+        const text = inputText.trim();
+        if (!text || !socket || (!isHost && !canChat)) return;
+        const optimisticId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const optimistic: ChatMessage = {
+            id: optimisticId,
+            type: 'text',
+            userId,
+            username,
+            message: text,
+            timestamp: Date.now(),
+        };
+        setMessages((prev) => appendChatMessage(prev, optimistic));
+        socket.emit('live_chat_message', {
+            sessionId: normalizeSessionId(sessionId),
+            userId,
+            username,
+            message: text,
+        });
         setInputText('');
     }, [inputText, socket, sessionId, userId, username, isHost, canChat]);
 

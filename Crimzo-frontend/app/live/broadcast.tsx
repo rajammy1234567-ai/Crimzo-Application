@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { appAlert } from '../../lib/appAlert';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Easing, Dimensions, StatusBar, Modal, Image, PermissionsAndroid, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Easing, Dimensions, StatusBar, Modal, Image, Platform } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
@@ -17,6 +17,7 @@ import {
   isAgoraNativeLinked,
   type IRtcEngine,
 } from '../../components/agoraImports';
+import { ensureRtcPermissions, configurePublisherAudio } from '../../lib/agoraRtcHelpers';
 
 import { API_URL, apiGet, apiPost, ApiError } from '../../lib/apiClient';
 import {
@@ -151,6 +152,8 @@ export default function BroadcastScreen() {
   const socketRef = useRef<any>(null);
   const engineRef = useRef<IRtcEngine | null>(null);
   const [agoraReady, setAgoraReady] = useState(false);
+  const [localAgoraUid, setLocalAgoraUid] = useState(0);
+  const [liveSocket, setLiveSocket] = useState<ReturnType<typeof io> | null>(null);
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
 
   // Controls state
@@ -321,9 +324,15 @@ export default function BroadcastScreen() {
       console.log('[Broadcast] viewer socket connected, joining live');
       if (user?.id) {
         s.emit('join_user', { userId: user.id });
+        s.emit('app_presence', { category: 'live' });
       }
-      s.emit('join_live', { sessionId, userId: user?.id, username: user?.username });
+      s.emit('join_live', { sessionId: String(sessionId), userId: user?.id, username: user?.username });
     });
+    const presenceHeartbeat = setInterval(() => {
+      if (s.connected) {
+        s.emit('presence_heartbeat', { category: 'live', foreground: true });
+      }
+    }, 25000);
     s.on('viewer_count_update', (d: { count: number }) => setViewerCount(Math.max(0, d.count - 1)));
     s.on('live_talk_incoming', (data: {
       requestId?: string;
@@ -357,10 +366,13 @@ export default function BroadcastScreen() {
       );
     });
     socketRef.current = s;
-    return () => { 
+    setLiveSocket(s);
+    return () => {
+      clearInterval(presenceHeartbeat);
       try { s.emit('leave_live', { sessionId }); } catch {}
-      s.disconnect(); 
-      socketRef.current = null; 
+      s.disconnect();
+      socketRef.current = null;
+      setLiveSocket(null);
     };
   }, [isLive, sessionId, user?.id, user?.username, token, router, promptTalkRequest]);
 
@@ -385,10 +397,13 @@ export default function BroadcastScreen() {
   }, [useExpoCamera]);
   const toggleMic = useCallback(() => {
     setMicEnabled(prev => {
-      if (engineRef.current && typeof engineRef.current.muteLocalAudioStream === 'function') {
-        engineRef.current.muteLocalAudioStream(prev); // prev=true means currently on, so mute it
+      const nextOn = !prev;
+      if (nextOn) {
+        configurePublisherAudio(engineRef.current);
+      } else {
+        engineRef.current?.muteLocalAudioStream?.(true);
       }
-      return !prev;
+      return nextOn;
     });
   }, []);
   const toggleCameraOnOff = useCallback(() => {
@@ -401,12 +416,11 @@ export default function BroadcastScreen() {
   }, []);
 
   const requestPermissions = async () => {
-    if (Platform.OS === 'android') {
-      await PermissionsAndroid.requestMultiple([
-        PermissionsAndroid.PERMISSIONS.CAMERA,
-        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-      ]);
+    const perms = await ensureRtcPermissions();
+    if (!perms.mic) {
+      appAlert('Microphone Required', 'Allow microphone so viewers can hear you on live.');
     }
+    return perms;
   };
 
   const initBroadcastMedia = useCallback(async (
@@ -422,7 +436,10 @@ export default function BroadcastScreen() {
         channelProfile: ChannelProfileType.ChannelProfileLiveBroadcasting,
       });
       engine.registerEventHandler({
-        onJoinChannelSuccess: () => { console.log('[Broadcast] Host joined Agora channel'); },
+        onJoinChannelSuccess: () => {
+          configurePublisherAudio(engine);
+          console.log('[Broadcast] Host joined Agora channel');
+        },
         onError: (err: unknown, msg: unknown) => { console.error('[Broadcast] Agora error:', err, msg); },
       });
       engine.setClientRole(ClientRoleType.ClientRoleBroadcaster);
@@ -433,6 +450,7 @@ export default function BroadcastScreen() {
       const numericUid = typeof hostUid === 'number'
         ? hostUid
         : (parseInt(String(user?.id || 0).replace(/\D/g, '').slice(-9)) || 12345);
+      setLocalAgoraUid(numericUid);
       engine.joinChannel(agoraToken, channelName, numericUid, {
         clientRoleType: ClientRoleType.ClientRoleBroadcaster,
         publishMicrophoneTrack: true,
@@ -440,6 +458,7 @@ export default function BroadcastScreen() {
         autoSubscribeAudio: true,
         autoSubscribeVideo: true,
       });
+      configurePublisherAudio(engine);
       engineRef.current = engine;
 
       if (!micEnabled && typeof engine.muteLocalAudioStream === 'function') {
@@ -565,7 +584,7 @@ export default function BroadcastScreen() {
       {/* ═══ CAMERA VIEW ═══ */}
       <View style={st.cameraWrap}>
         {agoraReady ? (
-          <RtcSurfaceView style={{ flex: 1 }} canvas={{ uid: 0 }} />
+          <RtcSurfaceView style={{ flex: 1 }} canvas={{ uid: localAgoraUid }} />
         ) : useExpoCamera && cameraPermission?.granted && cameraEnabled ? (
           <CameraView style={{ flex: 1 }} facing={facing} mode="video" />
         ) : (
@@ -749,6 +768,7 @@ export default function BroadcastScreen() {
             hostUserId={user.id}
             canChat={true}
             talkRatePerMin={myRates.chatRatePerMin}
+            sharedSocket={liveSocket}
             onStickerPress={noopPress}
           />
         )}

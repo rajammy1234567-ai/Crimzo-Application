@@ -49,6 +49,9 @@ const {
   refundWithdrawalBalance,
   buildPayoutSnapshot,
   isManualWithdrawalMode,
+  isWithdrawalDayAllowed,
+  getNextWithdrawalDate,
+  WITHDRAW_DAY_OF_MONTH,
 } = require('../utils/withdrawalHelpers');
 const { v4: uuidv4 } = require('uuid');
 const {
@@ -905,6 +908,8 @@ exports.getWithdrawInfo = async (req, res) => {
     const diamondsAsBeans = diamondsToBeans(diamonds);
     const totalBeans = totalWithdrawableBeans(diamonds, beans);
     const withdrawableInr = beansToInr(totalBeans);
+    const withdrawDayAllowed = isWithdrawalDayAllowed();
+    const nextWithdrawDay = getNextWithdrawalDate();
     res.json({
       success: true,
       diamonds,
@@ -917,7 +922,12 @@ exports.getWithdrawInfo = async (req, res) => {
       minWithdrawBeans: MIN_WITHDRAW_BEANS,
       maxWithdraw: MAX_WITHDRAW_INR,
       beanTiers: beanTiers(),
-      canWithdraw: isWithdrawablePayment(user.linked_bank) && withdrawableInr >= MIN_WITHDRAW_INR,
+      withdrawDayAllowed,
+      withdrawDayOfMonth: WITHDRAW_DAY_OF_MONTH,
+      nextWithdrawDay: nextWithdrawDay.toISOString(),
+      canWithdraw: withdrawDayAllowed
+        && isWithdrawablePayment(user.linked_bank)
+        && withdrawableInr >= MIN_WITHDRAW_INR,
       paymentMethod: method,
       hasVerifiedPayment: isWithdrawablePayment(user.linked_bank),
       payoutEnabled: isPayoutConfigured(),
@@ -945,6 +955,15 @@ exports.requestWithdraw = async (req, res) => {
       return res.status(400).json({
         error: `Minimum withdrawal is ₹${MIN_WITHDRAW_INR}`,
         minWithdraw: MIN_WITHDRAW_INR,
+      });
+    }
+    if (!isWithdrawalDayAllowed()) {
+      const nextDay = getNextWithdrawalDate();
+      return res.status(400).json({
+        error: `Withdraw sirf har mahine ki ${WITHDRAW_DAY_OF_MONTH} tareekh ko hi ho sakta hai.`,
+        code: 'WITHDRAW_DAY_RESTRICTED',
+        withdrawDayOfMonth: WITHDRAW_DAY_OF_MONTH,
+        nextWithdrawDay: nextDay.toISOString(),
       });
     }
     if (amountInr > MAX_WITHDRAW_INR) {

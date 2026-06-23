@@ -38,8 +38,26 @@ function isManualWithdrawalMode() {
   return !isPayoutConfigured();
 }
 
+const WITHDRAW_DAY_OF_MONTH = 7;
+
+function isWithdrawalDayAllowed(date = new Date()) {
+  return date.getDate() === WITHDRAW_DAY_OF_MONTH;
+}
+
+function getNextWithdrawalDate(from = new Date()) {
+  const year = from.getFullYear();
+  const month = from.getMonth();
+  if (from.getDate() < WITHDRAW_DAY_OF_MONTH) {
+    return new Date(year, month, WITHDRAW_DAY_OF_MONTH);
+  }
+  return new Date(year, month + 1, WITHDRAW_DAY_OF_MONTH);
+}
+
 module.exports = {
   refundWithdrawalBalance,
   buildPayoutSnapshot,
   isManualWithdrawalMode,
+  isWithdrawalDayAllowed,
+  getNextWithdrawalDate,
+  WITHDRAW_DAY_OF_MONTH,
 };

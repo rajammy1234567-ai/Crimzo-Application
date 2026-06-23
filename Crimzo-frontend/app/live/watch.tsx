@@ -82,6 +82,7 @@ export default function WatchScreen() {
   const [followLoading, setFollowLoading] = useState(false);
   const [hostFollowers, setHostFollowers] = useState(0);
   const socketRef = useRef<any>(null);
+  const [viewerSocket, setViewerSocket] = useState<ReturnType<typeof io> | null>(null);
   const engineRef = useRef<IRtcEngine | null>(null);
   const billingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const talkSessionIdRef = useRef<string | null>(null);
@@ -155,9 +156,13 @@ export default function WatchScreen() {
         if (tick.totalCharged != null) setTalkCharged(tick.totalCharged);
         if (tick.canContinue === false) {
           clearTalkBilling();
-          appAlert('Balance Low', 'Insufficient balance for the next minute. Ending the chat.', [
-            { text: 'OK', onPress: () => void finalizeTalkBilling() },
-          ]);
+          setCanChat(false);
+          setTalkStatus('idle');
+          appAlert(
+            'Balance Low',
+            'Wallet balance is too low to continue live chat. Recharge to chat again.',
+            [{ text: 'OK' }],
+          );
         }
       } catch (e) {
         if (isBalanceExhaustedError(e)) {
@@ -298,7 +303,7 @@ export default function WatchScreen() {
     const s = io(API_URL, { transports: ['websocket'], auth: { token } });
     s.on('connect', () => {
       console.log('[Watch] viewer socket connected, joining live');
-      s.emit('join_live', { sessionId, userId: user?.id, username: user?.username });
+      s.emit('join_live', { sessionId: String(sessionId), userId: user?.id, username: user?.username });
     });
     s.on('viewer_count_update', (d: { count: number }) => setViewerCount(d.count));
     s.on('stream_ended', (data: { message?: string }) => {
@@ -322,10 +327,12 @@ export default function WatchScreen() {
       appAlert('Request Declined', 'The host declined your chat request.');
     });
     socketRef.current = s;
+    setViewerSocket(s);
     return () => { 
       try { s.emit('leave_live', { sessionId }); } catch {}
       s.disconnect(); 
-      socketRef.current = null; 
+      socketRef.current = null;
+      setViewerSocket(null);
     };
   }, [sessionId, streamData, user?.id, user?.username, token, clearTalkBilling, finalizeTalkBilling, beginTalkBilling]);
 
@@ -368,7 +375,10 @@ export default function WatchScreen() {
         hostFollowers?: number;
         hostId?: string;
       }>(`/api/live/join/${sessionId}`, {}, token);
-      setStreamData(r);
+      setStreamData({
+        ...r,
+        hostId: r.hostId != null ? String(r.hostId) : r.hostId,
+      });
       setViewerCount(1);
       setHostFollowers(r.hostFollowers || 0);
 
@@ -701,9 +711,10 @@ export default function WatchScreen() {
           username={user.username}
           token={token}
           isHost={false}
-          hostUserId={streamData?.hostId}
+          hostUserId={streamData?.hostId ? String(streamData.hostId) : undefined}
           canChat={canChat}
           talkRatePerMin={hostRates.chatRatePerMin}
+          sharedSocket={viewerSocket}
           onStickerPress={() => setShowStickers(true)}
         />
       )}

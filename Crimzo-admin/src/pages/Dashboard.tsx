@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Radio, Film, Diamond, ArrowRight, TrendingUp, IndianRupee, Video, MessageCircle, Banknote, AlertTriangle } from 'lucide-react';
+import { Users, Radio, Film, Diamond, ArrowRight, TrendingUp, IndianRupee, Video, MessageCircle, Banknote, AlertTriangle, Coins } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { api, authHeaders } from '../lib/api';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -232,13 +232,35 @@ const Dashboard = () => {
                 <Card padding className="border-l-4 border-l-blue-500">
                     <p className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-1"><Video size={12} /> Video Call Revenue</p>
                     <p className="text-2xl font-bold text-blue-400 mt-1">₹{formatNumber(stats.videoCallRevenue || 0)}</p>
-                    <p className="text-xs text-gray-600 mt-1">₹{stats.videoCallRatePerMin ?? 1}/min · {stats.videoCallSessions || 0} sessions</p>
+                    <p className="text-xs text-gray-600 mt-1">
+                        ₹{stats.videoCallRatePerMin ?? 1}/min · {stats.videoCallSessions || 0} sessions · Owner: {formatNumber(stats.videoCallPlatformBeans || 0)} beans
+                    </p>
                 </Card>
                 <Card padding className="border-l-4 border-l-amber-500">
                     <p className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-1"><MessageCircle size={12} /> Live Talk Revenue</p>
                     <p className="text-2xl font-bold text-amber-400 mt-1">₹{formatNumber(stats.liveTalkRevenue || 0)}</p>
-                    <p className="text-xs text-gray-600 mt-1">{stats.pendingTalkRequests || 0} pending requests</p>
+                    <p className="text-xs text-gray-600 mt-1">
+                        Host: {formatNumber(stats.liveTalkHostBeans || 0)} beans · Owner: {formatNumber(stats.liveTalkPlatformBeans || 0)} beans
+                    </p>
                 </Card>
+                <button type="button" onClick={() => navigate('/billing')} className="text-left">
+                    <Card padding className="border-l-4 border-l-emerald-500 hover:bg-white/[0.02] transition-colors h-full">
+                        <p className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-1"><Coins size={12} /> Owner Platform Beans</p>
+                        <p className="text-2xl font-bold text-emerald-400 mt-1">{formatNumber(stats.totalOwnerBeans || stats.platformBeansEarned || 0)}</p>
+                        <p className="text-xs text-gray-600 mt-1">
+                            {Math.round((stats.platformShare ?? 0.3) * 100)}% of paid calls & chat · see Billing for full record
+                        </p>
+                    </Card>
+                </button>
+                <button type="button" onClick={() => navigate('/billing')} className="text-left">
+                    <Card padding className="border-l-4 border-l-purple-500 hover:bg-white/[0.02] transition-colors h-full">
+                        <p className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-1"><Users size={12} /> Users Earned (70%)</p>
+                        <p className="text-2xl font-bold text-purple-400 mt-1">{formatNumber(stats.totalUserBeansEarned || 0)}</p>
+                        <p className="text-xs text-gray-600 mt-1">
+                            Video: {formatNumber(stats.videoCallPeerBeans || 0)} · Live: {formatNumber(stats.liveTalkHostBeans || 0)} beans
+                        </p>
+                    </Card>
+                </button>
                 <Card padding className="border-l-4 border-l-emerald-500">
                     <p className="text-xs text-gray-500 uppercase tracking-wider flex items-center gap-1"><IndianRupee size={12} /> Wallet Pool</p>
                     <p className="text-2xl font-bold text-emerald-400 mt-1">₹{formatNumber(stats.totalWalletBalance || 0)}</p>

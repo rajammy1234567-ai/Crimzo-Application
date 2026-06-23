@@ -12,6 +12,11 @@ export function receiverBeansFromCallInr(inr: number): number {
   return Math.floor(gross * CALL_RECEIVER_SHARE);
 }
 
+/** Live talk / chat: host gets 70%, platform keeps 30% */
+export function receiverBeansFromChatInr(inr: number): number {
+  return receiverBeansFromCallInr(inr);
+}
+
 export type UserRates = {
   voiceRatePerMin: number;
   chatRatePerMin: number;
@@ -30,7 +35,7 @@ export function resolveRates(
     voiceRatePerMin: voice,
     chatRatePerMin: chat,
     voiceBeansPerMin: receiverBeansFromCallInr(voice),
-    chatBeansPerMin: inrToBeans(chat),
+    chatBeansPerMin: receiverBeansFromChatInr(chat),
   };
 }
 

@@ -6,8 +6,17 @@ export interface DashboardStats {
     totalWalletBalance?: number;
     videoCallRevenue?: number;
     videoCallSessions?: number;
+    videoCallPeerBeans?: number;
+    videoCallPlatformBeans?: number;
     liveTalkRevenue?: number;
     liveTalkSessions?: number;
+    liveTalkHostBeans?: number;
+    liveTalkPlatformBeans?: number;
+    platformBeansEarned?: number;
+    totalUserBeansEarned?: number;
+    totalOwnerBeans?: number;
+    receiverShare?: number;
+    platformShare?: number;
     pendingTalkRequests?: number;
     pendingWithdrawals?: number;
     videoCallRatePerMin?: number;
@@ -59,9 +68,15 @@ export interface BillingStats {
     videoCallRevenue: number;
     videoCallMinutes: number;
     videoCallSessions: number;
+    videoCallPeerBeans?: number;
+    videoCallPlatformBeans?: number;
     liveTalkRevenue: number;
     liveTalkMinutes: number;
     liveTalkSessions: number;
+    liveTalkHostBeans?: number;
+    liveTalkPlatformBeans?: number;
+    totalUserBeansEarned?: number;
+    totalOwnerBeans?: number;
     pendingTalkRequests: number;
 }
 
@@ -69,12 +84,41 @@ export interface BillingSessionRow {
     id: string;
     type: string;
     payer?: string;
+    payerCrimzoId?: string;
+    peer?: string;
+    peerCrimzoId?: string;
     talker?: string;
     host?: string;
+    hostCrimzoId?: string;
     minutesCharged: number;
     totalCharged: number;
+    receiverBeans?: number;
+    platformBeans?: number;
     ratePerMin: number;
     status: string;
+}
+
+export interface UserEarningsRow {
+    userId: string;
+    username: string | null;
+    crimzoId: string | null;
+    videoCallBeans: number;
+    liveTalkBeans: number;
+    totalBeans: number;
+    videoCallSessions: number;
+    liveTalkSessions: number;
+    totalSessions: number;
+    videoCallRevenue: number;
+    liveTalkRevenue: number;
+    totalRevenue: number;
+}
+
+export interface OwnerEarnings {
+    totalPlatformBeans: number;
+    videoCallPlatformBeans: number;
+    liveTalkPlatformBeans: number;
+    receiverShare: number;
+    platformShare: number;
 }
 
 export interface ChartDataPoint {
