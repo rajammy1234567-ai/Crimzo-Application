@@ -11,6 +11,40 @@ function yesterdayKey() {
   return d.toISOString().slice(0, 10);
 }
 
+/** Monday = 0 … Sunday = 6 (matches profile week row) */
+function weekdayIndexMon0(dateKey) {
+  const day = new Date(`${dateKey}T12:00:00.000Z`).getUTCDay();
+  return day === 0 ? 6 : day - 1;
+}
+
+function weekStartKey(dateKey) {
+  const idx = weekdayIndexMon0(dateKey);
+  const d = new Date(`${dateKey}T12:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() - idx);
+  return d.toISOString().slice(0, 10);
+}
+
+function shiftDateKey(dateKey, deltaDays) {
+  const d = new Date(`${dateKey}T12:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + deltaDays);
+  return d.toISOString().slice(0, 10);
+}
+
+function buildWeekDots(currentStreak, anchorDay, today) {
+  const weekDots = Array(7).fill(false);
+  if (!anchorDay || currentStreak <= 0) {
+    return weekDots;
+  }
+
+  const currentWeekStart = weekStartKey(today);
+  for (let i = 0; i < currentStreak; i += 1) {
+    const dayKey = shiftDateKey(anchorDay, -i);
+    if (weekStartKey(dayKey) !== currentWeekStart) continue;
+    weekDots[weekdayIndexMon0(dayKey)] = true;
+  }
+  return weekDots;
+}
+
 function getStreakSnapshot(state) {
   const today = todayKey();
   const yesterday = yesterdayKey();
@@ -19,17 +53,9 @@ function getStreakSnapshot(state) {
   const active = last === today || last === yesterday;
   const currentStreak = active ? stored : 0;
   const checkedInToday = last === today;
-
-  const weekDots = Array(7).fill(false);
-  if (currentStreak > 0) {
-    const startIdx = checkedInToday ? 6 : (last === yesterday ? 5 : -1);
-    if (startIdx >= 0) {
-      for (let i = 0; i < Math.min(7, currentStreak); i += 1) {
-        const idx = startIdx - i;
-        if (idx >= 0) weekDots[idx] = true;
-      }
-    }
-  }
+  const anchorDay = checkedInToday ? today : (last === yesterday ? yesterday : null);
+  const weekDots = buildWeekDots(currentStreak, anchorDay, today);
+  const todayWeekday = weekdayIndexMon0(today);
 
   return {
     currentStreak,
@@ -37,6 +63,7 @@ function getStreakSnapshot(state) {
     checkedInToday,
     lastCheckin: last,
     weekDots,
+    todayWeekday,
     atRisk: !checkedInToday && last === yesterday && currentStreak > 0,
   };
 }

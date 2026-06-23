@@ -87,6 +87,13 @@ async function countMutualFriends(userId) {
   return agg[0]?.total || 0;
 }
 
+function recordFollowerTaskReward(targetUserId) {
+  try {
+    const { recordTaskAction } = require('../utils/taskProgress');
+    void recordTaskAction(targetUserId, 'follow', 1).catch(() => {});
+  } catch (_) { /* ignore */ }
+}
+
 async function followStatusFor(viewerId, targetId) {
   const [following, outgoing, incoming] = await Promise.all([
     Follow.findOne({ follower_id: viewerId, following_id: targetId }),
@@ -302,6 +309,7 @@ exports.followUser = async (req, res) => {
       await Follow.create({ follower_id: followerId, following_id: userId });
       await clearFollowRequestBetween(followerId, userId);
       await adjustMutualFriends(followerId, userId, 1);
+      recordFollowerTaskReward(userId);
       const [viewerCounts, targetCounts] = await Promise.all([
         syncUserFollowCounts(followerId),
         syncUserFollowCounts(userId),
@@ -385,6 +393,7 @@ exports.acceptFollowRequest = async (req, res) => {
     if (!already) {
       await Follow.create({ follower_id: request.requester_id, following_id: userId });
       await adjustMutualFriends(request.requester_id, userId, 1);
+      recordFollowerTaskReward(userId);
     }
 
     request.status = 'accepted';

@@ -27,6 +27,32 @@ async function loadActiveTasks() {
   return tasks;
 }
 
+async function syncNewbieTaskRewards(state, user, taskDefs) {
+  const newbieDefs = taskDefs.filter((t) => t.section === 'newbie');
+  const auto = computeNewbieProgress(user);
+  let changed = false;
+
+  for (const def of newbieDefs) {
+    if ((auto[def.key] || 0) < 1) continue;
+    const entry = getProgressEntry(state, def.key, 'once');
+    if (entry.current >= def.max_count) continue;
+    entry.current = def.max_count;
+    entry.last_reset = 'once';
+    setProgressEntry(state, def.key, entry);
+    if (def.reward_type === 'diamonds') {
+      state.pending_diamonds = (state.pending_diamonds || 0) + def.reward_amount;
+    } else {
+      state.pending_reward = (state.pending_reward || 0) + def.reward_amount;
+    }
+    changed = true;
+  }
+
+  if (changed) {
+    state.updated_at = new Date();
+    await state.save();
+  }
+}
+
 function buildTaskList(state, user, taskDefs) {
   const newbieAuto = computeNewbieProgress(user);
   const sections = { newbie: [], daily: [], monthly: [] };
@@ -66,6 +92,7 @@ exports.getTasks = async (req, res) => {
     ]);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
+    await syncNewbieTaskRewards(state, user, taskDefs);
     const sections = buildTaskList(state, user, taskDefs);
     const totalPossible = taskDefs.reduce((s, t) => s + t.reward_amount * t.max_count, 0);
     const totalEarned = [...sections.newbie, ...sections.daily, ...sections.monthly]
@@ -101,6 +128,16 @@ exports.getStreak = async (req, res) => {
 
 exports.checkIn = async (req, res) => {
   try {
+    const { getTodayAppTime } = require('../utils/appTimeService');
+    const appTime = await getTodayAppTime(req.user.id);
+    if (!appTime.requirement_met) {
+      return res.status(400).json({
+        error: 'Spend at least 1 hour in the app today before check-in',
+        code: 'STREAK_TIME_REQUIRED',
+        appTime,
+      });
+    }
+
     const state = await getOrCreateState(req.user.id);
     const today = todayKey();
     const streakUpdate = applyCheckinStreak(state, today);
@@ -181,24 +218,61 @@ exports.completeTask = async (req, res) => {
     const { taskKey } = req.body;
     const def = await Task.findOne({ key: taskKey, is_active: true }).lean();
     if (!def) return res.status(400).json({ error: 'Invalid task' });
-    if (def.action_type !== 'manual') {
-      return res.status(400).json({
-        error: 'Complete this task by doing the required action in the app.',
-        needsAction: true,
-      });
-    }
 
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const state = await getOrCreateState(req.user.id);
 
+    if (def.action_type !== 'manual') {
+      const reset = def.section === 'daily' ? 'daily' : def.section === 'monthly' ? 'monthly' : 'once';
+      const entry = getProgressEntry(state, def.key, reset);
+      return res.status(400).json({
+        error: 'Complete this task by doing the required action in the app.',
+        needsAction: true,
+        currentCount: Math.min(entry.current, def.max_count),
+        maxCount: def.max_count,
+        deepLink: def.deep_link || '',
+      });
+    }
+
     if (def.section === 'newbie') {
       const auto = computeNewbieProgress(user);
       if ((auto[taskKey] || 0) < 1) {
         return res.status(400).json({ error: 'Complete the task first', needsAction: true });
       }
-      return res.json({ success: true, taskKey, currentCount: 1 });
+      const entry = getProgressEntry(state, taskKey, 'once');
+      if (entry.current >= def.max_count) {
+        return res.json({
+          success: true,
+          taskKey,
+          currentCount: entry.current,
+          maxCount: def.max_count,
+          alreadyClaimed: true,
+          pendingReward: state.pending_reward,
+          pendingDiamonds: state.pending_diamonds || 0,
+        });
+      }
+      entry.current = def.max_count;
+      entry.last_reset = 'once';
+      setProgressEntry(state, taskKey, entry);
+      if (def.reward_type === 'diamonds') {
+        state.pending_diamonds = (state.pending_diamonds || 0) + def.reward_amount;
+      } else {
+        state.pending_reward = (state.pending_reward || 0) + def.reward_amount;
+      }
+      state.updated_at = new Date();
+      await state.save();
+      return res.json({
+        success: true,
+        taskKey,
+        currentCount: entry.current,
+        maxCount: def.max_count,
+        rewardAdded: def.reward_amount,
+        rewardType: def.reward_type,
+        pendingReward: state.pending_reward,
+        pendingDiamonds: state.pending_diamonds || 0,
+      });
     }
 
     const reset = def.section === 'daily' ? 'daily' : 'monthly';

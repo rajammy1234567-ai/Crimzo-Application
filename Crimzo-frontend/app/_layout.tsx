@@ -4,6 +4,7 @@ import { AuthProvider } from '../contexts/AuthContext';
 import { RealtimeProvider } from '../contexts/RealtimeProvider';
 import { VideoCallProvider } from '../contexts/VideoCallContext';
 import { DialogProvider } from '../contexts/DialogProvider';
+import ScreenPrivacy from '../components/ScreenPrivacy';
 import { StatusBar } from 'expo-status-bar';
 
 export default function RootLayout() {
@@ -12,6 +13,7 @@ export default function RootLayout() {
       <DialogProvider>
       <RealtimeProvider>
       <VideoCallProvider>
+      <ScreenPrivacy />
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />

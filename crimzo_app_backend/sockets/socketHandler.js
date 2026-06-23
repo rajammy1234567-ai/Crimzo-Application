@@ -117,6 +117,13 @@ module.exports = (io) => {
           try {
             const { recordAppTime } = require('../utils/appTimeService');
             await recordAppTime(socket.crimzoPresenceUserId, elapsed, category);
+            if (category === 'live') {
+              const { recordTaskAction } = require('../utils/taskProgress');
+              const minutes = elapsed / 60;
+              if (minutes > 0) {
+                void recordTaskAction(socket.crimzoPresenceUserId, 'watch_live', minutes).catch(() => {});
+              }
+            }
           } catch (err) {
             console.error('app time record error:', err.message);
           }
@@ -355,6 +362,10 @@ module.exports = (io) => {
       }
 
       console.log(`[Live Chat] ${username}: ${message}`);
+      try {
+        const { recordTaskAction } = require('../utils/taskProgress');
+        void recordTaskAction(userId, 'live_message', 1).catch(() => {});
+      } catch (_) { /* ignore */ }
       io.to(`live_${sessionId}`).emit('live_chat_message', {
         id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
         type: 'text',

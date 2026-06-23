@@ -62,6 +62,7 @@ export default function ProfileScreen() {
     longestStreak: number;
     checkedInToday: boolean;
     weekDots?: boolean[];
+    todayWeekday?: number;
     atRisk?: boolean;
   } | null>(null);
 
@@ -135,6 +136,7 @@ export default function ProfileScreen() {
           longestStreak: number;
           checkedInToday: boolean;
           weekDots?: boolean[];
+          todayWeekday?: number;
           atRisk?: boolean;
         };
       }>('/api/tasks', token);
@@ -539,16 +541,36 @@ export default function ProfileScreen() {
               </View>
             </LinearGradient>
             <View style={s.streakWeekRow}>
-              {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((label, i) => (
-                <View key={`${label}-${i}`} style={s.streakDayCol}>
-                  <View style={[s.streakDot, streak.weekDots?.[i] && s.streakDotOn]}>
-                    {streak.weekDots?.[i] ? (
-                      <Text style={s.streakDotEmoji}>🔥</Text>
-                    ) : null}
+              {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((label, i) => {
+                const filled = !!streak.weekDots?.[i];
+                const isToday = streak.todayWeekday === i;
+                return (
+                  <View key={`${label}-${i}`} style={s.streakDayCol}>
+                    <View
+                      style={[
+                        s.streakDot,
+                        filled && s.streakDotOn,
+                        isToday && !filled && s.streakDotToday,
+                        isToday && filled && s.streakDotTodayDone,
+                      ]}
+                    >
+                      {filled ? (
+                        <LinearGradient
+                          colors={['#FF9500', '#FF2D55']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={s.streakDotFill}
+                        >
+                          <Text style={s.streakDotEmoji}>🔥</Text>
+                        </LinearGradient>
+                      ) : isToday ? (
+                        <View style={s.streakDotTodayInner} />
+                      ) : null}
+                    </View>
+                    <Text style={[s.streakDayLabel, isToday && s.streakDayLabelToday]}>{label}</Text>
                   </View>
-                  <Text style={s.streakDayLabel}>{label}</Text>
-                </View>
-              ))}
+                );
+              })}
             </View>
           </TouchableOpacity>
         )}
@@ -1168,21 +1190,41 @@ const s = StyleSheet.create({
   },
   streakDayCol: { alignItems: 'center', gap: 4 },
   streakDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: 'rgba(255,255,255,0.06)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.1)',
+    overflow: 'hidden',
   },
   streakDotOn: {
-    backgroundColor: 'rgba(255,149,0,0.2)',
-    borderColor: 'rgba(255,149,0,0.45)',
+    borderColor: 'rgba(255,149,0,0.55)',
   },
-  streakDotEmoji: { fontSize: 12 },
+  streakDotToday: {
+    borderColor: 'rgba(255,45,85,0.65)',
+    backgroundColor: 'rgba(255,45,85,0.1)',
+  },
+  streakDotTodayDone: {
+    borderColor: '#FFD60A',
+  },
+  streakDotFill: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  streakDotTodayInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,45,85,0.55)',
+  },
+  streakDotEmoji: { fontSize: 13 },
   streakDayLabel: { color: 'rgba(255,255,255,0.35)', fontSize: 9, fontWeight: '600' },
+  streakDayLabelToday: { color: '#FF6B8A', fontWeight: '800' },
 
   // ── Action buttons ──
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 10, marginTop: 14, marginBottom: 14 },

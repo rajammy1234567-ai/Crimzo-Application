@@ -9,7 +9,7 @@ const taskSchema = new mongoose.Schema({
   max_count: { type: Number, default: 1 },
   action_type: {
     type: String,
-    enum: ['manual', 'spend_diamonds', 'buy_diamonds', 'watch_live', 'send_gift', 'follow', 'invite'],
+    enum: ['manual', 'spend_diamonds', 'buy_diamonds', 'watch_live', 'send_gift', 'follow', 'invite', 'like_moment', 'live_message'],
     default: 'manual',
   },
   action_target: { type: Number, default: 1 },

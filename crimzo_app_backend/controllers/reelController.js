@@ -299,6 +299,10 @@ exports.likeReel = async (req, res) => {
       await ReelLike.create({ reel_id: reelId, user_id: userId });
       await Reel.findByIdAndUpdate(reelId, { $inc: { likes_count: 1 } });
       const likes_count = await ReelLike.countDocuments({ reel_id: reelId });
+      try {
+        const { recordTaskAction } = require('../utils/taskProgress');
+        void recordTaskAction(userId, 'like_moment', 1).catch(() => {});
+      } catch (_) { /* ignore */ }
       res.json({ success: true, action: 'liked', likes_count });
     }
   } catch (error) {
