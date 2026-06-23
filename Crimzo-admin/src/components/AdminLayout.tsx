@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { api, authHeaders } from '../lib/api';
 import {
     LayoutDashboard, Users, Radio, Film, Image as ImageIcon, LogOut,
-    Menu, X, Shield, IndianRupee, Banknote
+    Menu, X, Shield, IndianRupee, Banknote, ListChecks,
 } from 'lucide-react';
 
 const navSections = [
@@ -11,6 +12,7 @@ const navSections = [
         title: 'Overview',
         items: [
             { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', desc: 'Stats & analytics' },
+            { to: '/withdrawals', icon: Banknote, label: 'Withdrawals', desc: 'User payout requests', badgeKey: 'withdrawals' as const },
         ]
     },
     {
@@ -23,7 +25,6 @@ const navSections = [
         title: 'Monetization',
         items: [
             { to: '/billing', icon: IndianRupee, label: 'Billing & Rates', desc: 'Video call + live talk ₹/min' },
-            { to: '/withdrawals', icon: Banknote, label: 'Withdrawals', desc: 'Manual UPI/bank payouts' },
             { to: '/tasks', icon: ListChecks, label: 'My Tasks', desc: 'User tasks + rewards' },
         ]
     },
@@ -44,15 +45,41 @@ const pageMeta: Record<string, { title: string; section: string }> = {
     '/reels': { title: 'Reels', section: 'Content & Moderation' },
     '/stickers': { title: 'Stickers & Gifts', section: 'Content & Moderation' },
     '/billing': { title: 'Billing & Rates', section: 'Monetization' },
-    '/withdrawals': { title: 'Withdrawals', section: 'Monetization' },
+    '/withdrawals': { title: 'Withdrawals', section: 'Overview' },
     '/tasks': { title: 'My Tasks', section: 'Monetization' },
 };
 
 const AdminLayout = () => {
-    const { logout } = useAuth();
+    const { logout, token } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [pendingWithdrawals, setPendingWithdrawals] = useState(0);
+
+    useEffect(() => {
+        if (!token) return;
+
+        const loadPending = async () => {
+            try {
+                const res = await api.get('/withdrawals', {
+                    headers: authHeaders(token),
+                    params: { status: 'pending', page: 1, limit: 1 },
+                });
+                setPendingWithdrawals(res.data?.counts?.pending ?? 0);
+            } catch {
+                try {
+                    const dash = await api.get('/dashboard', { headers: authHeaders(token) });
+                    setPendingWithdrawals(dash.data?.stats?.pendingWithdrawals ?? 0);
+                } catch {
+                    setPendingWithdrawals(0);
+                }
+            }
+        };
+
+        void loadPending();
+        const interval = setInterval(loadPending, 60000);
+        return () => clearInterval(interval);
+    }, [token, location.pathname]);
 
     const handleLogout = () => {
         logout();
@@ -96,7 +123,7 @@ const AdminLayout = () => {
                                         <>
                                             {isActive && <span className="nav-active-indicator" />}
                                             <item.icon size={18} className="shrink-0 ml-1" />
-                                            <div className="min-w-0">
+                                            <div className="min-w-0 flex-1">
                                                 <span className={`text-sm block ${isActive ? 'font-semibold' : 'font-medium'}`}>
                                                     {item.label}
                                                 </span>
@@ -104,6 +131,11 @@ const AdminLayout = () => {
                                                     {item.desc}
                                                 </span>
                                             </div>
+                                            {'badgeKey' in item && item.badgeKey === 'withdrawals' && pendingWithdrawals > 0 && (
+                                                <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-amber-500 text-[10px] font-bold text-black flex items-center justify-center">
+                                                    {pendingWithdrawals > 99 ? '99+' : pendingWithdrawals}
+                                                </span>
+                                            )}
                                         </>
                                     )}
                                 </NavLink>
@@ -165,6 +197,18 @@ const AdminLayout = () => {
                     </div>
 
                     <div className="flex items-center gap-3">
+                        {pendingWithdrawals > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => navigate('/withdrawals')}
+                                className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-amber-500/15 border border-amber-500/30 rounded-full hover:bg-amber-500/25 transition-colors"
+                            >
+                                <Banknote size={14} className="text-amber-400" />
+                                <span className="text-xs font-semibold text-amber-300">
+                                    {pendingWithdrawals} withdrawal{pendingWithdrawals === 1 ? '' : 's'} pending
+                                </span>
+                            </button>
+                        )}
                         <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
                             <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
                             <span className="text-xs font-medium text-emerald-400">System Online</span>

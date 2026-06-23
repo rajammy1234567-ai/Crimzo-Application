@@ -52,6 +52,7 @@ const Withdrawals = () => {
     const [status, setStatus] = useState('pending');
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
+    const [total, setTotal] = useState(0);
     const [rows, setRows] = useState<WithdrawalRow[]>([]);
     const [counts, setCounts] = useState({ pending: 0, processing: 0 });
     const [actionLoading, setActionLoading] = useState(false);
@@ -71,6 +72,7 @@ const Withdrawals = () => {
             });
             setRows(res.data.withdrawals || []);
             setTotalPages(res.data.totalPages || 1);
+            setTotal(res.data.total ?? 0);
             setCounts(res.data.counts || { pending: 0, processing: 0 });
         } catch {
             toast.error('Failed to load withdrawals');
@@ -269,7 +271,7 @@ const Withdrawals = () => {
 
                 {!loading && totalPages > 1 && (
                     <div className="mt-6 pt-4 border-t border-dark-border">
-                        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+                        <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} />
                     </div>
                 )}
             </Card>

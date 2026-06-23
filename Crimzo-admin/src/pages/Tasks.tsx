@@ -234,7 +234,7 @@ const Tasks = () => {
             {loading ? (
               <LoadingSpinner />
             ) : tasks.length === 0 ? (
-              <EmptyState title="No tasks yet" description="Create your first task" />
+              <EmptyState icon={ListChecks} title="No tasks yet" description="Create your first task" />
             ) : (
               <div className="space-y-2">
                 {tasks.map((task) => (

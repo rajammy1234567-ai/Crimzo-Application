@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Users, Radio, Film, Diamond, ArrowRight, TrendingUp, IndianRupee, Video, MessageCircle } from 'lucide-react';
+import { Users, Radio, Film, Diamond, ArrowRight, TrendingUp, IndianRupee, Video, MessageCircle, Banknote, AlertTriangle } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { api, authHeaders } from '../lib/api';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -12,6 +12,7 @@ import type { DashboardStats, ChartDataPoint } from '../types';
 import { formatNumber } from '../lib/utils';
 
 const quickLinks = [
+    { to: '/withdrawals', label: 'Withdrawals', desc: 'Review & approve payout requests', color: 'text-amber-400', highlightKey: 'withdrawals' as const },
     { to: '/users', label: 'Manage Users', desc: 'Ban, search, adjust diamonds', color: 'text-blue-400' },
     { to: '/streams', label: 'Live Streams', desc: 'Monitor & terminate active streams', color: 'text-red-400' },
     { to: '/reels', label: 'Reels Moderation', desc: 'Review & remove content', color: 'text-purple-400' },
@@ -61,6 +62,31 @@ const Dashboard = () => {
                 breadcrumbs={[{ label: 'Dashboard' }]}
             />
 
+            {(stats.pendingWithdrawals ?? 0) > 0 && (
+                <button
+                    type="button"
+                    onClick={() => navigate('/withdrawals')}
+                    className="w-full mb-6 flex items-center justify-between gap-4 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/15 transition-colors text-left"
+                >
+                    <div className="flex items-center gap-3 min-w-0">
+                        <div className="shrink-0 p-2.5 rounded-xl bg-amber-500/20 text-amber-400">
+                            <AlertTriangle size={20} />
+                        </div>
+                        <div className="min-w-0">
+                            <p className="text-sm font-semibold text-amber-200">
+                                {stats.pendingWithdrawals} withdrawal request{(stats.pendingWithdrawals ?? 0) === 1 ? '' : 's'} waiting
+                            </p>
+                            <p className="text-xs text-amber-400/80 mt-0.5">
+                                Users have requested payouts — review UPI/bank details and mark complete after transfer.
+                            </p>
+                        </div>
+                    </div>
+                    <span className="shrink-0 flex items-center gap-1 text-xs font-semibold text-amber-300">
+                        Review now <ArrowRight size={14} />
+                    </span>
+                </button>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
                 <StatCard
                     title="Total Users"
@@ -94,6 +120,17 @@ const Dashboard = () => {
                     colorClass="bg-crimzo/10 text-crimzo"
                     subtitle="Platform economy"
                     onClick={() => navigate('/users')}
+                />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+                <StatCard
+                    title="Pending Withdrawals"
+                    value={stats.pendingWithdrawals ?? 0}
+                    icon={Banknote}
+                    colorClass="bg-amber-500/10 text-amber-400"
+                    subtitle={(stats.pendingWithdrawals ?? 0) > 0 ? 'Needs your action' : 'No pending payouts'}
+                    onClick={() => navigate('/withdrawals')}
                 />
             </div>
 
@@ -154,19 +191,34 @@ const Dashboard = () => {
                 <Card padding>
                     <CardHeader title="Quick Actions" description="Jump to management sections" />
                     <div className="space-y-2">
-                        {quickLinks.map(link => (
-                            <button
-                                key={link.to}
-                                onClick={() => navigate(link.to)}
-                                className="w-full flex items-center justify-between p-3 rounded-xl border border-dark-border hover:border-crimzo/30 hover:bg-white/[0.02] transition-all group text-left"
-                            >
-                                <div>
-                                    <p className={`text-sm font-semibold ${link.color}`}>{link.label}</p>
-                                    <p className="text-xs text-gray-600 mt-0.5">{link.desc}</p>
-                                </div>
-                                <ArrowRight size={16} className="text-gray-600 group-hover:text-crimzo transition-colors" />
-                            </button>
-                        ))}
+                        {quickLinks.map(link => {
+                            const pending = stats.pendingWithdrawals ?? 0;
+                            const showBadge = 'highlightKey' in link && link.highlightKey === 'withdrawals' && pending > 0;
+                            return (
+                                <button
+                                    key={link.to}
+                                    onClick={() => navigate(link.to)}
+                                    className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all group text-left ${
+                                        showBadge
+                                            ? 'border-amber-500/40 bg-amber-500/5 hover:border-amber-500/60 hover:bg-amber-500/10'
+                                            : 'border-dark-border hover:border-crimzo/30 hover:bg-white/[0.02]'
+                                    }`}
+                                >
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <p className={`text-sm font-semibold ${link.color}`}>{link.label}</p>
+                                            {showBadge && (
+                                                <span className="shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-amber-500 text-[10px] font-bold text-black flex items-center justify-center">
+                                                    {pending > 99 ? '99+' : pending}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-gray-600 mt-0.5">{link.desc}</p>
+                                    </div>
+                                    <ArrowRight size={16} className={`shrink-0 transition-colors ${showBadge ? 'text-amber-400 group-hover:text-amber-300' : 'text-gray-600 group-hover:text-crimzo'}`} />
+                                </button>
+                            );
+                        })}
                     </div>
                 </Card>
             </div>
