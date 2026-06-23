@@ -24,7 +24,7 @@ export function getGoogleAndroidReverseScheme(): string | null {
   return clientIdToReverseScheme(GOOGLE_ANDROID_CLIENT_ID);
 }
 
-const expoOwner = Constants.expoConfig?.owner || 'viz_eas001';
+const expoOwner = Constants.expoConfig?.owner || 'dev_eas_office_viz001';
 const expoSlug = Constants.expoConfig?.slug || 'crimzo';
 
 /** Expo Go only — legacy web redirect (not used with native sign-in) */
