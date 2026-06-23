@@ -13,6 +13,7 @@ import {
   StatusBar,
   Platform,
   Image,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
@@ -28,6 +29,19 @@ function isPkWinner(battle: any, side: 'host1' | 'host2'): boolean {
   return !!hostId && sameUserId(battle.winner_id, hostId);
 }
 const { width: SW } = Dimensions.get('window');
+
+const DURATION_OPTIONS = [
+  { label: '3 Minutes', value: 180, sub: 'Quick battle' },
+  { label: '5 Minutes', value: 300, sub: 'Standard PK' },
+  { label: '10 Minutes', value: 600, sub: 'Extended fight' },
+];
+
+function formatDuration(seconds?: number) {
+  const s = seconds || 300;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return r > 0 ? `${m}:${String(r).padStart(2, '0')}` : `${m}:00`;
+}
 
 // ── Animated PK Logo ──
 const PKLogo = React.memo(() => {
@@ -202,7 +216,7 @@ const BattleCard = ({
             </View>
             <View style={lobbyStyles.metaItem}>
               <Ionicons name="timer-outline" size={13} color="#888" />
-              <Text style={lobbyStyles.metaText}>5:00</Text>
+              <Text style={lobbyStyles.metaText}>{formatDuration(battle.duration)}</Text>
             </View>
           </View>
 
@@ -253,6 +267,7 @@ export default function PKLobbyScreen() {
   const [battles, setBattles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [durationModalVisible, setDurationModalVisible] = useState(false);
 
   // Entrance animations
   const headerFade = useRef(new Animated.Value(0)).current;
@@ -303,7 +318,12 @@ export default function PKLobbyScreen() {
   };
 
   const handleCreateBattle = () => {
-    router.push('/pk/battle?mode=create');
+    setDurationModalVisible(true);
+  };
+
+  const startBattleWithDuration = (duration: number) => {
+    setDurationModalVisible(false);
+    router.push(`/pk/battle?mode=create&duration=${duration}` as any);
   };
 
   const handleJoinBattle = (battleId: string) => {
@@ -420,6 +440,35 @@ export default function PKLobbyScreen() {
           )}
         </ScrollView>
       )}
+      <Modal
+        visible={durationModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDurationModalVisible(false)}
+      >
+        <View style={lobbyStyles.modalOverlay}>
+          <View style={lobbyStyles.modalCard}>
+            <Text style={lobbyStyles.modalTitle}>Choose Battle Duration</Text>
+            <Text style={lobbyStyles.modalSub}>Timer starts when opponent joins</Text>
+            {DURATION_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={lobbyStyles.durationBtn}
+                onPress={() => startBattleWithDuration(opt.value)}
+              >
+                <View>
+                  <Text style={lobbyStyles.durationLabel}>{opt.label}</Text>
+                  <Text style={lobbyStyles.durationSub}>{opt.sub}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#FF2D55" />
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={lobbyStyles.modalCancel} onPress={() => setDurationModalVisible(false)}>
+              <Text style={lobbyStyles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -556,4 +605,22 @@ const lobbyStyles = StyleSheet.create({
     paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14,
   },
   emptyBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: '#141414', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 24, paddingBottom: 40,
+  },
+  modalTitle: { color: '#FFF', fontSize: 20, fontWeight: '800', textAlign: 'center' },
+  modalSub: { color: '#888', fontSize: 13, textAlign: 'center', marginTop: 6, marginBottom: 20 },
+  durationBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: 16, marginBottom: 10,
+    borderWidth: 1, borderColor: 'rgba(255,45,85,0.25)',
+  },
+  durationLabel: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  durationSub: { color: '#888', fontSize: 12, marginTop: 2 },
+  modalCancel: { alignItems: 'center', marginTop: 8, paddingVertical: 12 },
+  modalCancelText: { color: '#888', fontSize: 15, fontWeight: '600' },
 });

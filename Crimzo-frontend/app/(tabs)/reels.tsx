@@ -27,6 +27,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { apiFetch, apiGet, apiPost, apiDelete, resolveMediaUrl } from '../../lib/apiClient';
 import { subscribe } from '../../lib/realtimeSync';
+import { parseFollowResponse } from '../../lib/followHelpers';
 import { getTabBarHeight } from '../../lib/theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -623,6 +624,24 @@ export default function ReelsScreen() {
     });
   }, []);
 
+  useEffect(() => {
+    return subscribe('follow_status_changed', (payload) => {
+      const data = payload as { userId?: string; isFollowing?: boolean; isRequested?: boolean };
+      if (!data?.userId) return;
+      setReels((prev) =>
+        prev.map((r) =>
+          String(r.user_id) === String(data.userId)
+            ? {
+              ...r,
+              is_following: data.isFollowing ?? r.is_following,
+              is_requested: data.isRequested ?? r.is_requested,
+            }
+            : r,
+        ),
+      );
+    });
+  }, []);
+
   // Refetch when screen comes back into focus (picks up newly uploaded reels)
   useFocusEffect(
     useCallback(() => {
@@ -657,8 +676,7 @@ export default function ReelsScreen() {
         isFollowing?: boolean;
         isRequested?: boolean;
       }>('/api/user/follow', { userId }, token);
-      const isFollowing = res.isFollowing ?? (res.action === 'followed' || res.action === 'accepted');
-      const isRequested = res.isRequested ?? res.action === 'requested';
+      const { isFollowing, isRequested } = parseFollowResponse(res);
       setReels((prev) =>
         prev.map((r) =>
           String(r.user_id) === String(userId)

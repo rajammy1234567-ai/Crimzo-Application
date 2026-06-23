@@ -6,7 +6,7 @@ const LiveSession = require('../models/LiveSession');
 const Reel = require('../models/Reel');
 const GiftHistory = require('../models/GiftHistory');
 const { pushNotification } = require('../utils/notificationHelper');
-const { emitFollowUpdated } = require('../utils/socketEmitter');
+const { emitFollowUpdated, emitFollowStatusChanged } = require('../utils/socketEmitter');
 const { getInteractionPermission } = require('../utils/followPermissions');
 const {
   toObjectId,
@@ -15,6 +15,8 @@ const {
   clearFollowRequestBetween,
 } = require('../utils/followHelpers');
 const { uploadToCloudinary } = require('../config/cloudinary');
+const { getBillingSettings } = require('../utils/billingSettings');
+const { buildRatesPayload, parseRateUpdate } = require('../utils/userRates');
 
 function resolveUserIdParam(param, fallbackId) {
   if (!param || param === 'me') return String(fallbackId);
@@ -100,8 +102,17 @@ exports.checkInteraction = async (req, res) => {
   try {
     const userId = req.query.userId || req.params.userId;
     if (!userId) return res.status(400).json({ error: 'userId required' });
-    const interaction = await getInteractionPermission(req.user.id, userId);
-    res.json({ success: true, ...interaction });
+    const [interaction, followState] = await Promise.all([
+      getInteractionPermission(req.user.id, userId),
+      followStatusFor(req.user.id, userId),
+    ]);
+    res.json({
+      success: true,
+      ...interaction,
+      isRequested: followState.isRequested,
+      hasIncomingRequest: followState.hasIncomingRequest,
+      incomingRequestId: followState.incomingRequestId,
+    });
   } catch (error) {
     console.error('Interaction check error:', error);
     res.status(500).json({ error: 'Failed to check interaction' });
@@ -149,6 +160,8 @@ exports.getFullProfile = async (req, res) => {
 
     const liveCheck = await LiveSession.findOne({ user_id: userId, status: 'active' });
     const counts = await syncUserFollowCounts(userId);
+    const billingSettings = await getBillingSettings();
+    const userRates = buildRatesPayload(u, billingSettings);
 
     res.json({
       success: true,
@@ -184,7 +197,13 @@ exports.getFullProfile = async (req, res) => {
         canInteract: interaction.canInteract,
         interactionBlockedReason: interaction.reason,
         isLive: !!liveCheck,
-        liveSessionId: liveCheck ? liveCheck.id : null
+        liveSessionId: liveCheck ? liveCheck.id : null,
+        voice_rate_per_min_inr: userRates.voice_rate_per_min_inr,
+        chat_rate_per_min_inr: userRates.chat_rate_per_min_inr,
+        voiceRatePerMin: userRates.voiceRatePerMin,
+        chatRatePerMin: userRates.chatRatePerMin,
+        voiceBeansPerMin: userRates.voiceBeansPerMin,
+        chatBeansPerMin: userRates.chatBeansPerMin,
       }
     });
   } catch (error) {
@@ -223,12 +242,21 @@ exports.followUser = async (req, res) => {
       ]);
       emitFollowUpdated(followerId, viewerCounts);
       emitFollowUpdated(userId, targetCounts);
+      emitFollowStatusChanged(followerId, {
+        userId: String(userId),
+        isFollowing: false,
+        isRequested: false,
+      });
+
       return res.json({
         success: true,
         action: 'unfollowed',
         isFollowing: false,
         isRequested: false,
         wasMutual,
+        followers_count: targetCounts?.followers_count,
+        following_count: viewerCounts?.following_count,
+        friends_count: viewerCounts?.friends_count,
       });
     }
 
@@ -239,7 +267,17 @@ exports.followUser = async (req, res) => {
     });
     if (pending) {
       await FollowRequest.deleteOne({ _id: pending._id });
-      return res.json({ success: true, action: 'request_cancelled', isFollowing: false, isRequested: false });
+      emitFollowStatusChanged(followerId, {
+        userId: String(userId),
+        isFollowing: false,
+        isRequested: false,
+      });
+      return res.json({
+        success: true,
+        action: 'request_cancelled',
+        isFollowing: false,
+        isRequested: false,
+      });
     }
 
     const target = await User.findById(userId).select('username is_private');
@@ -268,6 +306,11 @@ exports.followUser = async (req, res) => {
 
       emitFollowUpdated(followerId, viewerCounts);
       emitFollowUpdated(userId, targetCounts);
+      emitFollowStatusChanged(followerId, {
+        userId: String(userId),
+        isFollowing: true,
+        isRequested: false,
+      });
 
       return res.json({
         success: true,
@@ -290,6 +333,12 @@ exports.followUser = async (req, res) => {
       body: `${requester?.username || 'Someone'} wants to follow you`,
       actor: requester,
       referenceId: reqDoc.id,
+    });
+
+    emitFollowStatusChanged(followerId, {
+      userId: String(userId),
+      isFollowing: false,
+      isRequested: true,
     });
 
     res.json({
@@ -346,10 +395,17 @@ exports.acceptFollowRequest = async (req, res) => {
 
     emitFollowUpdated(request.requester_id, requesterCounts);
     emitFollowUpdated(userId, myCounts);
+    emitFollowStatusChanged(request.requester_id, {
+      userId: String(userId),
+      isFollowing: true,
+      isRequested: false,
+    });
 
     res.json({
       success: true,
       action: 'accepted',
+      isFollowing: true,
+      isRequested: false,
       requesterId: request.requester_id.toString(),
       followers_count: myCounts?.followers_count,
       following_count: requesterCounts?.following_count,
@@ -376,7 +432,18 @@ exports.rejectFollowRequest = async (req, res) => {
     request.status = 'rejected';
     await request.save();
 
-    res.json({ success: true, action: 'rejected' });
+    emitFollowStatusChanged(request.requester_id, {
+      userId: String(userId),
+      isFollowing: false,
+      isRequested: false,
+    });
+
+    res.json({
+      success: true,
+      action: 'rejected',
+      isFollowing: false,
+      isRequested: false,
+    });
   } catch (error) {
     console.error('Reject follow error:', error);
     res.status(500).json({ error: 'Failed to reject request' });
@@ -483,6 +550,7 @@ exports.updateProfile = async (req, res) => {
     const {
       username, bio, country, avatar, gender, age, language,
       second_language, tags, show_location, push_notifications_enabled,
+      voice_rate_per_min_inr, chat_rate_per_min_inr,
     } = req.body;
     const userId = req.user.id;
 
@@ -500,12 +568,28 @@ exports.updateProfile = async (req, res) => {
     if (push_notifications_enabled !== undefined) {
       update.push_notifications_enabled = !!push_notifications_enabled;
     }
+    if (voice_rate_per_min_inr !== undefined) {
+      const parsed = parseRateUpdate(voice_rate_per_min_inr);
+      if (parsed == null) {
+        return res.status(400).json({ error: 'Invalid voice rate per minute' });
+      }
+      update.voice_rate_per_min_inr = parsed;
+    }
+    if (chat_rate_per_min_inr !== undefined) {
+      const parsed = parseRateUpdate(chat_rate_per_min_inr);
+      if (parsed == null) {
+        return res.status(400).json({ error: 'Invalid chat rate per minute' });
+      }
+      update.chat_rate_per_min_inr = parsed;
+    }
 
     if (Object.keys(update).length === 0) {
       return res.status(400).json({ error: 'No fields to update' });
     }
 
     const updated = await User.findByIdAndUpdate(userId, update, { new: true });
+    const billingSettings = await getBillingSettings();
+    const rates = buildRatesPayload(updated, billingSettings);
     res.json({
       success: true,
       message: 'Profile updated',
@@ -521,6 +605,12 @@ exports.updateProfile = async (req, res) => {
         tags: updated.tags,
         show_location: updated.show_location,
         push_notifications_enabled: updated.push_notifications_enabled !== false,
+        voice_rate_per_min_inr: rates.voice_rate_per_min_inr,
+        chat_rate_per_min_inr: rates.chat_rate_per_min_inr,
+        voiceRatePerMin: rates.voiceRatePerMin,
+        chatRatePerMin: rates.chatRatePerMin,
+        voiceBeansPerMin: rates.voiceBeansPerMin,
+        chatBeansPerMin: rates.chatBeansPerMin,
       },
     });
   } catch (error) {
@@ -704,5 +794,16 @@ exports.getFriends = async (req, res) => {
   } catch (error) {
     console.error('Get friends error:', error);
     res.status(500).json({ error: 'Failed to get friends' });
+  }
+};
+
+exports.getAppTimeToday = async (req, res) => {
+  try {
+    const { getTodayAppTime } = require('../utils/appTimeService');
+    const stats = await getTodayAppTime(req.user.id);
+    res.json({ success: true, ...stats });
+  } catch (error) {
+    console.error('Get app time error:', error);
+    res.status(500).json({ error: 'Failed to get app time' });
   }
 };

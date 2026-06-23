@@ -49,6 +49,10 @@ const userSchema = new mongoose.Schema({
   is_banned: { type: Boolean, default: false },
   /** false = public (instant follow). true = private (follow request → accept) */
   is_private: { type: Boolean, default: false },
+  /** Creator-set voice/call rate (₹/min). null = use app default. Host earns beans. */
+  voice_rate_per_min_inr: { type: Number, default: null, min: 0, max: 10000 },
+  /** Creator-set live chat rate (₹/min). null = use app default. Host earns beans. */
+  chat_rate_per_min_inr: { type: Number, default: null, min: 0, max: 10000 },
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
 
 // Virtual for frontend-friendly id

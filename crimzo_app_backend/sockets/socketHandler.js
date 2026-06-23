@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const LiveSession = require('../models/LiveSession');
 const { getBillingSettings } = require('../utils/billingSettings');
+const { resolveUserRates } = require('../utils/userRates');
 const { userCanChatOnLive } = require('../controllers/liveTalkController');
 const { finalizeLiveSessionEnd } = require('../controllers/liveController');
 const PKBattle = require('../models/PKBattle');
@@ -82,10 +83,12 @@ module.exports = (io) => {
       console.log(`User ${uid} joined personal room`);
     });
 
-    socket.on('app_presence', async () => {
+    socket.on('app_presence', async (data) => {
       const uid = socket.authenticatedUserId;
       if (!uid) return;
       socket.crimzoPresenceUserId = uid;
+      socket.lastTimeTick = Date.now();
+      socket.appCategory = data?.category || 'other';
       const { count, userWasOffline } = registerPresence(uid, socket.id);
       emitOnlineCountUpdate(count);
       socket.emit('online_count_update', { count, at: Date.now() });
@@ -100,9 +103,26 @@ module.exports = (io) => {
       }
     });
 
-    socket.on('presence_heartbeat', () => {
+    socket.on('presence_heartbeat', async (data) => {
       if (!socket.crimzoPresenceUserId) return;
       touchPresence(socket.crimzoPresenceUserId, socket.id);
+
+      const foreground = data?.foreground !== false;
+      const category = data?.category || socket.appCategory || 'other';
+      socket.appCategory = category;
+      const now = Date.now();
+      if (foreground && socket.lastTimeTick) {
+        const elapsed = Math.floor((now - socket.lastTimeTick) / 1000);
+        if (elapsed > 0 && elapsed <= 90) {
+          try {
+            const { recordAppTime } = require('../utils/appTimeService');
+            await recordAppTime(socket.crimzoPresenceUserId, elapsed, category);
+          } catch (err) {
+            console.error('app time record error:', err.message);
+          }
+        }
+      }
+      socket.lastTimeTick = now;
     });
 
     socket.on('join_battle', async (data) => {
@@ -434,17 +454,22 @@ module.exports = (io) => {
       }
 
       let callRate = 1;
+      let beansPerMin = 0;
       try {
         const billingSettings = await getBillingSettings();
-        callRate = billingSettings.videoCallRatePerMin;
+        const callee = await User.findById(calleeId).select('voice_rate_per_min_inr chat_rate_per_min_inr');
+        const calleeRates = resolveUserRates(callee, billingSettings);
+        callRate = calleeRates.voiceRatePerMin;
+        beansPerMin = calleeRates.voiceBeansPerMin;
         if (billingSettings.videoCallBillingEnabled && callRate > 0) {
           const caller = await User.findById(callerId).select('wallet_balance username');
           const balance = caller?.wallet_balance || 0;
           if (balance < callRate) {
             socket.emit('video_call_error', {
               code: 'INSUFFICIENT_BALANCE',
-              message: `Please recharge your wallet first. Video call costs ₹${callRate}/min.`,
+              message: `Please recharge your wallet first. Voice call costs ₹${callRate}/min.`,
               ratePerMin: callRate,
+              beansPerMin,
               wallet_balance: balance,
               minRequired: callRate,
             });
@@ -463,6 +488,7 @@ module.exports = (io) => {
         callerAvatar: callerAvatar || null,
         channelName,
         ratePerMin: callRate,
+        beansPerMin,
       });
       console.log(`[VideoCall] ${callerName} → user ${calleeId} channel=${channelName}`);
     });
@@ -471,6 +497,7 @@ module.exports = (io) => {
       const { callerId, calleeId, calleeName, channelName } = data || {};
       if (!callerId || !channelName) return;
       io.to(userRoom(callerId)).emit('video_call_accepted', {
+        callerId,
         calleeId,
         calleeName: calleeName || 'User',
         channelName,

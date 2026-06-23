@@ -644,3 +644,49 @@ exports.deleteSticker = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+// ====================== TASKS ======================
+const Task = require('../models/Task');
+
+exports.getTasks = async (req, res) => {
+  try {
+    const tasks = await Task.find().sort({ sort_order: 1, section: 1 }).lean();
+    res.json({ tasks });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.createTask = async (req, res) => {
+  try {
+    const body = req.body || {};
+    if (!body.key || !body.title || !body.section) {
+      return res.status(400).json({ error: 'key, title, and section are required' });
+    }
+    const exists = await Task.findOne({ key: body.key });
+    if (exists) return res.status(400).json({ error: 'Task key already exists' });
+    const task = await Task.create(body);
+    res.json({ success: true, task });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.updateTask = async (req, res) => {
+  try {
+    const task = await Task.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    res.json({ success: true, task });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.deleteTask = async (req, res) => {
+  try {
+    await Task.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};

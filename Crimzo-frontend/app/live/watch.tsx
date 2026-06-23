@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
+import { useVideoCall } from '../../contexts/VideoCallContext';
 import {
   requestLiveTalk,
   getLiveTalkStatus,
@@ -25,8 +26,10 @@ import {
   endLiveTalkBilling,
   isInsufficientBalanceError,
   isBalanceExhaustedError,
-  LIVE_TALK_RATE_PER_MIN,
 } from '../../lib/liveTalkBilling';
+import { resolveRates } from '../../lib/userRates';
+import { parseFollowResponse } from '../../lib/followHelpers';
+import { subscribe } from '../../lib/realtimeSync';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import io from 'socket.io-client';
@@ -79,6 +82,7 @@ function formatViewers(n: number): string {
 export default function WatchScreen() {
   const { sessionId, talk } = useLocalSearchParams<{ sessionId?: string; talk?: string }>();
   const { user, token, updateUser } = useAuth();
+  const { startCall } = useVideoCall();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [streamData, setStreamData] = useState<any>(null);
@@ -103,6 +107,20 @@ export default function WatchScreen() {
   const [talkCharged, setTalkCharged] = useState(0);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [requestingTalk, setRequestingTalk] = useState(false);
+
+  const hostRates = useMemo(
+    () => resolveRates(streamData?.hostVoiceRatePerMin, streamData?.hostChatRatePerMin),
+    [streamData?.hostVoiceRatePerMin, streamData?.hostChatRatePerMin],
+  );
+
+  useEffect(() => {
+    return subscribe('follow_status_changed', (payload) => {
+      const data = payload as { userId?: string; isFollowing?: boolean; isRequested?: boolean };
+      if (!data?.userId || String(data.userId) !== String(streamData?.hostId)) return;
+      if (data.isFollowing != null) setIsFollowing(!!data.isFollowing);
+      if (data.isRequested != null) setIsRequested(!!data.isRequested);
+    });
+  }, [streamData?.hostId]);
 
   // Entrance animation
   const headerFade = useRef(new Animated.Value(0)).current;
@@ -181,12 +199,14 @@ export default function WatchScreen() {
         if (billing.minutesCharged != null) setTalkMinutes(billing.minutesCharged);
         if (billing.totalCharged != null) setTalkCharged(billing.totalCharged);
         startTalkBillingLoop();
-        Alert.alert('Connected!', `You can now chat with the host. ₹${LIVE_TALK_RATE_PER_MIN}/min is being charged.`);
+        const chatRate = streamData?.hostChatRatePerMin ?? 1;
+        const chatBeans = streamData?.hostChatBeansPerMin ?? hostRates.chatBeansPerMin;
+        Alert.alert('Connected!', `You can now chat with the host. ₹${chatRate}/min is being charged. Host earns ${chatBeans} beans/min.`);
       }
     } catch (e) {
       Alert.alert('Billing Error', e instanceof ApiError ? e.message : 'Could not start talk billing');
     }
-  }, [token, sessionId, startTalkBillingLoop, updateUser]);
+  }, [token, sessionId, startTalkBillingLoop, updateUser, streamData, hostRates.chatBeansPerMin]);
 
   const refreshTalkStatus = useCallback(async () => {
     if (!token || !sessionId || !user?.id) return;
@@ -226,14 +246,16 @@ export default function WatchScreen() {
       if (res.requestId) {
         setTalkRequestId(res.requestId);
         setTalkStatus('pending');
-        Alert.alert('Request Sent', `Request sent to the host. Chat will start at ₹${LIVE_TALK_RATE_PER_MIN}/min once accepted.`);
+        const chatRate = streamData?.hostChatRatePerMin ?? hostRates.chatRatePerMin;
+        const chatBeans = streamData?.hostChatBeansPerMin ?? hostRates.chatBeansPerMin;
+        Alert.alert('Request Sent', `Request sent to the host. Chat at ₹${chatRate}/min once accepted. Host earns ${chatBeans} beans/min.`);
       }
     } catch (e) {
       if (isInsufficientBalanceError(e)) {
         const data = e.data as { wallet_balance?: number };
         Alert.alert(
           'Recharge Required',
-          `Please recharge your wallet first for live talk.\n\nRate: ₹${LIVE_TALK_RATE_PER_MIN}/min\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
+          `Please recharge your wallet first for live chat.\n\nRate: ₹${hostRates.chatRatePerMin}/min\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
           [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Add Money', onPress: () => router.push('/profile/wallet' as any) },
@@ -245,20 +267,20 @@ export default function WatchScreen() {
     } finally {
       setRequestingTalk(false);
     }
-  }, [token, sessionId, requestingTalk, router, startTalkBillingLoop]);
+  }, [token, sessionId, requestingTalk, router, startTalkBillingLoop, streamData, hostRates]);
 
   const promptTalkRequest = useCallback(() => {
     if (talkPromptShownRef.current || canChat || talkStatus === 'pending') return;
     talkPromptShownRef.current = true;
     Alert.alert(
       'Chat with the host?',
-      `You need to send a request to chat with this live host.\n\nRate: ₹${LIVE_TALK_RATE_PER_MIN}/min (from wallet)\nChat opens once the host accepts.`,
+      `Send a request to chat with this live host.\n\n₹${hostRates.chatRatePerMin}/min from wallet\nHost earns ${hostRates.chatBeansPerMin} beans/min\nChat opens once accepted.`,
       [
         { text: 'Watch Only', style: 'cancel' },
         { text: 'Send Request', onPress: () => void sendTalkRequest() },
       ],
     );
-  }, [canChat, talkStatus, sendTalkRequest]);
+  }, [canChat, talkStatus, sendTalkRequest, hostRates]);
 
   // Cleanup
   useEffect(() => {
@@ -331,20 +353,20 @@ export default function WatchScreen() {
     }
   }, [loading, streamData, token, sessionId, refreshTalkStatus]);
 
-  // Check follow status
+  // Check follow status with host
   useEffect(() => {
     if (!streamData?.hostId || !token) return;
-    checkFollowStatus();
-  }, [streamData?.hostId]);
+    void checkFollowStatus();
+  }, [streamData?.hostId, token]);
 
   const checkFollowStatus = async () => {
     try {
-      const data = await apiGet<{ following?: { id: string }[] }>(
-        `/api/user/following/${user?.id}`,
-        token,
-      );
-      const ids = (data.following || []).map((f) => f.id);
-      setIsFollowing(ids.includes(streamData?.hostId));
+      const data = await apiGet<{
+        isFollowing?: boolean;
+        isRequested?: boolean;
+      }>(`/api/user/interaction?userId=${streamData?.hostId}`, token);
+      setIsFollowing(!!data.isFollowing);
+      setIsRequested(!!data.isRequested);
     } catch { }
   };
 
@@ -419,13 +441,18 @@ export default function WatchScreen() {
         action?: string;
         isFollowing?: boolean;
         isRequested?: boolean;
+        followers_count?: number;
       }>(
         '/api/user/follow',
         { userId: streamData.hostId },
         token,
       );
-      setIsFollowing(res.isFollowing ?? (res.action === 'followed' || res.action === 'accepted'));
-      setIsRequested(res.isRequested ?? res.action === 'requested');
+      const state = parseFollowResponse(res);
+      setIsFollowing(state.isFollowing);
+      setIsRequested(state.isRequested);
+      if (res.followers_count != null) setHostFollowers(res.followers_count);
+      else if (res.action === 'followed') setHostFollowers((c) => c + 1);
+      else if (res.action === 'unfollowed') setHostFollowers((c) => Math.max(0, c - 1));
     } catch { }
     setFollowLoading(false);
   }, [streamData?.hostId, followLoading, token]);
@@ -479,6 +506,27 @@ export default function WatchScreen() {
 
   const hostInitial = (streamData?.hostUsername || 'H').charAt(0).toUpperCase();
   const hostAvatar = streamData?.hostAvatar || streamData?.host_avatar;
+  const isViewer = streamData?.hostId !== user?.id;
+
+  const handleVoiceCall = () => {
+    if (!streamData?.hostId) return;
+    Alert.alert(
+      'Voice Call',
+      `Call ${streamData.hostUsername} while they are live?\n\n₹${hostRates.voiceRatePerMin}/min from wallet\nHost earns ${hostRates.voiceBeansPerMin} beans/min`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Call',
+          onPress: () => startCall(streamData.hostId, streamData.hostUsername || 'Host', hostAvatar),
+        },
+      ],
+    );
+  };
+
+  const handleChatRequest = () => {
+    if (canChat || talkStatus === 'pending') return;
+    void sendTalkRequest();
+  };
 
   return (
     <View style={s.container}>
@@ -584,26 +632,44 @@ export default function WatchScreen() {
         </Animated.View>
       </SafeAreaView>
 
-      {/* Talk request / billing banner */}
-      {streamData?.hostId !== user?.id && (
-        <View style={s.talkBanner}>
-          {talkStatus === 'active' ? (
-            <Text style={s.talkBannerText}>
-              Live chat active · ₹{talkCharged || LIVE_TALK_RATE_PER_MIN} charged · {talkMinutes} min
-              {walletBalance != null ? ` · Bal ₹${walletBalance}` : ''}
+      {/* Side voice + chat actions with per-host pricing */}
+      {isViewer && (
+        <View style={s.sideActions}>
+          <TouchableOpacity style={s.sideBtn} onPress={handleVoiceCall} activeOpacity={0.8}>
+            <View style={[s.sideBtnCircle, s.voiceBtnCircle]}>
+              <Ionicons name="call" size={20} color="#4CD964" />
+            </View>
+            <Text style={s.sideBtnLabel}>Voice</Text>
+            <Text style={s.sideBtnPrice}>₹{hostRates.voiceRatePerMin}/min</Text>
+            <Text style={s.sideBtnBeans}>{hostRates.voiceBeansPerMin} beans</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={s.sideBtn}
+            onPress={handleChatRequest}
+            disabled={requestingTalk || talkStatus === 'pending' || canChat}
+            activeOpacity={0.8}
+          >
+            <View style={[s.sideBtnCircle, talkStatus === 'active' ? s.chatActiveCircle : s.chatBtnCircle]}>
+              <Ionicons name="chatbubbles" size={20} color={talkStatus === 'active' ? '#FFD700' : '#00BFFF'} />
+            </View>
+            <Text style={s.sideBtnLabel}>
+              {talkStatus === 'active' ? 'Chatting' : talkStatus === 'pending' ? 'Pending' : 'Chat'}
             </Text>
-          ) : talkStatus === 'pending' ? (
-            <Text style={s.talkBannerText}>Request sent — waiting for host to accept...</Text>
-          ) : (
-            <TouchableOpacity onPress={() => void sendTalkRequest()} disabled={requestingTalk} activeOpacity={0.85}>
-              <LinearGradient colors={['#FFD700', '#FF9500']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.talkRequestBtn}>
-                <Ionicons name="chatbubbles" size={16} color="#FFF" />
-                <Text style={s.talkRequestText}>
-                  {requestingTalk ? 'Sending...' : `Chat with host · ₹${LIVE_TALK_RATE_PER_MIN}/min`}
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          )}
+            <Text style={s.sideBtnPrice}>₹{hostRates.chatRatePerMin}/min</Text>
+            <Text style={s.sideBtnBeans}>{hostRates.chatBeansPerMin} beans</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Talk billing status */}
+      {isViewer && (talkStatus === 'active' || talkStatus === 'pending') && (
+        <View style={s.talkBanner}>
+          <Text style={s.talkBannerText}>
+            {talkStatus === 'active'
+              ? `Live chat · ₹${talkCharged || hostRates.chatRatePerMin} charged · ${talkMinutes} min${walletBalance != null ? ` · Bal ₹${walletBalance}` : ''}`
+              : 'Request sent — waiting for host to accept...'}
+          </Text>
         </View>
       )}
 
@@ -617,7 +683,7 @@ export default function WatchScreen() {
           isHost={false}
           hostUserId={streamData?.hostId}
           canChat={canChat}
-          talkRatePerMin={LIVE_TALK_RATE_PER_MIN}
+          talkRatePerMin={hostRates.chatRatePerMin}
           onStickerPress={() => setShowStickers(true)}
         />
       )}
@@ -716,4 +782,30 @@ const s = StyleSheet.create({
     borderRadius: 22,
   },
   talkRequestText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
+
+  sideActions: {
+    position: 'absolute',
+    right: 12,
+    top: '32%',
+    zIndex: 25,
+    gap: 16,
+    alignItems: 'center',
+  },
+  sideBtn: { alignItems: 'center', gap: 2, maxWidth: 72 },
+  sideBtnCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  voiceBtnCircle: { borderColor: 'rgba(76,217,100,0.35)', backgroundColor: 'rgba(76,217,100,0.15)' },
+  chatBtnCircle: { borderColor: 'rgba(0,191,255,0.35)', backgroundColor: 'rgba(0,191,255,0.12)' },
+  chatActiveCircle: { borderColor: 'rgba(255,215,0,0.45)', backgroundColor: 'rgba(255,215,0,0.18)' },
+  sideBtnLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 10, fontWeight: '700' },
+  sideBtnPrice: { color: '#FFD700', fontSize: 9, fontWeight: '800' },
+  sideBtnBeans: { color: 'rgba(255,149,0,0.9)', fontSize: 8, fontWeight: '600' },
 });

@@ -12,6 +12,7 @@ import {
   Modal,
   Platform,
   Share,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -26,6 +27,8 @@ import {
   DEFAULT_SETTINGS,
 } from '../../lib/appSettings';
 import { APP_VERSION, getBuildLabel } from '../../lib/buildInfo';
+import { inrToBeans } from '../../lib/diamondPackages';
+import { MIN_RATE_INR, MAX_RATE_INR } from '../../lib/userRates';
 const SUPPORT_EMAIL = 'support@crimzo.app';
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.livestreamhub';
 
@@ -133,6 +136,10 @@ export default function SettingsScreen() {
   const [aboutVisible, setAboutVisible] = useState(false);
   const [legalType, setLegalType] = useState<LegalType>(null);
   const [saving, setSaving] = useState(false);
+  const [voiceRate, setVoiceRate] = useState('1');
+  const [chatRate, setChatRate] = useState('1');
+  const [ratesModalVisible, setRatesModalVisible] = useState(false);
+  const [ratesSaving, setRatesSaving] = useState(false);
 
   const refreshCacheSize = useCallback(async () => {
     const bytes = await estimateCacheSize();
@@ -151,6 +158,8 @@ export default function SettingsScreen() {
             profile?: {
               language?: string;
               push_notifications_enabled?: boolean;
+              voiceRatePerMin?: number;
+              chatRatePerMin?: number;
             };
           }>('/api/user/profile/full', token);
           if (res.success && res.profile) {
@@ -163,6 +172,12 @@ export default function SettingsScreen() {
             };
             setSettings(merged);
             await saveAppSettings(merged);
+            if (res.profile.voiceRatePerMin != null) {
+              setVoiceRate(String(res.profile.voiceRatePerMin));
+            }
+            if (res.profile.chatRatePerMin != null) {
+              setChatRate(String(res.profile.chatRatePerMin));
+            }
           }
         } catch {
           // use local settings
@@ -275,6 +290,41 @@ export default function SettingsScreen() {
     }
   };
 
+  const saveCreatorRates = async () => {
+    if (!token) return;
+    const voice = Number(voiceRate);
+    const chat = Number(chatRate);
+    if (!Number.isFinite(voice) || voice < MIN_RATE_INR || voice > MAX_RATE_INR) {
+      Alert.alert('Invalid Rate', `Voice rate must be between ₹${MIN_RATE_INR} and ₹${MAX_RATE_INR}/min`);
+      return;
+    }
+    if (!Number.isFinite(chat) || chat < MIN_RATE_INR || chat > MAX_RATE_INR) {
+      Alert.alert('Invalid Rate', `Chat rate must be between ₹${MIN_RATE_INR} and ₹${MAX_RATE_INR}/min`);
+      return;
+    }
+    setRatesSaving(true);
+    try {
+      await apiFetch('/api/user/profile', {
+        method: 'PUT',
+        token,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          voice_rate_per_min_inr: voice,
+          chat_rate_per_min_inr: chat,
+        }),
+      });
+      setRatesModalVisible(false);
+      Alert.alert(
+        'Rates Updated',
+        `Voice: ₹${voice}/min (${inrToBeans(voice)} beans/min)\nChat: ₹${chat}/min (${inrToBeans(chat)} beans/min)`,
+      );
+    } catch {
+      Alert.alert('Error', 'Could not save your rates. Try again.');
+    } finally {
+      setRatesSaving(false);
+    }
+  };
+
   const contactSupport = () => {
     Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=Crimzo%20Support`).catch(() => {
       Alert.alert('Customer Service', `Email us at ${SUPPORT_EMAIL}`);
@@ -295,6 +345,23 @@ export default function SettingsScreen() {
       hideChevron?: boolean;
     }[];
   }[] = [
+    {
+      title: 'Creator Rates',
+      items: [
+        {
+          icon: 'call-outline',
+          label: 'Voice Call Rate',
+          value: `₹${voiceRate}/min · ${inrToBeans(Number(voiceRate) || 1)} beans`,
+          onPress: () => setRatesModalVisible(true),
+        },
+        {
+          icon: 'chatbubbles-outline',
+          label: 'Live Chat Rate',
+          value: `₹${chatRate}/min · ${inrToBeans(Number(chatRate) || 1)} beans`,
+          onPress: () => setRatesModalVisible(true),
+        },
+      ],
+    },
     {
       title: 'Account',
       items: [
@@ -449,6 +516,53 @@ export default function SettingsScreen() {
 
         <Text style={styles.footerText}>Crimzo © 2026. All rights reserved.</Text>
       </ScrollView>
+
+      {/* ── Creator rates ── */}
+      <Modal visible={ratesModalVisible} animationType="slide" onRequestClose={() => setRatesModalVisible(false)}>
+        <View style={[styles.ratesContainer, { paddingTop: insets.top }]}>
+          <View style={styles.ratesHeader}>
+            <TouchableOpacity onPress={() => setRatesModalVisible(false)} style={styles.backBtn}>
+              <Ionicons name="close" size={24} color="#1A1A1A" />
+            </TouchableOpacity>
+            <Text style={styles.ratesTitle}>Set Your Rates</Text>
+            <View style={{ width: 40 }} />
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+            <Text style={styles.ratesHint}>
+              Viewers pay from wallet (₹/min). You earn beans — e.g. 2 min at ₹1/min = ₹2 deducted from them, {inrToBeans(2)} beans added to you.
+            </Text>
+
+            <Text style={styles.ratesLabel}>Voice call — ₹/min</Text>
+            <TextInput
+              style={styles.ratesInput}
+              value={voiceRate}
+              onChangeText={setVoiceRate}
+              keyboardType="decimal-pad"
+              placeholder={`${MIN_RATE_INR} - ${MAX_RATE_INR}`}
+            />
+            <Text style={styles.ratesBeans}>You earn {inrToBeans(Number(voiceRate) || 0)} beans/min</Text>
+
+            <Text style={[styles.ratesLabel, { marginTop: 20 }]}>Live chat — ₹/min</Text>
+            <TextInput
+              style={styles.ratesInput}
+              value={chatRate}
+              onChangeText={setChatRate}
+              keyboardType="decimal-pad"
+              placeholder={`${MIN_RATE_INR} - ${MAX_RATE_INR}`}
+            />
+            <Text style={styles.ratesBeans}>You earn {inrToBeans(Number(chatRate) || 0)} beans/min</Text>
+
+            <TouchableOpacity
+              style={[styles.ratesSaveBtn, ratesSaving && { opacity: 0.6 }]}
+              onPress={() => void saveCreatorRates()}
+              disabled={ratesSaving}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.ratesSaveText}>{ratesSaving ? 'Saving…' : 'Save Rates'}</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </Modal>
 
       {/* ── About ── */}
       <Modal visible={aboutVisible} animationType="slide" onRequestClose={() => setAboutVisible(false)}>
@@ -696,4 +810,25 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5', borderRadius: 12,
   },
   legalWebText: { color: '#007AFF', fontSize: 14, fontWeight: '500' },
+
+  ratesContainer: { flex: 1, backgroundColor: '#F2F2F7' },
+  ratesHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingBottom: 12, backgroundColor: '#FFF',
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#C6C6C8',
+  },
+  ratesTitle: { color: '#1A1A1A', fontSize: 17, fontWeight: '600' },
+  ratesHint: { color: '#666', fontSize: 14, lineHeight: 21, marginBottom: 20 },
+  ratesLabel: { color: '#1A1A1A', fontSize: 15, fontWeight: '600', marginBottom: 8 },
+  ratesInput: {
+    backgroundColor: '#FFF', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14,
+    fontSize: 18, fontWeight: '600', color: '#1A1A1A',
+    borderWidth: 1, borderColor: '#E5E5EA',
+  },
+  ratesBeans: { color: '#FF9500', fontSize: 13, fontWeight: '600', marginTop: 6 },
+  ratesSaveBtn: {
+    marginTop: 28, backgroundColor: '#FF2D55', borderRadius: 14,
+    paddingVertical: 16, alignItems: 'center',
+  },
+  ratesSaveText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
 });

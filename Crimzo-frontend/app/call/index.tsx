@@ -23,6 +23,7 @@ import {
   isBalanceExhaustedError,
   VIDEO_CALL_RATE_PER_MIN,
 } from '../../lib/videoCallBilling';
+import { CALL_RING_TIMEOUT_MS, callStatusLabel, type CallPhase } from '../../lib/videoCallUi';
 import { toAgoraUid } from '../../lib/agoraUid';
 import {
   createAgoraRtcEngine,
@@ -40,21 +41,27 @@ export default function VideoCallScreen() {
     role?: string;
     peerId?: string;
     peerName?: string;
+    ratePerMin?: string;
+    beansPerMin?: string;
   }>();
 
   const channelName = params.channel || '';
   const peerName = params.peerName || 'User';
   const peerId = params.peerId || '';
   const role = params.role || 'caller';
+  const ratePerMin = Number(params.ratePerMin) || VIDEO_CALL_RATE_PER_MIN;
+  const beansPerMin = params.beansPerMin ? Number(params.beansPerMin) : undefined;
 
   const engineRef = useRef<IRtcEngine | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const billingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const ringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const billingStartedRef = useRef(false);
   const elapsedSecRef = useRef(0);
+  const callEndedRef = useRef(false);
   const [loading, setLoading] = useState(true);
-  const [connected, setConnected] = useState(false);
+  const [callPhase, setCallPhase] = useState<CallPhase>(role === 'caller' ? 'ringing' : 'connecting');
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
@@ -64,6 +71,14 @@ export default function VideoCallScreen() {
   const [totalCharged, setTotalCharged] = useState(0);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const isCaller = role === 'caller';
+  const connected = callPhase === 'connected';
+
+  const clearRingTimeout = useCallback(() => {
+    if (ringTimeoutRef.current) {
+      clearTimeout(ringTimeoutRef.current);
+      ringTimeoutRef.current = null;
+    }
+  }, []);
 
   const clearBillingTimer = useCallback(() => {
     if (billingTimerRef.current) {
@@ -85,14 +100,17 @@ export default function VideoCallScreen() {
     sessionIdRef.current = null;
   }, [token, isCaller, channelName]);
 
-  const endCall = useCallback((reason?: 'balance_exhausted') => {
+  const endCall = useCallback((reason?: 'balance_exhausted' | 'no_answer' | 'declined') => {
+    if (callEndedRef.current) return;
+    callEndedRef.current = true;
+    clearRingTimeout();
     clearBillingTimer();
     void finalizeBilling();
-    if (socketRef.current && peerId) {
+    if (socketRef.current && peerId && reason !== 'no_answer' && reason !== 'declined') {
       socketRef.current.emit('video_call_end', {
         otherUserId: peerId,
         channelName,
-        reason,
+        reason: reason === 'balance_exhausted' ? 'balance_exhausted' : undefined,
       });
     }
     if (engineRef.current) {
@@ -101,8 +119,9 @@ export default function VideoCallScreen() {
       engineRef.current = null;
     }
     socketRef.current?.disconnect();
+    setCallPhase('ended');
     router.back();
-  }, [peerId, channelName, router, clearBillingTimer, finalizeBilling]);
+  }, [peerId, channelName, router, clearRingTimeout, clearBillingTimer, finalizeBilling]);
 
   const startBillingLoop = useCallback(() => {
     if (!token || !isCaller || billingTimerRef.current) return;
@@ -165,14 +184,105 @@ export default function VideoCallScreen() {
       if (e instanceof ApiError && (e.data as { code?: string })?.code === 'INSUFFICIENT_BALANCE') {
         Alert.alert(
           'Recharge Required',
-          e.message || `Video call costs ₹${VIDEO_CALL_RATE_PER_MIN}/min.`,
-          [{ text: 'OK', onPress: () => router.back() }],
+          e.message || `Video call costs ₹${ratePerMin}/min.`,
+          [{ text: 'OK', onPress: () => endCall() }],
         );
         return;
       }
       Alert.alert('Billing Error', e instanceof ApiError ? e.message : 'Could not start call billing');
     }
-  }, [token, channelName, peerId, role, startBillingLoop, updateUser, router]);
+  }, [token, channelName, peerId, role, startBillingLoop, updateUser, ratePerMin, endCall]);
+
+  const initAgora = useCallback(async () => {
+    if (!channelName || !token || !user?.id || engineRef.current) return;
+
+    try {
+      if (Platform.OS === 'android') {
+        await PermissionsAndroid.requestMultiple([
+          PermissionsAndroid.PERMISSIONS.CAMERA,
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+        ]);
+      }
+
+      const creds = await apiPost<{
+        success?: boolean;
+        token?: string;
+        appId?: string;
+        uid?: number;
+        error?: string;
+      }>('/api/agora/call-token', { channelName, role, peerId }, token);
+
+      if (!creds.success || !creds.token || !creds.appId) {
+        throw new Error(creds.error || 'Could not get call credentials');
+      }
+
+      const uid = creds.uid || toAgoraUid(user.id);
+      setLocalUid(uid);
+
+      if (!isAgoraNativeLinked) {
+        setLoading(false);
+        setCallPhase('connected');
+        Alert.alert(
+          'Dev Build Required',
+          'Real video needs a custom dev build (react-native-agora). Signaling works — install dev build for camera.',
+        );
+        return;
+      }
+
+      const engine = createAgoraRtcEngine();
+      engine.initialize({
+        appId: creds.appId,
+        channelProfile: ChannelProfileType.ChannelProfileCommunication,
+      });
+      engine.enableVideo();
+      engine.enableAudio();
+      engine.startPreview();
+
+      engine.registerEventHandler({
+        onJoinChannelSuccess: () => {
+          setCallPhase('connected');
+          setLoading(false);
+        },
+        onUserJoined: (_conn: unknown, remoteUserUid: number) => {
+          setRemoteUid(remoteUserUid);
+          if (isCaller) void initCallBilling();
+        },
+        onUserOffline: () => {
+          setRemoteUid(null);
+          Alert.alert('Call Ended', `${peerName} left the call`, [
+            { text: 'OK', onPress: () => endCall() },
+          ]);
+        },
+        onError: (err: unknown) => console.error('[VideoCall] Agora error:', err),
+      });
+
+      engine.joinChannel(creds.token, channelName, uid, {
+        publishMicrophoneTrack: true,
+        publishCameraTrack: true,
+        autoSubscribeAudio: true,
+        autoSubscribeVideo: true,
+      });
+
+      engineRef.current = engine;
+    } catch (e: unknown) {
+      const msg = e instanceof ApiError
+        ? e.message
+        : (e instanceof Error ? e.message : 'Call failed');
+      const code = e instanceof ApiError ? (e.data as { code?: string })?.code : undefined;
+      if (code === 'INSUFFICIENT_BALANCE') {
+        Alert.alert(
+          'Recharge Required',
+          msg,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => endCall() },
+            { text: 'Add Money', onPress: () => router.replace('/profile/wallet' as any) },
+          ],
+        );
+        return;
+      }
+      Alert.alert('Call Failed', msg, [{ text: 'OK', onPress: () => endCall() }]);
+    }
+  }, [channelName, token, user?.id, peerName, role, peerId, isCaller, initCallBilling, endCall, router]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -187,113 +297,35 @@ export default function VideoCallScreen() {
       return;
     }
 
-    let cancelled = false;
+    const socket = io(API_URL, { transports: ['websocket'], auth: { token } });
+    socket.on('connect', () => socket.emit('join_user', { userId: user.id }));
+    socket.on('video_call_ended', () => endCall());
+    socket.on('video_call_rejected', () => {
+      clearRingTimeout();
+      Alert.alert('Call Declined', 'The other person declined your call.', [
+        { text: 'OK', onPress: () => endCall('declined') },
+      ]);
+    });
+    socket.on('video_call_accepted', (data?: { channelName?: string }) => {
+      if (data?.channelName && data.channelName !== channelName) return;
+      clearRingTimeout();
+      setCallPhase('connecting');
+      void initAgora();
+    });
+    socketRef.current = socket;
 
-    const init = async () => {
-      try {
-        if (Platform.OS === 'android') {
-          await PermissionsAndroid.requestMultiple([
-            PermissionsAndroid.PERMISSIONS.CAMERA,
-            PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-          ]);
-        }
-
-        const creds = await apiPost<{
-          success?: boolean;
-          token?: string;
-          appId?: string;
-          uid?: number;
-          error?: string;
-        }>('/api/agora/call-token', { channelName, role, peerId }, token);
-
-        if (!creds.success || !creds.token || !creds.appId) {
-          throw new Error(creds.error || 'Could not get call credentials');
-        }
-
-        const uid = creds.uid || toAgoraUid(user.id);
-        setLocalUid(uid);
-
-        const socket = io(API_URL, { transports: ['websocket'], auth: { token } });
-        socket.on('connect', () => socket.emit('join_user', { userId: user.id }));
-        socket.on('video_call_ended', () => endCall());
-        socket.on('video_call_rejected', () => {
-          Alert.alert('Call Declined', 'The other person declined your call.', [
-            { text: 'OK', onPress: () => router.back() },
-          ]);
-        });
-        socketRef.current = socket;
-
-        if (!isAgoraNativeLinked) {
-          setLoading(false);
-          setConnected(true);
-          Alert.alert(
-            'Dev Build Required',
-            'Real video needs a custom dev build (react-native-agora). Signaling works — install dev build for camera.',
-          );
-          return;
-        }
-
-        const engine = createAgoraRtcEngine();
-        engine.initialize({
-          appId: creds.appId,
-          channelProfile: ChannelProfileType.ChannelProfileCommunication,
-        });
-        engine.enableVideo();
-        engine.enableAudio();
-        engine.startPreview();
-
-        engine.registerEventHandler({
-          onJoinChannelSuccess: () => {
-            if (!cancelled) {
-              setConnected(true);
-              setLoading(false);
-            }
-          },
-          onUserJoined: (_conn: unknown, remoteUserUid: number) => {
-            setRemoteUid(remoteUserUid);
-            if (isCaller) void initCallBilling();
-          },
-          onUserOffline: () => {
-            setRemoteUid(null);
-            Alert.alert('Call Ended', `${peerName} left the call`, [
-              { text: 'OK', onPress: endCall },
-            ]);
-          },
-          onError: (err: unknown) => console.error('[VideoCall] Agora error:', err),
-        });
-
-        engine.joinChannel(creds.token, channelName, uid, {
-          publishMicrophoneTrack: true,
-          publishCameraTrack: true,
-          autoSubscribeAudio: true,
-          autoSubscribeVideo: true,
-        });
-
-        engineRef.current = engine;
-      } catch (e: unknown) {
-        const msg = e instanceof ApiError
-          ? e.message
-          : (e instanceof Error ? e.message : 'Call failed');
-        const code = e instanceof ApiError ? (e.data as { code?: string })?.code : undefined;
-        if (code === 'INSUFFICIENT_BALANCE') {
-          Alert.alert(
-            'Recharge Required',
-            msg,
-            [
-              { text: 'Cancel', style: 'cancel', onPress: () => router.back() },
-              { text: 'Add Money', onPress: () => router.replace('/profile/wallet' as any) },
-            ],
-          );
-          return;
-        }
-        Alert.alert('Call Failed', msg, [{ text: 'OK', onPress: () => router.back() }]);
-      }
-    };
-
-    init();
+    if (isCaller) {
+      ringTimeoutRef.current = setTimeout(() => {
+        Alert.alert('No Answer', `${peerName} did not answer.`, [
+          { text: 'OK', onPress: () => endCall('no_answer') },
+        ]);
+      }, CALL_RING_TIMEOUT_MS);
+    } else {
+      void initAgora();
+    }
 
     return () => {
-      cancelled = true;
+      clearRingTimeout();
       clearBillingTimer();
       void finalizeBilling();
       if (engineRef.current) {
@@ -301,9 +333,21 @@ export default function VideoCallScreen() {
         engineRef.current.release();
         engineRef.current = null;
       }
-      socketRef.current?.disconnect();
+      socket.disconnect();
     };
-  }, [channelName, token, user?.id, peerName, role, endCall, router, initCallBilling, clearBillingTimer, finalizeBilling]);
+  }, [
+    channelName,
+    token,
+    user?.id,
+    peerName,
+    isCaller,
+    endCall,
+    router,
+    initAgora,
+    clearRingTimeout,
+    clearBillingTimer,
+    finalizeBilling,
+  ]);
 
   useEffect(() => {
     if (!connected) return;
@@ -336,17 +380,30 @@ export default function VideoCallScreen() {
 
   const switchCam = () => engineRef.current?.switchCamera();
 
+  const statusText = connected
+    ? `Live · ${formatElapsed(elapsedSec)}`
+    : callStatusLabel(callPhase, peerName);
+
+  const showRingingUI = callPhase === 'ringing' || (callPhase === 'connecting' && loading);
+
   return (
     <View style={s.root}>
       <StatusBar barStyle="light-content" />
       <LinearGradient colors={['#0a0a12', '#1a0a18', '#0a0a12']} style={StyleSheet.absoluteFill} />
 
-      {loading ? (
+      {showRingingUI ? (
         <View style={s.center}>
-          <ActivityIndicator size="large" color="#FF2D55" />
-          <Text style={s.statusText}>
-            {role === 'caller' ? `Calling ${peerName}...` : 'Connecting...'}
-          </Text>
+          <View style={s.ringPulse}>
+            <Ionicons name="videocam" size={48} color="#4CD964" />
+          </View>
+          <Text style={s.peerName}>{peerName}</Text>
+          <Text style={s.statusText}>{statusText}</Text>
+          {isCaller && (
+            <Text style={s.rateHint}>
+              ₹{ratePerMin}/min{beansPerMin ? ` · they earn ${beansPerMin} beans/min` : ''}
+            </Text>
+          )}
+          <ActivityIndicator size="large" color="#FF2D55" style={{ marginTop: 24 }} />
         </View>
       ) : (
         <>
@@ -361,7 +418,7 @@ export default function VideoCallScreen() {
                 <Ionicons name="person-circle" size={80} color="rgba(255,255,255,0.3)" />
                 <Text style={s.peerName}>{peerName}</Text>
                 <Text style={s.waiting}>
-                  {connected ? 'Waiting for video...' : 'Connecting...'}
+                  {connected ? 'Waiting for video...' : statusText}
                 </Text>
               </View>
             )}
@@ -375,11 +432,11 @@ export default function VideoCallScreen() {
 
           <View style={s.topBar}>
             <Text style={s.callTitle}>{peerName}</Text>
-            <Text style={s.callSub}>{connected ? `Live · ${formatElapsed(elapsedSec)}` : 'Connecting...'}</Text>
+            <Text style={s.callSub}>{statusText}</Text>
             {isCaller && connected && (
               <View style={s.billingBadge}>
                 <Text style={s.billingText}>
-                  ₹{totalCharged || VIDEO_CALL_RATE_PER_MIN} charged · ₹{VIDEO_CALL_RATE_PER_MIN}/min
+                  ₹{totalCharged || ratePerMin} charged · ₹{ratePerMin}/min
                 </Text>
                 {walletBalance != null && (
                   <Text style={s.balanceText}>Balance: ₹{walletBalance.toLocaleString('en-IN')}</Text>
@@ -390,23 +447,29 @@ export default function VideoCallScreen() {
               </View>
             )}
             {!isCaller && connected && (
-              <Text style={s.freeCallText}>Incoming call — no charge</Text>
+              <Text style={s.freeCallText}>
+                Incoming call{beansPerMin ? ` · earn ${beansPerMin} beans/min` : ' — no charge'}
+              </Text>
             )}
           </View>
         </>
       )}
 
       <View style={s.controls}>
-        <TouchableOpacity style={s.ctrlBtn} onPress={toggleMic}>
-          <Ionicons name={micOn ? 'mic' : 'mic-off'} size={24} color="#FFF" />
-        </TouchableOpacity>
-        <TouchableOpacity style={s.ctrlBtn} onPress={toggleCam}>
-          <Ionicons name={camOn ? 'videocam' : 'videocam-off'} size={24} color="#FFF" />
-        </TouchableOpacity>
-        <TouchableOpacity style={s.ctrlBtn} onPress={switchCam}>
-          <Ionicons name="camera-reverse" size={24} color="#FFF" />
-        </TouchableOpacity>
-        <TouchableOpacity style={s.endBtn} onPress={endCall}>
+        {!showRingingUI && (
+          <>
+            <TouchableOpacity style={s.ctrlBtn} onPress={toggleMic}>
+              <Ionicons name={micOn ? 'mic' : 'mic-off'} size={24} color="#FFF" />
+            </TouchableOpacity>
+            <TouchableOpacity style={s.ctrlBtn} onPress={toggleCam}>
+              <Ionicons name={camOn ? 'videocam' : 'videocam-off'} size={24} color="#FFF" />
+            </TouchableOpacity>
+            <TouchableOpacity style={s.ctrlBtn} onPress={switchCam}>
+              <Ionicons name="camera-reverse" size={24} color="#FFF" />
+            </TouchableOpacity>
+          </>
+        )}
+        <TouchableOpacity style={s.endBtn} onPress={() => endCall()}>
           <Ionicons name="call" size={28} color="#FFF" style={{ transform: [{ rotate: '135deg' }] }} />
         </TouchableOpacity>
       </View>
@@ -416,8 +479,15 @@ export default function VideoCallScreen() {
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 32 },
+  ringPulse: {
+    width: 100, height: 100, borderRadius: 50,
+    backgroundColor: 'rgba(76,217,100,0.15)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: 'rgba(76,217,100,0.35)',
+  },
   statusText: { color: 'rgba(255,255,255,0.7)', fontSize: 16, fontWeight: '600' },
+  rateHint: { color: 'rgba(255,215,0,0.8)', fontSize: 13, fontWeight: '600', marginTop: 4 },
   remote: { flex: 1, backgroundColor: '#111' },
   remoteVideo: { flex: 1 },
   remotePlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },

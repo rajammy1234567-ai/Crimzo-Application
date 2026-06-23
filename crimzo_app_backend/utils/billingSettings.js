@@ -79,24 +79,31 @@ async function isLiveTalkBillingEnabled() {
   return s.liveTalkBillingEnabled;
 }
 
-function buildVideoCallBalancePayload(balance, settings) {
+function buildVideoCallBalancePayload(balance, settings, rateOverride) {
   const enabled = settings.videoCallBillingEnabled;
-  const rate = enabled ? settings.videoCallRatePerMin : 0;
+  const defaultRate = settings.videoCallRatePerMin;
+  const rate = enabled
+    ? Math.max(0, Number(rateOverride != null ? rateOverride : defaultRate) || 0)
+    : 0;
   const bal = balance || 0;
   return {
     billingEnabled: enabled,
     ratePerMin: rate,
     wallet_balance: bal,
     canCall: !enabled || bal >= rate,
+    canTalk: !enabled || bal >= rate,
     minRequired: rate,
     maxMinutes: rate > 0 ? Math.floor(bal / rate) : 9999,
     shortfall: rate > bal ? rate - bal : 0,
   };
 }
 
-function buildLiveTalkBalancePayload(balance, settings) {
+function buildLiveTalkBalancePayload(balance, settings, rateOverride) {
   const enabled = settings.liveTalkBillingEnabled;
-  const rate = enabled ? settings.liveTalkRatePerMin : 0;
+  const defaultRate = settings.liveTalkRatePerMin;
+  const rate = enabled
+    ? Math.max(0, Number(rateOverride != null ? rateOverride : defaultRate) || 0)
+    : 0;
   const bal = balance || 0;
   return {
     billingEnabled: enabled,

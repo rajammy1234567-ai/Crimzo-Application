@@ -4,7 +4,29 @@ const GiftHistory = require('../models/GiftHistory');
 const mongoose = require('mongoose');
 const { transferDiamonds } = require('../utils/diamondTransfer');
 const { assertCanInteract } = require('../utils/followPermissions');
-const { emitBalanceUpdate } = require('../utils/socketEmitter');
+const { emitBalanceUpdate, emitNewMessage } = require('../utils/socketEmitter');
+
+function formatMessagePayload(populated) {
+  const senderRef = populated.sender_id;
+  const senderId = senderRef?._id || senderRef;
+  const receiverId = populated.receiver_id?._id || populated.receiver_id;
+  return {
+    id: populated._id?.toString() || populated.id,
+    sender_id: String(senderId),
+    receiver_id: String(receiverId),
+    content: populated.content,
+    sender_username: populated.sender_username || senderRef?.username || '',
+    sender_avatar: populated.sender_avatar || senderRef?.avatar || null,
+    message_type: populated.message_type || 'text',
+    gift_diamonds: populated.gift_diamonds || 0,
+    is_read: populated.is_read ?? false,
+    created_at: populated.created_at,
+  };
+}
+
+function broadcastMessage(_senderId, receiverId, payload) {
+  emitNewMessage(receiverId, payload);
+}
 const { CHAT_GIFT_PRESETS } = require('../config/walletConfig');
 
 // Get conversations list (simplified Mongo version)
@@ -145,6 +167,8 @@ exports.sendMessage = async (req, res) => {
       sender_avatar: populated.sender_id?.avatar
     };
 
+    broadcastMessage(senderId, receiverId, formatMessagePayload(newMsg));
+
     res.json({ success: true, message: newMsg });
   } catch (error) {
     console.error('Send message error:', error);
@@ -206,15 +230,19 @@ exports.sendDiamondGift = async (req, res) => {
       .populate('sender_id', 'username avatar')
       .lean();
 
+    const giftMsg = {
+      ...populated,
+      sender_username: populated.sender_id?.username,
+      sender_avatar: populated.sender_id?.avatar,
+      message_type: 'gift',
+      gift_diamonds: amount,
+    };
+
+    broadcastMessage(senderId, receiverId, formatMessagePayload(giftMsg));
+
     res.json({
       success: true,
-      message: {
-        ...populated,
-        sender_username: populated.sender_id?.username,
-        sender_avatar: populated.sender_id?.avatar,
-        message_type: 'gift',
-        gift_diamonds: amount,
-      },
+      message: giftMsg,
       senderDiamonds: transfer.senderDiamonds,
       receiverBeans: transfer.receiverBeans,
       beansEarned: transfer.beansEarned,

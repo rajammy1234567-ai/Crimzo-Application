@@ -70,10 +70,24 @@ function emitFollowUpdated(userId, counts = {}) {
   });
 }
 
+/** Tell a user their relationship with targetId changed (e.g. request accepted). */
+function emitFollowStatusChanged(userId, payload = {}) {
+  if (!_io || !userId) return;
+  _io.to(userRoom(userId)).emit('follow_status_changed', {
+    at: Date.now(),
+    ...payload,
+  });
+}
+
 function emitOnlineCountUpdate(count) {
   if (!_io) return;
   const safeCount = Math.max(0, Number(count) || 0);
   _io.emit('online_count_update', { count: safeCount, at: Date.now() });
+}
+
+function emitNewMessage(userId, message) {
+  if (!_io || !userId || !message) return;
+  _io.to(userRoom(userId)).emit('new_message', message);
 }
 
 module.exports = {
@@ -90,5 +104,7 @@ module.exports = {
   emitStickersUpdated,
   emitLiveStreamsUpdated,
   emitFollowUpdated,
+  emitFollowStatusChanged,
   emitOnlineCountUpdate,
+  emitNewMessage,
 };

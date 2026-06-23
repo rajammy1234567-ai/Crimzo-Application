@@ -5,6 +5,7 @@ import { useAuth } from './AuthContext';
 import { API_URL } from '../lib/apiClient';
 import { publish } from '../lib/realtimeSync';
 import { loadAppSettings, onAppSettingsChange, type AppSettings } from '../lib/appSettings';
+import { attachAppTimeTracker } from '../lib/appTimeTracker';
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const { user, token, updateUser, logout } = useAuth();
@@ -32,7 +33,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     const registerPresence = () => {
       socket.emit('join_user');
-      socket.emit('app_presence');
+      socket.emit('app_presence', { category: 'home' });
     };
 
     socket.on('connect', registerPresence);
@@ -78,6 +79,14 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       publish('follow_updated', data);
     });
 
+    socket.on('follow_status_changed', (data: {
+      userId?: string;
+      isFollowing?: boolean;
+      isRequested?: boolean;
+    }) => {
+      publish('follow_status_changed', data);
+    });
+
     socket.on('online_count_update', (data: { count?: number }) => {
       if (typeof data?.count === 'number') {
         publish('online_count_update', data.count);
@@ -99,15 +108,24 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
+    socket.on('new_message', (data: Record<string, unknown>) => {
+      if (data?.id && data?.sender_id && data?.receiver_id) {
+        publish('new_message', data);
+      }
+    });
+
     socketRef.current = socket;
+
+    const detachAppTime = attachAppTimeTracker(socket);
 
     const heartbeat = setInterval(() => {
       if (socket.connected) {
-        socket.emit('presence_heartbeat');
+        socket.emit('presence_heartbeat', { category: 'home', foreground: true });
       }
     }, 30 * 1000);
 
     return () => {
+      detachAppTime();
       clearInterval(heartbeat);
       socket.disconnect();
       socketRef.current = null;

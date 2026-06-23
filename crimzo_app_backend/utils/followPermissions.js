@@ -71,14 +71,16 @@ async function getInteractionPermission(viewerId, targetId) {
   ]);
   const isMutualFriend = isFollowing && followsYou;
 
-  let canInteract = isFollowing;
+  // Message & video call: either you follow them (accepted) or they follow you (accepted)
+  const canInteract = isFollowing || followsYou;
   let reason = null;
-  if (!isFollowing) {
-    reason = 'Follow this user and wait until they accept your follow request.';
+  if (!canInteract) {
+    reason = 'Follow each other to unlock message and video call.';
   }
 
   return {
     canInteract,
+    canVideoCall: canInteract,
     isFollowing,
     followsYou,
     isMutualFriend,

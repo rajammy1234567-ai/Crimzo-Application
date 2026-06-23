@@ -36,9 +36,8 @@ import { API_URL, apiGet, apiPost, ApiError } from '../../lib/apiClient';
 import {
   respondLiveTalk,
   getLiveTalkStatus,
-  LIVE_TALK_RATE_PER_MIN,
-  LIVE_TALK_BEANS_PER_MIN,
 } from '../../lib/liveTalkBilling';
+import { resolveRates } from '../../lib/userRates';
 
 const LIVE_START_TIMEOUT_MS = 10000;
 const LOADING_SAFETY_MS = 15000;
@@ -187,6 +186,7 @@ export default function BroadcastScreen() {
   }>>([]);
   const [hostChatBeansEarned, setHostChatBeansEarned] = useState(0);
   const [activeChatCount, setActiveChatCount] = useState(0);
+  const [myRates, setMyRates] = useState(() => resolveRates(1, 1));
   const handledTalkRequestIds = useRef<Set<string>>(new Set());
   const promptedTalkRequestIds = useRef<Set<string>>(new Set());
 
@@ -211,6 +211,14 @@ export default function BroadcastScreen() {
   useEffect(() => {
     if (token) {
       apiGet('/api/health', token, 5000).catch(() => {});
+      apiGet<{ profile?: { voiceRatePerMin?: number; chatRatePerMin?: number } }>(
+        '/api/user/profile/full',
+        token,
+      ).then((res) => {
+        if (res.profile) {
+          setMyRates(resolveRates(res.profile.voiceRatePerMin, res.profile.chatRatePerMin));
+        }
+      }).catch(() => {});
     }
   }, [token]);
 
@@ -253,11 +261,13 @@ export default function BroadcastScreen() {
     requesterName?: string;
     requesterAvatar?: string | null;
     ratePerMin?: number;
+    beansPerMin?: number;
   }) => {
     if (!data?.requestId || handledTalkRequestIds.current.has(data.requestId)) return;
     if (promptedTalkRequestIds.current.has(data.requestId)) return;
     promptedTalkRequestIds.current.add(data.requestId);
-    const rate = data.ratePerMin || LIVE_TALK_RATE_PER_MIN;
+    const rate = data.ratePerMin || myRates.chatRatePerMin;
+    const beans = data.beansPerMin || myRates.chatBeansPerMin;
     setPendingTalkRequests((prev) => {
       if (prev.some((r) => r.id === data.requestId)) return prev;
       return [...prev, {
@@ -268,7 +278,7 @@ export default function BroadcastScreen() {
     });
     Alert.alert(
       'Talk Request',
-      `${data.requesterName || 'A viewer'} wants to chat with you on live.\n\nViewer pays ₹${rate}/min from wallet.\nYou earn ${LIVE_TALK_BEANS_PER_MIN} beans/min.`,
+      `${data.requesterName || 'A viewer'} wants to chat with you on live.\n\nViewer pays ₹${rate}/min from wallet.\nYou earn ${beans} beans/min.`,
       [
         {
           text: 'Decline',
@@ -281,7 +291,7 @@ export default function BroadcastScreen() {
         },
       ],
     );
-  }, [handleTalkRequestAction]);
+  }, [handleTalkRequestAction, myRates]);
 
   useEffect(() => {
     if (!isLive || !sessionId || !token) return;
@@ -528,12 +538,24 @@ export default function BroadcastScreen() {
         engineRef.current = null;
       }
       setAgoraReady(false);
+      const code = e instanceof ApiError ? (e.data as { code?: string })?.code : undefined;
       const msg = e instanceof ApiError
         ? e.message
         : e instanceof Error
           ? e.message
           : 'Failed to start broadcast.';
-      Alert.alert('Go Live Failed', msg);
+      if (code === 'DAILY_TIME_REQUIRED') {
+        Alert.alert(
+          '1 Hour Required',
+          msg,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'View Progress', onPress: () => router.push('/profile/tasks' as any) },
+          ],
+        );
+      } else {
+        Alert.alert('Go Live Failed', msg);
+      }
       setLoading(false);
     }
   }, [user, token, initBroadcastMedia]);
@@ -691,7 +713,7 @@ export default function BroadcastScreen() {
             {pendingTalkRequests.map((req) => (
               <View key={req.id} style={st.talkRequestCard}>
                 <Text style={st.talkRequestText}>
-                  {req.requesterName || 'A viewer'} wants to chat · ₹{LIVE_TALK_RATE_PER_MIN}/min · you earn {LIVE_TALK_BEANS_PER_MIN} beans/min
+                  {req.requesterName || 'A viewer'} wants to chat · ₹{myRates.chatRatePerMin}/min · you earn {myRates.chatBeansPerMin} beans/min
                 </Text>
                 <View style={st.talkRequestActions}>
                   <TouchableOpacity
@@ -752,7 +774,7 @@ export default function BroadcastScreen() {
             isHost={true}
             hostUserId={user.id}
             canChat={true}
-            talkRatePerMin={LIVE_TALK_RATE_PER_MIN}
+            talkRatePerMin={myRates.chatRatePerMin}
             onStickerPress={noopPress}
           />
         )}

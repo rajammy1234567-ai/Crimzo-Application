@@ -24,6 +24,7 @@ const navSections = [
         items: [
             { to: '/billing', icon: IndianRupee, label: 'Billing & Rates', desc: 'Video call + live talk ₹/min' },
             { to: '/withdrawals', icon: Banknote, label: 'Withdrawals', desc: 'Manual UPI/bank payouts' },
+            { to: '/tasks', icon: ListChecks, label: 'My Tasks', desc: 'User tasks + rewards' },
         ]
     },
     {
@@ -44,6 +45,7 @@ const pageMeta: Record<string, { title: string; section: string }> = {
     '/stickers': { title: 'Stickers & Gifts', section: 'Content & Moderation' },
     '/billing': { title: 'Billing & Rates', section: 'Monetization' },
     '/withdrawals': { title: 'Withdrawals', section: 'Monetization' },
+    '/tasks': { title: 'My Tasks', section: 'Monetization' },
 };
 
 const AdminLayout = () => {

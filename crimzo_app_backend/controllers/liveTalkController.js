@@ -9,6 +9,13 @@ const {
 const { inrToBeans } = require('../utils/beanConversion');
 const { chargeLiveTalkMinute, InsufficientWalletError } = require('../utils/liveTalkCharge');
 const { getIo, userRoom } = require('../utils/socketEmitter');
+const { resolveUserRates } = require('../utils/userRates');
+
+async function getHostChatRate(hostId, settings) {
+  const host = await User.findById(hostId).select('chat_rate_per_min_inr voice_rate_per_min_inr');
+  if (!host) return settings.liveTalkRatePerMin;
+  return resolveUserRates(host, settings).chatRatePerMin;
+}
 
 exports.checkTalkEligibility = async (req, res) => {
   try {
@@ -37,23 +44,29 @@ exports.requestTalk = async (req, res) => {
     const requesterId = req.user.id;
     if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
 
-    const session = await LiveSession.findById(sessionId).populate('user_id', 'username');
+    const session = await LiveSession.findById(sessionId).populate(
+      'user_id',
+      'username chat_rate_per_min_inr voice_rate_per_min_inr',
+    );
     if (!session || session.status !== 'active') {
       return res.status(400).json({ error: 'This live stream is no longer active' });
     }
 
     const hostDoc = session.user_id;
     const hostId = hostDoc?._id || hostDoc?.id || session.user_id;
+    const hostRates = resolveUserRates(hostDoc, settings);
+    const chatRate = hostRates.chatRatePerMin;
     if (String(hostId) === String(requesterId)) {
       return res.status(400).json({ error: 'Hosts cannot request talk on their own stream' });
     }
 
     const requester = await User.findById(requesterId).select('wallet_balance username avatar');
     const balance = requester?.wallet_balance || 0;
-    const talkPayload = buildLiveTalkBalancePayload(balance, settings);
+    const talkPayload = buildLiveTalkBalancePayload(balance, settings, chatRate);
+    talkPayload.beansPerMin = hostRates.chatBeansPerMin;
     if (!talkPayload.canTalk) {
       return res.status(400).json({
-        error: `Please recharge your wallet first. Live talk costs ₹${talkPayload.ratePerMin}/min.`,
+        error: `Please recharge your wallet first. Live chat costs ₹${talkPayload.ratePerMin}/min.`,
         code: 'INSUFFICIENT_BALANCE',
         ...talkPayload,
       });
@@ -97,7 +110,8 @@ exports.requestTalk = async (req, res) => {
         requesterId: String(requesterId),
         requesterName: requester?.username || 'Viewer',
         requesterAvatar: requester?.avatar || null,
-        ratePerMin: settings.liveTalkRatePerMin,
+        ratePerMin: chatRate,
+        beansPerMin: hostRates.chatBeansPerMin,
         billingEnabled: settings.liveTalkBillingEnabled,
       };
       io.to(userRoom(hostId)).emit('live_talk_incoming', incomingPayload);
@@ -121,6 +135,9 @@ exports.respondTalk = async (req, res) => {
     const settings = await getBillingSettings();
     const { requestId, action } = req.body;
     const hostId = req.user.id;
+    const hostUser = await User.findById(hostId).select('chat_rate_per_min_inr voice_rate_per_min_inr');
+    const hostRates = resolveUserRates(hostUser, settings);
+    const chatRate = hostRates.chatRatePerMin;
     if (!requestId || !['accept', 'reject'].includes(action)) {
       return res.status(400).json({ error: 'requestId and action (accept/reject) required' });
     }
@@ -142,7 +159,8 @@ exports.respondTalk = async (req, res) => {
       requestId: request._id.toString(),
       sessionId: String(request.session_id),
       hostId: String(hostId),
-      ratePerMin: settings.liveTalkRatePerMin,
+      ratePerMin: chatRate,
+      beansPerMin: hostRates.chatBeansPerMin,
       billingEnabled: settings.liveTalkBillingEnabled,
     };
 
@@ -151,7 +169,7 @@ exports.respondTalk = async (req, res) => {
       if (action === 'accept') {
         io.to(userRoom(request.requester_id)).emit('live_talk_accepted', payload);
         io.to(liveRoom).emit('live_talk_accepted', payload);
-        const beansPerMin = inrToBeans(settings.liveTalkRatePerMin);
+        const beansPerMin = hostRates.chatBeansPerMin;
         io.to(liveRoom).emit('live_system_message', {
           type: 'talk_accepted',
           username: 'System',
@@ -178,12 +196,20 @@ exports.getTalkStatus = async (req, res) => {
     const { sessionId } = req.params;
     const userId = req.user.id;
 
-    const session = await LiveSession.findById(sessionId).select('user_id status');
+    const session = await LiveSession.findById(sessionId)
+      .populate('user_id', 'chat_rate_per_min_inr voice_rate_per_min_inr')
+      .select('user_id status');
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
-    const isHost = String(session.user_id) === String(userId);
+    const isHost = String(session.user_id?._id || session.user_id) === String(userId);
+    const hostDoc = session.user_id;
+    const hostRates = resolveUserRates(hostDoc, settings);
+    const chatRate = hostRates.chatRatePerMin;
     const user = await User.findById(userId).select('wallet_balance');
-    const talkPayload = buildLiveTalkBalancePayload(user?.wallet_balance, settings);
+    const talkPayload = buildLiveTalkBalancePayload(user?.wallet_balance, settings, chatRate);
+    talkPayload.beansPerMin = hostRates.chatBeansPerMin;
+    talkPayload.hostVoiceRatePerMin = hostRates.voiceRatePerMin;
+    talkPayload.hostVoiceBeansPerMin = hostRates.voiceBeansPerMin;
 
     const pending = await LiveTalkRequest.findOne({
       session_id: sessionId,
@@ -218,7 +244,8 @@ exports.getTalkStatus = async (req, res) => {
 
       const sessionBeansEarned = activeTalks.reduce((sum, t) => sum + (t.host_beans_earned || 0), 0);
       hostChatEarnings = {
-        beansPerMinute: inrToBeans(settings.liveTalkRatePerMin),
+        beansPerMinute: hostRates.chatBeansPerMin,
+        ratePerMin: chatRate,
         sessionBeansEarned,
         activeChats: activeTalks.length,
         activeViewers: activeTalks.map((t) => ({
@@ -264,7 +291,6 @@ exports.getTalkStatus = async (req, res) => {
 exports.startTalkBilling = async (req, res) => {
   try {
     const settings = await getBillingSettings();
-    const rate = settings.liveTalkRatePerMin;
     const { sessionId, requestId } = req.body;
     const talkerId = req.user.id;
     if (!sessionId || !requestId) {
@@ -278,6 +304,8 @@ exports.startTalkBilling = async (req, res) => {
     if (request.status !== 'accepted') {
       return res.status(400).json({ error: 'Request not accepted yet', status: request.status });
     }
+
+    const rate = await getHostChatRate(request.host_id, settings);
 
     const existing = await LiveTalkSession.findOne({
       session_id: sessionId,
@@ -384,7 +412,6 @@ exports.startTalkBilling = async (req, res) => {
 exports.tickTalkBilling = async (req, res) => {
   try {
     const settings = await getBillingSettings();
-    const rate = settings.liveTalkRatePerMin;
     const { sessionId, talkSessionId } = req.body;
     if (!sessionId || !talkSessionId) {
       return res.status(400).json({ error: 'sessionId and talkSessionId required' });
@@ -399,6 +426,8 @@ exports.tickTalkBilling = async (req, res) => {
     if (!talkSession) {
       return res.status(404).json({ error: 'Active talk session not found' });
     }
+
+    const rate = talkSession.rate_per_min || await getHostChatRate(talkSession.host_id, settings);
 
     if (!settings.liveTalkBillingEnabled || rate <= 0) {
       return res.json({

@@ -11,6 +11,7 @@ const pkBattleSchema = new mongoose.Schema({
   winner_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   viewers_count: { type: Number, default: 0 },
   duration: { type: Number, default: 300 },
+  started_at: { type: Date },
   created_at: { type: Date, default: Date.now },
   ended_at: { type: Date },
 }, { timestamps: false });

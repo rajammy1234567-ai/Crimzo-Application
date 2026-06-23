@@ -13,6 +13,7 @@ import {
   Platform,
   Modal,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -21,6 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { apiGet, apiPost, ApiError } from '../../lib/apiClient';
 import { useVideoCall } from '../../contexts/VideoCallContext';
+import { subscribe } from '../../lib/realtimeSync';
 
 function normalizeSenderId(senderId: unknown): string {
   if (senderId == null) return '';
@@ -66,6 +68,43 @@ type Conversation = {
   is_online: boolean;
 };
 
+type Friend = {
+  id: string;
+  username: string;
+  avatar: string | null;
+  is_online?: boolean;
+};
+
+function bumpConversationList(
+  prev: Conversation[],
+  partnerId: string,
+  patch: {
+    last_message: string;
+    last_time: string;
+    username?: string;
+    avatar?: string | null;
+    unread_count?: number;
+  },
+): Conversation[] {
+  const idx = prev.findIndex((c) => String(c.user_id) === partnerId);
+  const existing = idx >= 0 ? prev[idx] : null;
+  const updated: Conversation = {
+    user_id: partnerId as unknown as number,
+    username: patch.username || existing?.username || 'User',
+    avatar: patch.avatar ?? existing?.avatar ?? null,
+    is_online: existing?.is_online ?? false,
+    last_message: patch.last_message,
+    last_time: patch.last_time,
+    unread_count: patch.unread_count ?? existing?.unread_count ?? 0,
+  };
+  if (idx >= 0) {
+    const next = [...prev];
+    next.splice(idx, 1);
+    return [updated, ...next];
+  }
+  return [updated, ...prev];
+}
+
 export default function MessagesScreen() {
   const { user, token, updateUser } = useAuth();
   const { startCall } = useVideoCall();
@@ -73,6 +112,8 @@ export default function MessagesScreen() {
   const params = useLocalSearchParams<{ userId?: string; username?: string }>();
   const insets = useSafeAreaInsets();
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [friendsLoading, setFriendsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [selectedChat, setSelectedChat] = useState<Conversation | null>(null);
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
@@ -82,6 +123,55 @@ export default function MessagesScreen() {
   const [showGift, setShowGift] = useState(false);
   const [gifting, setGifting] = useState(false);
   const openedParamUserRef = useRef<string | null>(null);
+  const selectedChatRef = useRef<Conversation | null>(null);
+  const chatListRef = useRef<FlatList>(null);
+
+  useEffect(() => {
+    selectedChatRef.current = selectedChat;
+  }, [selectedChat]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    return subscribe('new_message', (raw) => {
+      const msg = normalizeMessage(raw);
+      const myId = String(user.id);
+      const senderId = normalizeSenderId(msg.sender_id);
+      const receiverId = String(msg.receiver_id);
+      const partnerId = senderId === myId ? receiverId : senderId;
+      const isIncoming = senderId !== myId;
+      const chatOpen = !!selectedChatRef.current
+        && String(selectedChatRef.current.user_id) === partnerId;
+      const createdAt = typeof msg.created_at === 'string'
+        ? msg.created_at
+        : new Date().toISOString();
+
+      setConversations((prev) => {
+        const existing = prev.find((c) => String(c.user_id) === partnerId);
+        return bumpConversationList(prev, partnerId, {
+          last_message: msg.content,
+          last_time: createdAt,
+          username: isIncoming ? msg.sender_username : existing?.username,
+          avatar: isIncoming ? msg.sender_avatar : existing?.avatar,
+          unread_count: chatOpen || !isIncoming ? 0 : (existing?.unread_count || 0) + 1,
+        });
+      });
+
+      if (chatOpen && isIncoming) {
+        setChatMessages((prev) => {
+          if (prev.some((m) => String(m.id) === String(msg.id))) return prev;
+          return [...prev, msg];
+        });
+      }
+    });
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!selectedChat || chatMessages.length === 0) return;
+    const t = setTimeout(() => {
+      chatListRef.current?.scrollToEnd({ animated: true });
+    }, 80);
+    return () => clearTimeout(t);
+  }, [chatMessages.length, selectedChat]);
 
   const fetchConversations = useCallback(async () => {
     if (!token) return;
@@ -100,9 +190,27 @@ export default function MessagesScreen() {
     }
   }, [token]);
 
+  const fetchFriends = useCallback(async () => {
+    if (!token || !user?.id) return;
+    try {
+      const data = await apiGet<{ success?: boolean; friends?: Friend[] }>(
+        `/api/user/friends/${user.id}`,
+        token,
+      );
+      if (data.success) {
+        setFriends(data.friends || []);
+      }
+    } catch (e) {
+      console.error('Fetch friends error:', e);
+    } finally {
+      setFriendsLoading(false);
+    }
+  }, [token, user?.id]);
+
   useEffect(() => {
     fetchConversations();
-  }, [fetchConversations]);
+    fetchFriends();
+  }, [fetchConversations, fetchFriends]);
 
   useEffect(() => {
     if (!params.userId || loading) return;
@@ -169,7 +277,15 @@ export default function MessagesScreen() {
         diamonds,
       }, token);
       if (data.success && data.message) {
-        setChatMessages(prev => [...prev, normalizeMessage(data.message!)]);
+        const giftMsg = normalizeMessage(data.message!);
+        setChatMessages((prev) => [...prev, giftMsg]);
+        setConversations((prev) => bumpConversationList(prev, String(selectedChat.user_id), {
+          last_message: giftMsg.content,
+          last_time: giftMsg.created_at,
+          username: selectedChat.username,
+          avatar: selectedChat.avatar,
+          unread_count: 0,
+        }));
         if (data.senderDiamonds != null) {
           updateUser({ diamonds: data.senderDiamonds });
         }
@@ -212,9 +328,16 @@ export default function MessagesScreen() {
       );
       if (data.success && data.message) {
         const serverMsg = normalizeMessage(data.message);
-        setChatMessages(prev =>
-          prev.map(m => (m.id === optimistic.id ? serverMsg : m))
+        setChatMessages((prev) =>
+          prev.map((m) => (m.id === optimistic.id ? serverMsg : m)),
         );
+        setConversations((prev) => bumpConversationList(prev, String(selectedChat.user_id), {
+          last_message: serverMsg.content,
+          last_time: serverMsg.created_at,
+          username: selectedChat.username,
+          avatar: selectedChat.avatar,
+          unread_count: 0,
+        }));
       }
     } catch (e) {
       setChatMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
@@ -288,9 +411,11 @@ export default function MessagesScreen() {
             </View>
           ) : (
             <FlatList
+              ref={chatListRef}
               data={chatMessages}
               keyExtractor={(item, index) => item?.id ? item.id.toString() : index.toString()}
               contentContainerStyle={{ padding: 16, paddingBottom: 20 }}
+              onContentSizeChange={() => chatListRef.current?.scrollToEnd({ animated: true })}
               renderItem={({ item }) => {
                 const isMe = normalizeSenderId(item.sender_id) === String(user?.id);
                 return (
@@ -408,41 +533,89 @@ export default function MessagesScreen() {
           data={conversations}
           keyExtractor={(item, index) => item?.user_id ? item.user_id.toString() : index.toString()}
           contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.convItem}
-              onPress={() => openChat(item)}
-              activeOpacity={0.6}
-            >
-              <View style={styles.convAvatarWrap}>
-                {item.avatar ? (
-                  <Image source={{ uri: item.avatar }} style={styles.convAvatar} />
-                ) : (
-                  <View style={[styles.convAvatar, styles.convAvatarPlaceholder]}>
-                    <Ionicons name="person" size={22} color="#999" />
-                  </View>
-                )}
-                {item.is_online && (
-                  <View style={styles.convOnline}>
-                    <View style={styles.convOnlineDot} />
-                  </View>
-                )}
+          ListHeaderComponent={
+            friendsLoading ? (
+              <View style={styles.friendsStrip}>
+                <ActivityIndicator size="small" color="#FF2D55" />
               </View>
-              <View style={styles.convInfo}>
-                <View style={styles.convTop}>
-                  <Text style={styles.convName}>{item.username}</Text>
-                  <Text style={styles.convTime}>{getTimeAgo(item.last_time)}</Text>
-                </View>
-                <View style={styles.convBottom}>
-                  <Text style={styles.convMsg} numberOfLines={1}>{item.last_message}</Text>
-                  {item.unread_count > 0 && (
-                    <View style={styles.unreadBadge}>
-                      <Text style={styles.unreadText}>{item.unread_count}</Text>
+            ) : friends.length > 0 ? (
+              <View style={styles.friendsSection}>
+                <Text style={styles.friendsTitle}>Friends — tap to call</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.friendsStrip}
+                >
+                  {friends.map((f) => (
+                    <TouchableOpacity
+                      key={f.id}
+                      style={styles.friendChip}
+                      activeOpacity={0.75}
+                      onPress={() => startCall(f.id, f.username, f.avatar)}
+                    >
+                      <View style={styles.friendAvatarWrap}>
+                        {f.avatar ? (
+                          <Image source={{ uri: f.avatar }} style={styles.friendAvatar} />
+                        ) : (
+                          <View style={[styles.friendAvatar, styles.convAvatarPlaceholder]}>
+                            <Ionicons name="person" size={18} color="#999" />
+                          </View>
+                        )}
+                        {f.is_online && <View style={styles.friendOnlineDot} />}
+                        <View style={styles.friendCallBadge}>
+                          <Ionicons name="videocam" size={10} color="#FFF" />
+                        </View>
+                      </View>
+                      <Text style={styles.friendName} numberOfLines={1}>{f.username}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null
+          }
+          renderItem={({ item }) => (
+            <View style={styles.convItem}>
+              <TouchableOpacity
+                style={styles.convMain}
+                onPress={() => openChat(item)}
+                activeOpacity={0.6}
+              >
+                <View style={styles.convAvatarWrap}>
+                  {item.avatar ? (
+                    <Image source={{ uri: item.avatar }} style={styles.convAvatar} />
+                  ) : (
+                    <View style={[styles.convAvatar, styles.convAvatarPlaceholder]}>
+                      <Ionicons name="person" size={22} color="#999" />
+                    </View>
+                  )}
+                  {item.is_online && (
+                    <View style={styles.convOnline}>
+                      <View style={styles.convOnlineDot} />
                     </View>
                   )}
                 </View>
-              </View>
-            </TouchableOpacity>
+                <View style={styles.convInfo}>
+                  <View style={styles.convTop}>
+                    <Text style={styles.convName}>{item.username}</Text>
+                    <Text style={styles.convTime}>{getTimeAgo(item.last_time)}</Text>
+                  </View>
+                  <View style={styles.convBottom}>
+                    <Text style={styles.convMsg} numberOfLines={1}>{item.last_message}</Text>
+                    {item.unread_count > 0 && (
+                      <View style={styles.unreadBadge}>
+                        <Text style={styles.unreadText}>{item.unread_count}</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.convCallBtn}
+                onPress={() => startCall(item.user_id, item.username, item.avatar)}
+              >
+                <Ionicons name="videocam" size={18} color="#4CD964" />
+              </TouchableOpacity>
+            </View>
           )}
         />
       )}
@@ -519,14 +692,98 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  friendsSection: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+    paddingBottom: 12,
+  },
+  friendsTitle: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  friendsStrip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 14,
+    alignItems: 'center',
+  },
+  friendChip: {
+    alignItems: 'center',
+    width: 72,
+  },
+  friendAvatarWrap: {
+    position: 'relative',
+    marginBottom: 6,
+  },
+  friendAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 2,
+    borderColor: 'rgba(76,217,100,0.35)',
+  },
+  friendOnlineDot: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#4CD964',
+    borderWidth: 2,
+    borderColor: '#0A0A0A',
+  },
+  friendCallBadge: {
+    position: 'absolute',
+    bottom: -2,
+    left: -2,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#4CD964',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#0A0A0A',
+  },
+  friendName: {
+    color: '#CCC',
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+    maxWidth: 72,
+  },
+
   /* Conversation list */
   convItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingRight: 12,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.04)',
+  },
+  convMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  convCallBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(76,217,100,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(76,217,100,0.3)',
   },
   convAvatarWrap: {
     position: 'relative',

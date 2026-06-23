@@ -41,4 +41,10 @@ router.post('/stickers', adminController.createSticker);
 router.put('/stickers/:id', adminController.updateSticker);
 router.delete('/stickers/:id', adminController.deleteSticker);
 
+// Tasks (My Tasks — user rewards)
+router.get('/tasks', adminController.getTasks);
+router.post('/tasks', adminController.createTask);
+router.put('/tasks/:id', adminController.updateTask);
+router.delete('/tasks/:id', adminController.deleteTask);
+
 module.exports = router;

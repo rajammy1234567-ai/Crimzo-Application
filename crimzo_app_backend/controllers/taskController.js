@@ -1,57 +1,15 @@
 const User = require('../models/User');
-const UserTaskState = require('../models/UserTaskState');
-
-const TASK_DEFS = {
-  newbie_nickname: { section: 'newbie', title: 'Enter your nickname', reward: 50, max: 1 },
-  newbie_avatar: { section: 'newbie', title: 'Upload Avatar', reward: 50, max: 1 },
-  newbie_phone: { section: 'newbie', title: 'Bind phone number', reward: 100, max: 1 },
-  daily_live_message: { section: 'daily', title: 'Send a message in 1 Live room(s)', reward: 10, max: 5 },
-  daily_like_moment: { section: 'daily', title: 'Like 2 moment(s) of others', reward: 10, max: 5 },
-  daily_random_match: { section: 'daily', title: 'Random Match for 1 time(s)', reward: 25, max: 2 },
-  daily_watch_live: { section: 'daily', title: 'Watch Live in Live room for 2 min(s)', reward: 10, max: 5 },
-  daily_gift_message: { section: 'daily', title: 'Send gift(s) in message', reward: 50, max: 1 },
-  daily_top_wheel: { section: 'daily', title: 'Win 1 time(s) in Top Wheel in Party room (win>spend)', reward: 25, max: 2 },
-  monthly_follow: { section: 'monthly', title: 'Be followed by 1 user(s)', reward: 100, max: 5 },
-  monthly_topup: { section: 'monthly', title: 'Top up for 1 time(s)', reward: 200, max: 5 },
-  monthly_invite: { section: 'monthly', title: 'Invite 1 new user(s) successfully', reward: 200, max: 5 },
-  monthly_lucky_win: { section: 'monthly', title: 'Send 17 Lucky Win', reward: 200, max: 5 },
-};
-
-function todayKey() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function monthKey() {
-  const d = new Date();
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-}
-
-async function getOrCreateState(userId) {
-  let state = await UserTaskState.findOne({ user_id: userId });
-  if (!state) {
-    state = await UserTaskState.create({ user_id: userId, progress: {} });
-  }
-  return state;
-}
-
-function getProgressEntry(state, key, resetPeriod) {
-  const raw = state.progress?.get?.(key) || state.progress?.[key];
-  const entry = raw || { current: 0, claimed: 0, last_reset: null };
-  const period = resetPeriod === 'daily' ? todayKey() : resetPeriod === 'monthly' ? monthKey() : 'once';
-  if (entry.last_reset !== period && resetPeriod !== 'once') {
-    return { current: 0, claimed: 0, last_reset: period };
-  }
-  return { ...entry, last_reset: entry.last_reset || period };
-}
-
-function setProgressEntry(state, key, entry) {
-  if (!state.progress) state.progress = new Map();
-  if (state.progress.set) {
-    state.progress.set(key, entry);
-  } else {
-    state.progress[key] = entry;
-  }
-}
+const Task = require('../models/Task');
+const {
+  getOrCreateState,
+  getProgressEntry,
+  setProgressEntry,
+  recordTaskAction,
+  todayKey,
+  monthKey,
+  getStreakSnapshot,
+  applyCheckinStreak,
+} = require('../utils/taskProgress');
 
 function computeNewbieProgress(user) {
   const nicknameDone = !!(user.username && !/^User\d+$/i.test(user.username));
@@ -64,25 +22,34 @@ function computeNewbieProgress(user) {
   };
 }
 
-function buildTaskList(state, user) {
+async function loadActiveTasks() {
+  const tasks = await Task.find({ is_active: true }).sort({ sort_order: 1, section: 1 }).lean();
+  return tasks;
+}
+
+function buildTaskList(state, user, taskDefs) {
   const newbieAuto = computeNewbieProgress(user);
   const sections = { newbie: [], daily: [], monthly: [] };
 
-  Object.entries(TASK_DEFS).forEach(([key, def]) => {
+  taskDefs.forEach((def) => {
     let current = 0;
     if (def.section === 'newbie') {
-      current = newbieAuto[key] || 0;
+      current = newbieAuto[def.key] || 0;
     } else {
       const reset = def.section === 'daily' ? 'daily' : 'monthly';
-      const entry = getProgressEntry(state, key, reset);
-      current = Math.min(entry.current, def.max);
+      const entry = getProgressEntry(state, def.key, reset);
+      current = Math.min(entry.current, def.max_count);
     }
     sections[def.section].push({
-      key,
+      key: def.key,
       title: def.title,
-      reward: def.reward,
-      maxCount: def.max,
+      reward: def.reward_amount,
+      rewardType: def.reward_type || 'beans',
+      maxCount: def.max_count,
       currentCount: current,
+      actionType: def.action_type,
+      actionTarget: def.action_target || 1,
+      deepLink: def.deep_link || '',
     });
   });
 
@@ -92,21 +59,26 @@ function buildTaskList(state, user) {
 exports.getTasks = async (req, res) => {
   try {
     const userId = req.user.id;
-    const [user, state] = await Promise.all([
+    const [user, state, taskDefs] = await Promise.all([
       User.findById(userId).lean(),
       getOrCreateState(userId),
+      loadActiveTasks(),
     ]);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const sections = buildTaskList(state, user);
-    const totalPossible = Object.values(TASK_DEFS).reduce((s, t) => s + t.reward * t.max, 0);
+    const sections = buildTaskList(state, user, taskDefs);
+    const totalPossible = taskDefs.reduce((s, t) => s + t.reward_amount * t.max_count, 0);
     const totalEarned = [...sections.newbie, ...sections.daily, ...sections.monthly]
       .reduce((s, t) => s + t.reward * t.currentCount, 0);
+
+    const streak = getStreakSnapshot(state);
 
     res.json({
       success: true,
       pendingReward: state.pending_reward || 0,
-      checkedInToday: state.last_checkin === todayKey(),
+      pendingDiamonds: state.pending_diamonds || 0,
+      checkedInToday: streak.checkedInToday,
+      streak,
       sections,
       totalPossible,
       totalEarned,
@@ -117,18 +89,46 @@ exports.getTasks = async (req, res) => {
   }
 };
 
+exports.getStreak = async (req, res) => {
+  try {
+    const state = await getOrCreateState(req.user.id);
+    res.json({ success: true, streak: getStreakSnapshot(state) });
+  } catch (error) {
+    console.error('Get streak error:', error);
+    res.status(500).json({ error: 'Failed to get streak' });
+  }
+};
+
 exports.checkIn = async (req, res) => {
   try {
     const state = await getOrCreateState(req.user.id);
     const today = todayKey();
-    if (state.last_checkin === today) {
-      return res.json({ success: true, alreadyCheckedIn: true, pendingReward: state.pending_reward });
+    const streakUpdate = applyCheckinStreak(state, today);
+
+    if (streakUpdate.alreadyCheckedIn) {
+      return res.json({
+        success: true,
+        alreadyCheckedIn: true,
+        pendingReward: state.pending_reward,
+        pendingDiamonds: state.pending_diamonds || 0,
+        streak: getStreakSnapshot(state),
+      });
     }
+
     state.last_checkin = today;
+    state.checkin_streak = streakUpdate.streak;
+    state.longest_streak = streakUpdate.longest;
     state.pending_reward = (state.pending_reward || 0) + 50;
     state.updated_at = new Date();
     await state.save();
-    res.json({ success: true, added: 50, pendingReward: state.pending_reward });
+
+    res.json({
+      success: true,
+      added: 50,
+      pendingReward: state.pending_reward,
+      pendingDiamonds: state.pending_diamonds || 0,
+      streak: getStreakSnapshot(state),
+    });
   } catch (error) {
     console.error('Check-in error:', error);
     res.status(500).json({ error: 'Failed to check in' });
@@ -138,19 +138,38 @@ exports.checkIn = async (req, res) => {
 exports.claimReward = async (req, res) => {
   try {
     const state = await getOrCreateState(req.user.id);
-    const amount = state.pending_reward || 0;
-    if (amount <= 0) {
-      return res.json({ success: true, claimed: 0, beans: (await User.findById(req.user.id))?.beans || 0 });
+    const beansAmount = state.pending_reward || 0;
+    const diamondsAmount = state.pending_diamonds || 0;
+    if (beansAmount <= 0 && diamondsAmount <= 0) {
+      const user = await User.findById(req.user.id).select('beans diamonds').lean();
+      return res.json({
+        success: true,
+        claimed: 0,
+        claimedDiamonds: 0,
+        beans: user?.beans || 0,
+        diamonds: user?.diamonds || 0,
+      });
     }
+
     state.pending_reward = 0;
+    state.pending_diamonds = 0;
     state.updated_at = new Date();
     await state.save();
-    const user = await User.findByIdAndUpdate(
-      req.user.id,
-      { $inc: { beans: amount } },
-      { new: true },
-    ).select('beans');
-    res.json({ success: true, claimed: amount, beans: user?.beans || 0 });
+
+    const inc = {};
+    if (beansAmount > 0) inc.beans = beansAmount;
+    if (diamondsAmount > 0) inc.diamonds = diamondsAmount;
+
+    const user = await User.findByIdAndUpdate(req.user.id, { $inc: inc }, { new: true })
+      .select('beans diamonds');
+
+    res.json({
+      success: true,
+      claimed: beansAmount,
+      claimedDiamonds: diamondsAmount,
+      beans: user?.beans || 0,
+      diamonds: user?.diamonds || 0,
+    });
   } catch (error) {
     console.error('Claim reward error:', error);
     res.status(500).json({ error: 'Failed to claim reward' });
@@ -160,8 +179,14 @@ exports.claimReward = async (req, res) => {
 exports.completeTask = async (req, res) => {
   try {
     const { taskKey } = req.body;
-    const def = TASK_DEFS[taskKey];
+    const def = await Task.findOne({ key: taskKey, is_active: true }).lean();
     if (!def) return res.status(400).json({ error: 'Invalid task' });
+    if (def.action_type !== 'manual') {
+      return res.status(400).json({
+        error: 'Complete this task by doing the required action in the app.',
+        needsAction: true,
+      });
+    }
 
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -178,13 +203,18 @@ exports.completeTask = async (req, res) => {
 
     const reset = def.section === 'daily' ? 'daily' : 'monthly';
     const entry = getProgressEntry(state, taskKey, reset);
-    if (entry.current >= def.max) {
-      return res.json({ success: true, taskKey, currentCount: entry.current, maxCount: def.max });
+    if (entry.current >= def.max_count) {
+      return res.json({ success: true, taskKey, currentCount: entry.current, maxCount: def.max_count });
     }
     entry.current += 1;
     entry.last_reset = reset === 'daily' ? todayKey() : monthKey();
     setProgressEntry(state, taskKey, entry);
-    state.pending_reward = (state.pending_reward || 0) + def.reward;
+
+    if (def.reward_type === 'diamonds') {
+      state.pending_diamonds = (state.pending_diamonds || 0) + def.reward_amount;
+    } else {
+      state.pending_reward = (state.pending_reward || 0) + def.reward_amount;
+    }
     state.updated_at = new Date();
     await state.save();
 
@@ -192,9 +222,11 @@ exports.completeTask = async (req, res) => {
       success: true,
       taskKey,
       currentCount: entry.current,
-      maxCount: def.max,
-      rewardAdded: def.reward,
+      maxCount: def.max_count,
+      rewardAdded: def.reward_amount,
+      rewardType: def.reward_type,
       pendingReward: state.pending_reward,
+      pendingDiamonds: state.pending_diamonds || 0,
     });
   } catch (error) {
     console.error('Complete task error:', error);
@@ -202,4 +234,4 @@ exports.completeTask = async (req, res) => {
   }
 };
 
-exports.TASK_DEFS = TASK_DEFS;
+exports.recordTaskAction = recordTaskAction;

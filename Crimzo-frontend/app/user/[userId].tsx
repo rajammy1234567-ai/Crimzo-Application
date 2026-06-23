@@ -21,6 +21,7 @@ import { useVideoCall } from '../../contexts/VideoCallContext';
 import { apiGet, apiPost, resolveMediaUrl } from '../../lib/apiClient';
 import FollowListModal, { FollowUser } from '../../components/profile/FollowListModal';
 import { subscribe, publish } from '../../lib/realtimeSync';
+import { parseFollowResponse } from '../../lib/followHelpers';
 
 function formatNumber(n?: number) {
   if (!n) return '0';
@@ -78,6 +79,29 @@ export default function UserProfileScreen() {
     });
   }, []);
 
+  useEffect(() => {
+    return subscribe('follow_status_changed', (payload) => {
+      const data = payload as { userId?: string; isFollowing?: boolean; isRequested?: boolean };
+      if (!data?.userId || String(data.userId) !== String(userId)) return;
+      setProfile((p: any) => {
+        if (!p) return p;
+        const isFollowing = data.isFollowing ?? p.isFollowing;
+        const isRequested = data.isRequested ?? p.isRequested;
+        return {
+          ...p,
+          isFollowing,
+          isRequested,
+          canInteract: isFollowing || !!p?.followsYou,
+          interactionBlockedReason: (isFollowing || p?.followsYou)
+            ? null
+            : isRequested
+              ? 'Wait until they accept your follow request.'
+              : 'Follow each other to unlock message and video call.',
+        };
+      });
+    });
+  }, [userId]);
+
   useFocusEffect(
     useCallback(() => {
       if (String(userId) === String(me?.id)) {
@@ -100,18 +124,17 @@ export default function UserProfileScreen() {
         following_count?: number;
         friends_count?: number;
       }>('/api/user/follow', { userId }, token);
-      const isFollowing = res.isFollowing ?? res.action === 'followed';
-      const isRequested = res.isRequested ?? res.action === 'requested';
+      const { isFollowing, isRequested } = parseFollowResponse(res);
       setProfile((p: any) => ({
         ...p,
         isFollowing,
         isRequested,
-        canInteract: isFollowing,
-        interactionBlockedReason: isFollowing
+        canInteract: isFollowing || !!p?.followsYou,
+        interactionBlockedReason: (isFollowing || p?.followsYou)
           ? null
           : isRequested
             ? 'Wait until they accept your follow request.'
-            : 'Follow this user and wait until they accept your follow request.',
+            : 'Follow each other to unlock message and video call.',
         followers_count: res.followers_count ?? (
           res.action === 'unfollowed'
             ? Math.max(0, (p?.followers_count || 0) - 1)
@@ -201,15 +224,21 @@ export default function UserProfileScreen() {
         isFollowing?: boolean;
         isRequested?: boolean;
       }>('/api/user/follow', { userId: targetId }, token);
-      setListData((prev) => {
-        const next = [...prev];
-        next[index] = {
-          ...next[index],
-          is_following: res.isFollowing ?? res.action === 'followed',
-          is_requested: res.isRequested ?? res.action === 'requested',
-        };
-        return next;
-      });
+      const { isFollowing, isRequested } = parseFollowResponse(res);
+
+      if (listType === 'following' && res.action === 'unfollowed') {
+        setListData((prev) => prev.filter((_, i) => i !== index));
+      } else {
+        setListData((prev) => {
+          const next = [...prev];
+          next[index] = {
+            ...next[index],
+            is_following: isFollowing,
+            is_requested: isRequested,
+          };
+          return next;
+        });
+      }
       if (String(targetId) === String(userId)) {
         fetchProfile();
       }
@@ -303,7 +332,7 @@ export default function UserProfileScreen() {
           <Text style={s.interactionHint}>
             {profile.isRequested
               ? 'Follow request sent — message & call unlock when they accept.'
-              : 'Follow to unlock message and video call (after they accept).'}
+              : 'Follow each other to unlock message and video call.'}
           </Text>
         )}
 
@@ -440,6 +469,14 @@ export default function UserProfileScreen() {
         onClose={() => setListVisible(false)}
         onToggleFollow={handleFollowFromList}
         onOpenProfile={openUserProfile}
+        onVideoCall={(id, username, avatar) => {
+          setListVisible(false);
+          startCall(id, username, avatar);
+        }}
+        onMessage={(id, username) => {
+          setListVisible(false);
+          router.push(`/profile/messages?userId=${id}&username=${encodeURIComponent(username)}` as any);
+        }}
       />
     </View>
   );

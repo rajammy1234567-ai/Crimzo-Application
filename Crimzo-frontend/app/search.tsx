@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { apiGet, apiPost, resolveMediaUrl } from '../lib/apiClient';
+import { parseFollowResponse } from '../lib/followHelpers';
 
 type SearchUser = {
   id: string;
@@ -77,12 +78,13 @@ export default function SearchScreen() {
         isFollowing?: boolean;
         isRequested?: boolean;
       }>('/api/user/follow', { userId }, token);
+      const { isFollowing, isRequested } = parseFollowResponse(res);
       setResults((prev) => {
         const next = [...prev];
         next[index] = {
           ...next[index],
-          is_following: res.isFollowing ?? res.action === 'followed',
-          is_requested: res.isRequested ?? res.action === 'requested',
+          is_following: isFollowing,
+          is_requested: isRequested,
         };
         return next;
       });

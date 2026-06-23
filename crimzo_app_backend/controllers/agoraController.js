@@ -1,6 +1,7 @@
 const { RtcTokenBuilder, RtcRole } = require('agora-access-token');
 const User = require('../models/User');
 const { getBillingSettings } = require('../utils/billingSettings');
+const { resolveUserRates } = require('../utils/userRates');
 const { assertCanInteract } = require('../utils/followPermissions');
 
 function buildAgoraUid(userId) {
@@ -40,18 +41,26 @@ exports.generateCallToken = async (req, res) => {
     }
 
     const billingSettings = await getBillingSettings();
-    if (role === 'caller' && billingSettings.videoCallBillingEnabled && billingSettings.videoCallRatePerMin > 0) {
+    let callRate = billingSettings.videoCallRatePerMin;
+    let beansPerMin = 0;
+    if (peerId) {
+      const peer = await User.findById(peerId).select('voice_rate_per_min_inr chat_rate_per_min_inr');
+      const peerRates = resolveUserRates(peer, billingSettings);
+      callRate = peerRates.voiceRatePerMin;
+      beansPerMin = peerRates.voiceBeansPerMin;
+    }
+    if (role === 'caller' && billingSettings.videoCallBillingEnabled && callRate > 0) {
       const caller = await User.findById(req.user.id).select('wallet_balance');
       const balance = caller?.wallet_balance || 0;
-      const rate = billingSettings.videoCallRatePerMin;
-      if (balance < rate) {
+      if (balance < callRate) {
         return res.status(400).json({
-          error: `Please recharge your wallet first. Video call costs ₹${rate}/min.`,
+          error: `Please recharge your wallet first. Voice call costs ₹${callRate}/min.`,
           code: 'INSUFFICIENT_BALANCE',
-          ratePerMin: rate,
+          ratePerMin: callRate,
+          beansPerMin,
           wallet_balance: balance,
-          minRequired: rate,
-          shortfall: rate - balance,
+          minRequired: callRate,
+          shortfall: callRate - balance,
         });
       }
     }
@@ -80,7 +89,8 @@ exports.generateCallToken = async (req, res) => {
       uid,
       appId: creds.appId,
       mode: 'communication',
-      ratePerMin: billingSettings.videoCallRatePerMin,
+      ratePerMin: callRate,
+      beansPerMin,
       billingEnabled: billingSettings.videoCallBillingEnabled,
     });
   } catch (error) {

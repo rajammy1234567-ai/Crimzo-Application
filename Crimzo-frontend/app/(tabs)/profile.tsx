@@ -30,8 +30,10 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import { apiGet, apiPost, apiDelete, apiFetch, resolveMediaUrl } from '../../lib/apiClient';
 import { getBuildLabel } from '../../lib/buildInfo';
 import FollowListModal from '../../components/profile/FollowListModal';
+import { parseFollowResponse } from '../../lib/followHelpers';
 import { useTabFocus } from '../../lib/useTabFocus';
 import { subscribe } from '../../lib/realtimeSync';
+import { useVideoCall } from '../../contexts/VideoCallContext';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const REEL_THUMB_W = (SW - 6) / 3;
@@ -41,6 +43,7 @@ const REEL_THUMB_W = (SW - 6) / 3;
 // ══════════════════════════════════════════════════════════════
 export default function ProfileScreen() {
   const { user, token, logout, updateUser } = useAuth();
+  const { startCall } = useVideoCall();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
@@ -72,6 +75,14 @@ export default function ProfileScreen() {
   // Hamburger menu
   const [menuVisible, setMenuVisible] = useState(false);
   const menuSlide = useRef(new Animated.Value(SW)).current;
+
+  const [streak, setStreak] = useState<{
+    currentStreak: number;
+    longestStreak: number;
+    checkedInToday: boolean;
+    weekDots?: boolean[];
+    atRisk?: boolean;
+  } | null>(null);
 
   const resetOverlays = useCallback(() => {
     setMenuVisible(false);
@@ -133,6 +144,27 @@ export default function ProfileScreen() {
     }
   }, [token]);
 
+  const fetchStreak = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await apiGet<{
+        success?: boolean;
+        streak?: {
+          currentStreak: number;
+          longestStreak: number;
+          checkedInToday: boolean;
+          weekDots?: boolean[];
+          atRisk?: boolean;
+        };
+      }>('/api/tasks', token);
+      if (data.success && data.streak) {
+        setStreak(data.streak);
+      }
+    } catch (e) {
+      console.error('Fetch streak error:', e);
+    }
+  }, [token]);
+
   // ── Fetch my reels ──
   const fetchMyReels = useCallback(async () => {
     if (!token) return;
@@ -185,12 +217,13 @@ export default function ProfileScreen() {
     useCallback(() => {
       fetchProfile();
       fetchMyReels();
-    }, [fetchProfile, fetchMyReels])
+      fetchStreak();
+    }, [fetchProfile, fetchMyReels, fetchStreak])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([fetchProfile(), fetchMyReels()]);
+    await Promise.all([fetchProfile(), fetchMyReels(), fetchStreak()]);
     setRefreshing(false);
   };
 
@@ -225,17 +258,21 @@ export default function ProfileScreen() {
         { userId: targetUserId },
         token,
       );
-      const isFollowing = data.isFollowing ?? data.action === 'followed';
-      const isRequested = data.isRequested ?? data.action === 'requested';
-      setListData((prev) => {
-        const updated = [...prev];
-        updated[index] = {
-          ...updated[index],
-          is_following: isFollowing,
-          is_requested: isRequested,
-        };
-        return updated;
-      });
+      const { isFollowing, isRequested } = parseFollowResponse(data);
+
+      if (listType === 'following' && data.action === 'unfollowed') {
+        setListData((prev) => prev.filter((_, i) => i !== index));
+      } else {
+        setListData((prev) => {
+          const updated = [...prev];
+          updated[index] = {
+            ...updated[index],
+            is_following: isFollowing,
+            is_requested: isRequested,
+          };
+          return updated;
+        });
+      }
       fetchProfile();
     } catch (e) {
       console.error('Follow from list error:', e);
@@ -478,6 +515,63 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* ── Daily Streak ── */}
+        {streak && (
+          <TouchableOpacity
+            style={s.streakCard}
+            activeOpacity={0.85}
+            onPress={() => router.push('/profile/tasks' as any)}
+          >
+            <LinearGradient
+              colors={['rgba(255,149,0,0.22)', 'rgba(255,45,85,0.14)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={s.streakGradient}
+            >
+              <View style={s.streakLeft}>
+                <View style={s.streakFireWrap}>
+                  <Text style={s.streakFireEmoji}>🔥</Text>
+                </View>
+                <View>
+                  <Text style={s.streakCount}>{streak.currentStreak}</Text>
+                  <Text style={s.streakLabel}>
+                    day{streak.currentStreak === 1 ? '' : 's'} streak
+                  </Text>
+                </View>
+              </View>
+              <View style={s.streakRight}>
+                <Text style={s.streakBest}>Best: {streak.longestStreak} days</Text>
+                {streak.checkedInToday ? (
+                  <View style={s.streakDonePill}>
+                    <Ionicons name="checkmark-circle" size={12} color="#30D158" />
+                    <Text style={s.streakDoneText}>Checked in today</Text>
+                  </View>
+                ) : streak.atRisk ? (
+                  <View style={s.streakWarnPill}>
+                    <Text style={s.streakWarnText}>Check in to keep streak!</Text>
+                  </View>
+                ) : (
+                  <View style={s.streakCtaPill}>
+                    <Text style={s.streakCtaText}>Start streak · +50 🪙</Text>
+                  </View>
+                )}
+              </View>
+            </LinearGradient>
+            <View style={s.streakWeekRow}>
+              {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((label, i) => (
+                <View key={`${label}-${i}`} style={s.streakDayCol}>
+                  <View style={[s.streakDot, streak.weekDots?.[i] && s.streakDotOn]}>
+                    {streak.weekDots?.[i] ? (
+                      <Text style={s.streakDotEmoji}>🔥</Text>
+                    ) : null}
+                  </View>
+                  <Text style={s.streakDayLabel}>{label}</Text>
+                </View>
+              ))}
+            </View>
+          </TouchableOpacity>
+        )}
+
         {/* ── Engagement & Wallet Row ── */}
         <View style={s.engagementRow}>
           <View style={s.engagementCard}>
@@ -670,9 +764,18 @@ export default function ProfileScreen() {
         data={listData}
         loading={listLoading}
         currentUserId={user?.id}
+        isOwnList
         onClose={() => setListModalVisible(false)}
         onToggleFollow={handleFollowFromList}
         onOpenProfile={openUserFromList}
+        onVideoCall={(id, username, avatar) => {
+          setListModalVisible(false);
+          startCall(id, username, avatar);
+        }}
+        onMessage={(id, username) => {
+          setListModalVisible(false);
+          router.push(`/profile/messages?userId=${id}&username=${encodeURIComponent(username)}` as any);
+        }}
       />
 
       {/* Profile Edit Caption Modal */}
@@ -1024,6 +1127,88 @@ const s = StyleSheet.create({
     height: 24,
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
+
+  streakCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,149,0,0.28)',
+    backgroundColor: 'rgba(20,12,8,0.9)',
+  },
+  streakGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  streakLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  streakFireWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,149,0,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,149,0,0.35)',
+  },
+  streakFireEmoji: { fontSize: 26 },
+  streakCount: { color: '#FFF', fontSize: 28, fontWeight: '900', lineHeight: 30 },
+  streakLabel: { color: 'rgba(255,255,255,0.65)', fontSize: 12, fontWeight: '600' },
+  streakRight: { alignItems: 'flex-end', gap: 6 },
+  streakBest: { color: 'rgba(255,255,255,0.45)', fontSize: 11, fontWeight: '600' },
+  streakDonePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(48,209,88,0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  streakDoneText: { color: '#30D158', fontSize: 11, fontWeight: '700' },
+  streakWarnPill: {
+    backgroundColor: 'rgba(255,149,0,0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  streakWarnText: { color: '#FF9500', fontSize: 11, fontWeight: '700' },
+  streakCtaPill: {
+    backgroundColor: 'rgba(255,45,85,0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  streakCtaText: { color: '#FF6B8A', fontSize: 11, fontWeight: '700' },
+  streakWeekRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingBottom: 12,
+    paddingTop: 4,
+  },
+  streakDayCol: { alignItems: 'center', gap: 4 },
+  streakDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  streakDotOn: {
+    backgroundColor: 'rgba(255,149,0,0.2)',
+    borderColor: 'rgba(255,149,0,0.45)',
+  },
+  streakDotEmoji: { fontSize: 12 },
+  streakDayLabel: { color: 'rgba(255,255,255,0.35)', fontSize: 9, fontWeight: '600' },
 
   // ── Action buttons ──
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 10, marginTop: 14, marginBottom: 14 },

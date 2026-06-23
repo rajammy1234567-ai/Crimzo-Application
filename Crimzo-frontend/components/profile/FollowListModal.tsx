@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { resolveMediaUrl } from '../../lib/apiClient';
+import { followButtonLabel } from '../../lib/followHelpers';
 
 export type FollowUser = {
   id: string;
@@ -31,6 +32,10 @@ type Props = {
   onClose: () => void;
   onToggleFollow: (userId: string, index: number) => void;
   onOpenProfile: (userId: string) => void;
+  onVideoCall?: (userId: string, username: string, avatar?: string | null) => void;
+  onMessage?: (userId: string, username: string) => void;
+  /** True when viewing your own followers/following/friends lists */
+  isOwnList?: boolean;
 };
 
 export default function FollowListModal({
@@ -42,6 +47,9 @@ export default function FollowListModal({
   onClose,
   onToggleFollow,
   onOpenProfile,
+  onVideoCall,
+  onMessage,
+  isOwnList = false,
 }: Props) {
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -75,6 +83,9 @@ export default function FollowListModal({
               contentContainerStyle={{ paddingBottom: 40 }}
               renderItem={({ item, index }) => {
                 const isSelf = String(item.id) === String(currentUserId);
+                const canCall = type === 'friends'
+                  || (isOwnList && (type === 'followers' || type === 'following'))
+                  || !!item.is_following;
                 return (
                   <TouchableOpacity
                     style={s.userRow}
@@ -102,27 +113,49 @@ export default function FollowListModal({
                         ) : null}
                       </View>
                     </View>
-                    {!isSelf && type !== 'friends' && (
-                      <TouchableOpacity
-                        style={[
-                          s.followBtn,
-                          (item.is_following || item.is_requested) && s.followingBtn,
-                        ]}
-                        onPress={(e) => {
-                          e.stopPropagation?.();
-                          onToggleFollow(String(item.id), index);
-                        }}
-                      >
-                        <Text style={[s.followBtnText, (item.is_following || item.is_requested) && s.followingText]}>
-                          {item.is_following
-                            ? 'Following'
-                            : item.is_requested
-                              ? 'Requested'
-                              : type === 'followers'
-                                ? 'Follow back'
-                                : 'Follow'}
-                        </Text>
-                      </TouchableOpacity>
+                    {!isSelf && (
+                      <View style={s.actions}>
+                        {canCall && onVideoCall && (
+                          <TouchableOpacity
+                            style={s.callBtn}
+                            onPress={(e) => {
+                              e.stopPropagation?.();
+                              onVideoCall(String(item.id), item.username, item.avatar);
+                            }}
+                          >
+                            <Ionicons name="videocam" size={18} color="#4CD964" />
+                          </TouchableOpacity>
+                        )}
+                        {canCall && onMessage && (
+                          <TouchableOpacity
+                            style={s.msgBtn}
+                            onPress={(e) => {
+                              e.stopPropagation?.();
+                              onMessage(String(item.id), item.username);
+                            }}
+                          >
+                            <Ionicons name="chatbubble" size={16} color="#00BFFF" />
+                          </TouchableOpacity>
+                        )}
+                        {type !== 'friends' && (
+                          <TouchableOpacity
+                            style={[
+                              s.followBtn,
+                              (item.is_following || item.is_requested) && s.followingBtn,
+                            ]}
+                            onPress={(e) => {
+                              e.stopPropagation?.();
+                              onToggleFollow(String(item.id), index);
+                            }}
+                          >
+                            <Text style={[s.followBtnText, (item.is_following || item.is_requested) && s.followingText]}>
+                              {followButtonLabel(!!item.is_following, !!item.is_requested, {
+                                followersList: type === 'followers',
+                              })}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     )}
                   </TouchableOpacity>
                 );
@@ -194,4 +227,17 @@ const s = StyleSheet.create({
   },
   followBtnText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
   followingText: { color: '#CCC' },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 8 },
+  callBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(76,217,100,0.15)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(76,217,100,0.35)',
+  },
+  msgBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(0,191,255,0.12)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(0,191,255,0.3)',
+  },
 });

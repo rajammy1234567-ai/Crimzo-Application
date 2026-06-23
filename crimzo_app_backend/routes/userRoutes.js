@@ -18,5 +18,6 @@ router.post('/avatar', authenticateToken, flexibleSingle(), user.uploadAvatar);
 router.get('/followers/:userId', authenticateToken, user.getFollowers);
 router.get('/following/:userId', authenticateToken, user.getFollowing);
 router.get('/friends/:userId', authenticateToken, user.getFriends);
+router.get('/app-time/today', authenticateToken, user.getAppTimeToday);
 
 module.exports = router;

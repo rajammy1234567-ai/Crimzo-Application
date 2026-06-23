@@ -94,6 +94,9 @@ async function initDatabase() {
       console.log('✅ Premium stickers seeded successfully (MongoDB)');
     }
 
+    const { seedDefaultTasks } = require('../utils/taskSeed');
+    await seedDefaultTasks();
+
     console.log('✅ Database (MongoDB) initialized successfully');
   } catch (error) {
     console.error('❌ Database initialization error:', error);

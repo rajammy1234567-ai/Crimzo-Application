@@ -17,6 +17,13 @@ const {
   BEANS_PER_INR,
   MIN_WITHDRAW_BEANS,
 } = require('../config/walletConfig');
+function notifyPurchaseTasks(userId, { diamonds = 0, topup = false } = {}) {
+  if (!userId) return;
+  if (diamonds <= 0 && !topup) return;
+  const { recordTaskAction } = require('../utils/taskProgress');
+  void recordTaskAction(userId, 'buy_diamonds', 1).catch(() => {});
+}
+
 const {
   diamondsToBeans,
   beansToInr,
@@ -555,6 +562,7 @@ exports.verifyPackagePayment = async (req, res) => {
       if (order.beans > 0) inc.beans = order.beans;
       const user = await User.findByIdAndUpdate(userId, { $inc: inc }, { new: true })
         .select('wallet_balance diamonds beans');
+      notifyPurchaseTasks(userId, { diamonds: order.diamonds || 0 });
 
       return res.json({
         success: true,
@@ -595,6 +603,7 @@ exports.verifyPackagePayment = async (req, res) => {
     if (order.beans > 0) inc.beans = order.beans;
     const user = await User.findByIdAndUpdate(userId, { $inc: inc }, { new: true })
       .select('wallet_balance diamonds beans');
+    notifyPurchaseTasks(userId, { diamonds: order.diamonds || 0 });
 
     res.json({
       success: true,
@@ -770,6 +779,7 @@ exports.verifyTopup = async (req, res) => {
       await order.save();
 
       const user = await creditWalletFromOrder(order);
+      notifyPurchaseTasks(userId, { topup: true });
       return res.json({
         success: true,
         mode: 'dev_mock',
@@ -804,6 +814,7 @@ exports.verifyTopup = async (req, res) => {
     await order.save();
 
     const user = await creditWalletFromOrder(order);
+    notifyPurchaseTasks(userId, { topup: true });
     res.json({
       success: true,
       mode: 'razorpay',
@@ -866,6 +877,8 @@ exports.purchaseWithWallet = async (req, res) => {
       payment_method: 'wallet_balance',
       paid_at: new Date(),
     });
+
+    notifyPurchaseTasks(userId, { diamonds, topup: productType === 'diamonds' });
 
     res.json({
       success: true,

@@ -34,6 +34,11 @@ async function transferGift(senderId, receiverId, amount) {
     });
 
     const receiverAfter = await User.findById(receiverId).select('beans diamonds');
+
+    const { recordTaskAction } = require('./taskProgress');
+    void recordTaskAction(senderId, 'spend_diamonds', value).catch(() => {});
+    void recordTaskAction(senderId, 'send_gift', 1).catch(() => {});
+
     return {
       senderDiamonds: senderAfter.diamonds,
       receiverBeans: receiverAfter?.beans || 0,

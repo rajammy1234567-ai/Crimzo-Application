@@ -5,6 +5,7 @@ const LiveTalkRequest = require('../models/LiveTalkRequest');
 const LiveTalkSession = require('../models/LiveTalkSession');
 const User = require('../models/User');
 const { getBillingSettings } = require('../utils/billingSettings');
+const { resolveUserRates } = require('../utils/userRates');
 const { emitLiveStreamsUpdated, getIo } = require('../utils/socketEmitter');
 
 const STALE_LIVE_MS = 6 * 60 * 60 * 1000; // 6 hours max live session
@@ -76,6 +77,7 @@ exports.cleanupStaleLiveSessions = async (io) => {
 
 function mapActiveSession(ls, billingSettings) {
   const u = ls.user_id || {};
+  const rates = resolveUserRates(u, billingSettings);
   return {
     id: ls._id ? ls._id.toString() : null,
     user_id: u._id ? u._id.toString() : (u.id || ls.user_id),
@@ -90,8 +92,13 @@ function mapActiveSession(ls, billingSettings) {
     country: u.country,
     bio: u.bio,
     followers_count: u.followers_count || 0,
-    talk_rate_per_min: billingSettings.liveTalkRatePerMin,
+    talk_rate_per_min: rates.chatRatePerMin,
+    voice_rate_per_min: rates.voiceRatePerMin,
+    chat_rate_per_min: rates.chatRatePerMin,
+    voice_beans_per_min: rates.voiceBeansPerMin,
+    chat_beans_per_min: rates.chatBeansPerMin,
     talk_billing_enabled: billingSettings.liveTalkBillingEnabled,
+    voice_billing_enabled: billingSettings.videoCallBillingEnabled,
   };
 }
 
@@ -134,6 +141,17 @@ exports.startLive = async (req, res) => {
   try {
     const { location } = req.body;
     const userId = req.user.id;
+
+    try {
+      const { assertDailyAppTimeRequirement } = require('../utils/appTimeService');
+      await assertDailyAppTimeRequirement(userId);
+    } catch (timeErr) {
+      return res.status(timeErr.statusCode || 403).json({
+        error: timeErr.message,
+        code: timeErr.code || 'DAILY_TIME_REQUIRED',
+        stats: timeErr.stats,
+      });
+    }
 
     // End any stuck active sessions for this host (app crash / force close)
     const stale = await LiveSession.updateMany(
@@ -218,7 +236,7 @@ exports.getActiveStreams = async (req, res) => {
     const billingSettings = await getBillingSettings();
     const sessions = await LiveSession.find({ status: 'active' })
       .sort({ viewers_count: -1, started_at: -1 })
-      .populate('user_id', 'username avatar country bio followers_count status')
+      .populate('user_id', 'username avatar country bio followers_count status voice_rate_per_min_inr chat_rate_per_min_inr')
       .lean();
 
     const liveNow = await resolveCurrentlyLiveSessions(sessions, io);
@@ -238,12 +256,13 @@ exports.getLiveUsers = async (req, res) => {
     const billingSettings = await getBillingSettings();
     const sessions = await LiveSession.find({ status: 'active' })
       .sort({ viewers_count: -1, started_at: -1 })
-      .populate('user_id', 'id username avatar country status')
+      .populate('user_id', 'id username avatar country status voice_rate_per_min_inr chat_rate_per_min_inr')
       .lean();
 
     const liveNow = await resolveCurrentlyLiveSessions(sessions, io);
     const liveUsers = liveNow.map((ls) => {
         const u = ls.user_id || {};
+        const rates = resolveUserRates(u, billingSettings);
         return {
           session_id: ls._id ? ls._id.toString() : null,
           viewers_count: ls.viewers_count,
@@ -252,8 +271,13 @@ exports.getLiveUsers = async (req, res) => {
           username: u.username,
           avatar: u.avatar,
           country: u.country,
-          talk_rate_per_min: billingSettings.liveTalkRatePerMin,
+          talk_rate_per_min: rates.chatRatePerMin,
+          voice_rate_per_min: rates.voiceRatePerMin,
+          chat_rate_per_min: rates.chatRatePerMin,
+          voice_beans_per_min: rates.voiceBeansPerMin,
+          chat_beans_per_min: rates.chatBeansPerMin,
           talk_billing_enabled: billingSettings.liveTalkBillingEnabled,
+          voice_billing_enabled: billingSettings.videoCallBillingEnabled,
         };
       });
 
@@ -270,7 +294,10 @@ exports.joinLive = async (req, res) => {
     const { sessionId } = req.params;
     const userId = req.user.id;
 
-    const session = await LiveSession.findById(sessionId).populate('user_id', 'username avatar followers_count');
+    const session = await LiveSession.findById(sessionId).populate(
+      'user_id',
+      'username avatar followers_count voice_rate_per_min_inr chat_rate_per_min_inr',
+    );
     if (!session) {
       return res.status(404).json({ error: 'Session not found' });
     }
@@ -315,10 +342,18 @@ exports.joinLive = async (req, res) => {
     }
 
     const host = session.user_id || {};
+    const billingSettings = await getBillingSettings();
+    const hostRates = resolveUserRates(host, billingSettings);
     res.json({
       success: true, channelName, token, appId, uid,
       sessionId: session.id, hostId: host.id || session.user_id, hostUsername: host.username,
-      hostAvatar: host.avatar || null, hostFollowers: host.followers_count || 0
+      hostAvatar: host.avatar || null, hostFollowers: host.followers_count || 0,
+      hostVoiceRatePerMin: hostRates.voiceRatePerMin,
+      hostChatRatePerMin: hostRates.chatRatePerMin,
+      hostVoiceBeansPerMin: hostRates.voiceBeansPerMin,
+      hostChatBeansPerMin: hostRates.chatBeansPerMin,
+      talkBillingEnabled: billingSettings.liveTalkBillingEnabled,
+      voiceBillingEnabled: billingSettings.videoCallBillingEnabled,
     });
   } catch (error) {
     console.error('Join live error:', error);

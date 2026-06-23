@@ -23,24 +23,20 @@ interface Task {
   key: string;
   title: string;
   reward: number;
+  rewardType?: 'beans' | 'diamonds';
   maxCount: number;
   currentCount: number;
+  actionType?: string;
+  deepLink?: string;
 }
 
-const TASK_ROUTES: Record<string, string> = {
-  newbie_nickname: '/profile/edit',
-  newbie_avatar: '/profile/edit',
-  newbie_phone: '/profile/wallet',
-  daily_live_message: '/(tabs)/home',
-  daily_like_moment: '/(tabs)/reels',
-  daily_random_match: '/search',
-  daily_watch_live: '/(tabs)/home',
-  daily_gift_message: '/profile/messages',
-  daily_top_wheel: '/(tabs)/home',
-  monthly_follow: '/(tabs)/profile',
-  monthly_topup: '/profile/wallet',
-  monthly_invite: '/(tabs)/profile',
-  monthly_lucky_win: '/profile/messages',
+type AppTimeStats = {
+  total_minutes?: number;
+  required_minutes?: number;
+  progress_percent?: number;
+  requirement_met?: boolean;
+  remaining_minutes?: number;
+  breakdown?: Record<string, number>;
 };
 
 export default function TasksScreen() {
@@ -50,6 +46,8 @@ export default function TasksScreen() {
   const [countdown, setCountdown] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [dailyCountdown, setDailyCountdown] = useState({ hours: 0, minutes: 0, seconds: 0 });
   const [pendingReward, setPendingReward] = useState(0);
+  const [pendingDiamonds, setPendingDiamonds] = useState(0);
+  const [appTime, setAppTime] = useState<AppTimeStats | null>(null);
   const [checkedIn, setCheckedIn] = useState(false);
   const [newbieTasks, setNewbieTasks] = useState<Task[]>([]);
   const [dailyTasks, setDailyTasks] = useState<Task[]>([]);
@@ -81,18 +79,26 @@ export default function TasksScreen() {
       return;
     }
     try {
-      const data = await apiGet<{
-        success?: boolean;
-        pendingReward?: number;
-        checkedInToday?: boolean;
-        sections?: { newbie?: Task[]; daily?: Task[]; monthly?: Task[] };
-      }>('/api/tasks', token);
+      const [data, timeData] = await Promise.all([
+        apiGet<{
+          success?: boolean;
+          pendingReward?: number;
+          pendingDiamonds?: number;
+          checkedInToday?: boolean;
+          sections?: { newbie?: Task[]; daily?: Task[]; monthly?: Task[] };
+        }>('/api/tasks', token),
+        apiGet<AppTimeStats & { success?: boolean }>('/api/user/app-time/today', token).catch(() => null),
+      ]);
       if (data.success) {
         setPendingReward(data.pendingReward || 0);
+        setPendingDiamonds(data.pendingDiamonds || 0);
         setCheckedIn(!!data.checkedInToday);
         setNewbieTasks(data.sections?.newbie || []);
         setDailyTasks(data.sections?.daily || []);
         setMonthlyTasks(data.sections?.monthly || []);
+      }
+      if (timeData && (timeData as { success?: boolean }).success) {
+        setAppTime(timeData);
       }
     } catch (e) {
       console.error('Fetch tasks error:', e);
@@ -138,15 +144,31 @@ export default function TasksScreen() {
   const handleGetReward = async () => {
     if (!token || pendingReward <= 0) return;
     try {
-      const res = await apiPost<{ success?: boolean; claimed?: number; beans?: number }>(
+      const res = await apiPost<{
+        success?: boolean;
+        claimed?: number;
+        claimedDiamonds?: number;
+        beans?: number;
+        diamonds?: number;
+      }>(
         '/api/tasks/claim',
         {},
         token,
       );
       if (res.success) {
-        Alert.alert('Reward Claimed!', `You received ${res.claimed || pendingReward} beans!`);
+        const parts = [];
+        if (res.claimed) parts.push(`${res.claimed} beans`);
+        if (res.claimedDiamonds) parts.push(`${res.claimedDiamonds} diamonds`);
+        Alert.alert('Reward Claimed!', parts.length ? `You received ${parts.join(' + ')}!` : 'Nothing to claim');
         setPendingReward(0);
-        if (res.beans != null) updateUser({ ...user, beans: res.beans } as any);
+        setPendingDiamonds(0);
+        if (res.beans != null || res.diamonds != null) {
+          updateUser({
+            ...user,
+            beans: res.beans ?? user?.beans,
+            diamonds: res.diamonds ?? user?.diamonds,
+          } as any);
+        }
       }
     } catch (e) {
       Alert.alert('Error', 'Could not claim reward');
@@ -154,17 +176,20 @@ export default function TasksScreen() {
   };
 
   const handleTaskGo = async (task: Task) => {
-    const route = TASK_ROUTES[task.key];
-    if (route) router.push(route as any);
-
-    if (task.key.startsWith('daily_') || task.key.startsWith('monthly_')) {
+    const route = task.deepLink;
+    if (route) {
+      router.push(route as any);
+      return;
+    }
+    if (task.actionType === 'manual') {
       try {
         await apiPost('/api/tasks/complete', { taskKey: task.key }, token);
         fetchTasks();
       } catch (e: any) {
-        if (route) return;
         Alert.alert('Task', e?.message || 'Complete the required action first');
       }
+    } else {
+      Alert.alert('Task', 'Complete this task by doing the action in the app.');
     }
   };
 
@@ -181,7 +206,7 @@ export default function TasksScreen() {
       <View style={styles.taskInfo}>
         <Text style={styles.taskTitle}>{task.title}</Text>
         <View style={styles.taskRewardRow}>
-          <Text style={styles.coinIcon}>🪙</Text>
+          <Text style={styles.coinIcon}>{task.rewardType === 'diamonds' ? '💎' : '🪙'}</Text>
           <Text style={styles.taskReward}>{task.reward}</Text>
           {showMultiplier && <Text style={styles.taskMultiplier}>x{task.maxCount}</Text>}
         </View>
@@ -250,7 +275,9 @@ export default function TasksScreen() {
         <View style={styles.rewardBar}>
           <View style={styles.rewardLeft}>
             <Text style={styles.coinIcon}>🪙</Text>
-            <Text style={styles.rewardCount}>{pendingReward}</Text>
+            <Text style={styles.rewardCount}>
+              🪙{pendingReward}{pendingDiamonds > 0 ? ` · 💎${pendingDiamonds}` : ''}
+            </Text>
           </View>
           <TouchableOpacity style={styles.getRewardBtn} onPress={handleGetReward}>
             <Text style={styles.getRewardText}>Get Reward</Text>
@@ -262,12 +289,17 @@ export default function TasksScreen() {
         {activeTab === 'rewards' ? (
           <View style={styles.rewardsPanel}>
             <Text style={styles.rewardsTitle}>Pending Rewards</Text>
-            <Text style={styles.rewardsAmount}>🪙 {pendingReward}</Text>
-            <Text style={styles.rewardsHint}>Complete tasks and check in daily to earn beans.</Text>
+            <Text style={styles.rewardsAmount}>
+              {pendingReward > 0 ? `🪙 ${pendingReward}` : ''}
+              {pendingReward > 0 && pendingDiamonds > 0 ? '  ' : ''}
+              {pendingDiamonds > 0 ? `💎 ${pendingDiamonds}` : ''}
+              {pendingReward <= 0 && pendingDiamonds <= 0 ? '—' : ''}
+            </Text>
+            <Text style={styles.rewardsHint}>Complete tasks to earn beans and diamonds.</Text>
             <TouchableOpacity
-              style={[styles.getRewardBtn, pendingReward <= 0 && { opacity: 0.5 }]}
+              style={[styles.getRewardBtn, pendingReward <= 0 && pendingDiamonds <= 0 && { opacity: 0.5 }]}
               onPress={handleGetReward}
-              disabled={pendingReward <= 0}
+              disabled={pendingReward <= 0 && pendingDiamonds <= 0}
             >
               <Text style={styles.getRewardText}>Claim to Wallet</Text>
             </TouchableOpacity>
@@ -279,6 +311,28 @@ export default function TasksScreen() {
 
         {activeTab === 'tasks' && (
         <>
+        {appTime && (
+          <View style={styles.appTimeCard}>
+            <View style={styles.appTimeHeader}>
+              <Ionicons name="time-outline" size={18} color="#9333EA" />
+              <Text style={styles.appTimeTitle}>Daily Stream Requirement</Text>
+            </View>
+            <Text style={styles.appTimeSub}>
+              Spend 1 hour/day on the app to go live · {appTime.total_minutes || 0}/60 min
+            </Text>
+            <View style={styles.appTimeTrack}>
+              <View style={[styles.appTimeFill, { width: `${appTime.progress_percent || 0}%` }]} />
+            </View>
+            {appTime.requirement_met ? (
+              <Text style={styles.appTimeDone}>✓ Requirement met — you can go live today</Text>
+            ) : (
+              <Text style={styles.appTimePending}>
+                {appTime.remaining_minutes || 60} min left · use Home, Reels, Live, Messages, PK
+              </Text>
+            )}
+          </View>
+        )}
+
         {/* Quick Actions */}
         <View style={styles.quickActions}>
           <TouchableOpacity
@@ -495,6 +549,32 @@ const styles = StyleSheet.create({
   scrollContent: {
     flex: 1,
   },
+  appTimeCard: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 8,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(147,51,234,0.2)',
+  },
+  appTimeHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  appTimeTitle: { color: '#333', fontSize: 15, fontWeight: '700' },
+  appTimeSub: { color: '#666', fontSize: 13, marginBottom: 10 },
+  appTimeTrack: {
+    height: 8,
+    backgroundColor: '#F0E6FF',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  appTimeFill: {
+    height: '100%',
+    backgroundColor: '#9333EA',
+    borderRadius: 4,
+  },
+  appTimeDone: { color: '#30D158', fontSize: 12, fontWeight: '600', marginTop: 8 },
+  appTimePending: { color: '#888', fontSize: 12, marginTop: 8 },
   quickActions: {
     flexDirection: 'row',
     paddingHorizontal: 8,

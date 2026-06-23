@@ -5,6 +5,39 @@ const LiveSession = require('../models/LiveSession');
 const { toAgoraUid } = require('../utils/agoraUid');
 const { getIo } = require('../utils/socketEmitter');
 
+const ALLOWED_DURATIONS = [180, 300, 600];
+
+function getRemainingSeconds(battle) {
+  if (!battle) return 300;
+  if (battle.status !== 'active' || !battle.started_at) {
+    return battle.duration || 300;
+  }
+  const elapsed = Math.floor((Date.now() - new Date(battle.started_at).getTime()) / 1000);
+  return Math.max(0, (battle.duration || 300) - elapsed);
+}
+
+function battleTimerPayload(battle) {
+  return {
+    duration: battle.duration || 300,
+    started_at: battle.started_at || null,
+    remainingSeconds: getRemainingSeconds(battle),
+  };
+}
+
+function emitPkBattlesUpdated() {
+  const io = getIo();
+  if (io) io.emit('pk_battles_updated');
+}
+
+async function autoEndExpiredBattles() {
+  const active = await PKBattle.find({ status: 'active', started_at: { $ne: null } });
+  for (const battle of active) {
+    if (getRemainingSeconds(battle) <= 0) {
+      await exports.endBattleInternal(battle);
+    }
+  }
+}
+
 // Helper: build Agora token (only if credentials are configured)
 function buildAgoraToken(channelName, uid, role = 'publisher') {
   try {
@@ -39,6 +72,9 @@ exports.createBattle = async (req, res) => {
       { status: 'ended', ended_at: new Date() }
     );
 
+    const rawDuration = Number(req.body?.duration);
+    const duration = ALLOWED_DURATIONS.includes(rawDuration) ? rawDuration : 300;
+
     const battleId = uuidv4();
     const channelName = `pk_${battleId}`;
 
@@ -49,7 +85,8 @@ exports.createBattle = async (req, res) => {
       battle_id: battleId,
       host1_id: userId,
       channel_name: channelName,
-      status: 'waiting'
+      status: 'waiting',
+      duration,
     });
 
     try {
@@ -69,8 +106,11 @@ exports.createBattle = async (req, res) => {
       uid,
       appId: process.env.AGORA_APP_ID || null,
       status: 'waiting',
-      host1: { id: String(userId), username: host?.username, avatar: host?.avatar, agoraUid: uid }
+      host1: { id: String(userId), username: host?.username, avatar: host?.avatar, agoraUid: uid },
+      duration,
+      ...battleTimerPayload(battle),
     });
+    emitPkBattlesUpdated();
   } catch (error) {
     console.error('Create PK error:', error);
     res.status(500).json({ error: 'Failed to create PK battle', details: error.message });
@@ -87,6 +127,8 @@ exports.getActiveBattles = async (req, res) => {
       { status: 'ended', ended_at: new Date() }
     );
 
+    await autoEndExpiredBattles();
+
     const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
     const battles = await PKBattle.find({
       $or: [
@@ -101,7 +143,7 @@ exports.getActiveBattles = async (req, res) => {
       .populate('winner_id', 'username avatar')
       .lean();
 
-    const formatted = battles.map(b => ({
+    const formatted = battles.map((b) => ({
       ...b,
       host1_username: b.host1_id?.username,
       host1_avatar: b.host1_id?.avatar,
@@ -111,6 +153,7 @@ exports.getActiveBattles = async (req, res) => {
       host2_id: b.host2_id?._id || b.host2_id,
       winner_id: b.winner_id?._id || b.winner_id || null,
       winner_username: b.winner_id?.username || null,
+      remainingSeconds: getRemainingSeconds(b),
     }));
 
     res.json({ success: true, battles: formatted });
@@ -126,22 +169,27 @@ exports.joinBattle = async (req, res) => {
     const { battleId } = req.params;
     const userId = req.user.id;
 
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
     const battle = await PKBattle.findOneAndUpdate(
       {
         battle_id: battleId,
         status: 'waiting',
+        host1_id: { $ne: userId },
         $or: [{ host2_id: null }, { host2_id: { $exists: false } }],
       },
-      { host2_id: userId, status: 'active' },
+      { host2_id: userId, status: 'active', started_at: new Date() },
       { new: true },
     );
 
     if (!battle) {
+      const existing = await PKBattle.findOne({ battle_id: battleId }).lean();
+      if (existing && String(existing.host1_id) === String(userId)) {
+        return res.status(400).json({ error: 'Cannot join your own battle' });
+      }
       return res.status(404).json({ error: 'Battle not found or already started' });
-    }
-
-    if (String(battle.host1_id) === String(userId)) {
-      return res.status(400).json({ error: 'Cannot join your own battle' });
     }
 
     const uid = toAgoraUid(userId);
@@ -166,8 +214,18 @@ exports.joinBattle = async (req, res) => {
       appId: process.env.AGORA_APP_ID || null,
       status: 'active',
       host1: { id: String(battle.host1_id), username: host1?.username, avatar: host1?.avatar, agoraUid: host1AgoraUid },
-      host2: { id: String(userId), username: host2?.username, avatar: host2?.avatar, agoraUid: uid }
+      host2: { id: String(userId), username: host2?.username, avatar: host2?.avatar, agoraUid: uid },
+      ...battleTimerPayload(battle),
     });
+
+    const io = getIo();
+    if (io) {
+      io.to(battleId).emit('pk_battle_started', {
+        battleId,
+        ...battleTimerPayload(battle),
+      });
+      emitPkBattlesUpdated();
+    }
   } catch (error) {
     console.error('Join PK error:', error);
     res.status(500).json({ error: 'Failed to join PK battle', details: error.message });
@@ -218,6 +276,8 @@ exports.resumeBattle = async (req, res) => {
       host2_score: battle.host2_score,
       host1: { id: String(battle.host1_id), username: host1?.username, avatar: host1?.avatar, agoraUid: host1AgoraUid },
       host2: host2 ? { id: String(battle.host2_id), username: host2.username, avatar: host2.avatar, agoraUid: host2AgoraUid } : null,
+      duration: battle.duration,
+      ...battleTimerPayload(battle),
     });
   } catch (error) {
     console.error('Resume PK error:', error);
@@ -260,6 +320,8 @@ exports.watchBattle = async (req, res) => {
       host2_score: battle.host2_score,
       host1: { id: String(battle.host1_id), username: host1?.username, avatar: host1?.avatar, agoraUid: host1AgoraUid },
       host2: host2 ? { id: String(battle.host2_id), username: host2.username, avatar: host2.avatar, agoraUid: host2AgoraUid } : null,
+      duration: battle.duration,
+      ...battleTimerPayload(battle),
     });
   } catch (error) {
     console.error('Watch PK error:', error);
@@ -267,7 +329,48 @@ exports.watchBattle = async (req, res) => {
   }
 };
 
-// End PK Battle
+exports.endBattleInternal = async (battle) => {
+  if (!battle || battle.status === 'ended') return null;
+
+  let winnerId = null;
+  if (battle.host1_score > battle.host2_score) {
+    winnerId = battle.host1_id;
+  } else if (battle.host2_score > battle.host1_score) {
+    winnerId = battle.host2_id;
+  }
+
+  battle.status = 'ended';
+  battle.winner_id = winnerId;
+  battle.ended_at = new Date();
+  await battle.save();
+
+  const userIds = [battle.host1_id, battle.host2_id].filter(Boolean);
+  if (userIds.length > 0) {
+    await User.updateMany({ _id: { $in: userIds } }, { status: 'online' });
+  }
+
+  const result = {
+    success: true,
+    winnerId: winnerId ? String(winnerId) : null,
+    host1_score: battle.host1_score,
+    host2_score: battle.host2_score,
+    message: winnerId ? 'Battle ended - winner decided!' : 'Battle ended - draw!',
+  };
+
+  const io = getIo();
+  if (io) {
+    io.to(battle.battle_id).emit('pk_battle_ended', {
+      battleId: battle.battle_id,
+      winner: winnerId ? String(winnerId) : null,
+      host1Score: battle.host1_score,
+      host2Score: battle.host2_score,
+    });
+    emitPkBattlesUpdated();
+  }
+
+  return result;
+};
+
 exports.endBattle = async (req, res) => {
   try {
     const { battleId } = req.params;
@@ -278,47 +381,11 @@ exports.endBattle = async (req, res) => {
       return res.status(404).json({ error: 'Battle not found' });
     }
 
-    // Only hosts can end their own battle
     if (String(battle.host1_id) !== String(userId) && String(battle.host2_id) !== String(userId)) {
       return res.status(403).json({ error: 'Only battle hosts can end the battle' });
     }
 
-    let winnerId = null;
-    if (battle.host1_score > battle.host2_score) {
-      winnerId = battle.host1_id;
-    } else if (battle.host2_score > battle.host1_score) {
-      winnerId = battle.host2_id;
-    }
-
-    battle.status = 'ended';
-    battle.winner_id = winnerId;
-    battle.ended_at = new Date();
-    await battle.save();
-
-    const userIds = [battle.host1_id, battle.host2_id].filter(Boolean);
-    if (userIds.length > 0) {
-      await User.updateMany({ _id: { $in: userIds } }, { status: 'online' });
-    }
-
-    const result = {
-      success: true,
-      winnerId: winnerId ? String(winnerId) : null,
-      host1_score: battle.host1_score,
-      host2_score: battle.host2_score,
-      message: winnerId ? 'Battle ended - winner decided!' : 'Battle ended - draw!',
-    };
-
-    const io = getIo();
-    if (io) {
-      io.to(battleId).emit('pk_battle_ended', {
-        battleId,
-        winner: winnerId ? String(winnerId) : null,
-        host1Score: battle.host1_score,
-        host2Score: battle.host2_score,
-      });
-      io.emit('pk_battles_updated');
-    }
-
+    const result = await exports.endBattleInternal(battle);
     res.json(result);
   } catch (error) {
     console.error('End PK error:', error);

@@ -7,6 +7,7 @@ const videoCallSessionSchema = new mongoose.Schema({
   ratePerMin: { type: Number, default: 1 },
   minutesCharged: { type: Number, default: 0 },
   totalCharged: { type: Number, default: 0 },
+  peer_beans_earned: { type: Number, default: 0 },
   status: {
     type: String,
     enum: ['active', 'ended', 'ended_insufficient'],

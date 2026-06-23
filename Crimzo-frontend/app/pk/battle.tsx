@@ -40,7 +40,7 @@ import { toAgoraUid, sameUserId } from '../../lib/agoraUid';
 import { PK_GIFTS, findPkGiftByValue } from '../../lib/pkGifts';
 
 const { width: SW, height: SH } = Dimensions.get('window');
-const BATTLE_DURATION = 300; // 5 minutes
+const DEFAULT_BATTLE_DURATION = 300;
 const GIFTS = PK_GIFTS;
 
 // ── Pulsing VS Badge ──
@@ -162,7 +162,8 @@ const GiftFloat = ({ gift, side, onDone }: { gift: any; side: 'left' | 'right'; 
 // ── Main PK Battle Screen ──
 // ══════════════════════════════════════════════════
 export default function PKBattleScreen() {
-  const { mode, battleId: paramBattleId } = useLocalSearchParams();
+  const { mode, battleId: paramBattleId, duration: paramDuration } = useLocalSearchParams();
+  const selectedDuration = Number(paramDuration) || DEFAULT_BATTLE_DURATION;
   const { user, token, updateUser } = useAuth();
   const router = useRouter();
 
@@ -172,7 +173,7 @@ export default function PKBattleScreen() {
   const [isActive, setIsActive] = useState(false);
   const [host1Score, setHost1Score] = useState(0);
   const [host2Score, setHost2Score] = useState(0);
-  const [timeRemaining, setTimeRemaining] = useState(BATTLE_DURATION);
+  const [timeRemaining, setTimeRemaining] = useState(selectedDuration);
   const [host1Info, setHost1Info] = useState<any>(null);
   const [host2Info, setHost2Info] = useState<any>(null);
   const [showWinner, setShowWinner] = useState(false);
@@ -287,7 +288,15 @@ export default function PKBattleScreen() {
       setHost2Info(joined);
       setRemoteUid(joined.agoraUid);
       setIsActive(true);
-      setTimeRemaining(BATTLE_DURATION);
+      if (data?.remainingSeconds != null) {
+        setTimeRemaining(data.remainingSeconds);
+      }
+    });
+    s.on('pk_battle_started', (data: any) => {
+      if (data?.remainingSeconds != null) {
+        setTimeRemaining(data.remainingSeconds);
+      }
+      setIsActive(true);
     });
     s.on('pk_battle_ended', (data: any) => {
       showWinnerModal(data.winner ?? null, data.host1Score, data.host2Score);
@@ -385,7 +394,7 @@ export default function PKBattleScreen() {
         appId?: string;
         uid?: number;
         host1?: { id: string; username?: string; avatar?: string; agoraUid?: number };
-      }>('/api/pk/create', {}, token);
+      }>('/api/pk/create', { duration: selectedDuration }, token);
       setBattleData(data);
       setHost1Info(data.host1 || { id: user?.id, username: user?.username, avatar: user?.avatar });
       setIsActive(false);
@@ -419,6 +428,8 @@ export default function PKBattleScreen() {
       host2?: { id: string; username?: string; avatar?: string; agoraUid?: number } | null;
       host1_score?: number;
       host2_score?: number;
+      duration?: number;
+      remainingSeconds?: number;
     },
     role: 'host1' | 'host2',
   ) => {
@@ -435,7 +446,7 @@ export default function PKBattleScreen() {
     setMyRole(role);
     setIsActive(data.status === 'active');
     if (data.status === 'active') {
-      setTimeRemaining(BATTLE_DURATION);
+      setTimeRemaining(data.remainingSeconds ?? data.duration ?? selectedDuration);
     }
 
     const agoraUid = data.uid ?? (role === 'host1'
@@ -484,6 +495,8 @@ export default function PKBattleScreen() {
         uid?: number;
         host1?: { id: string; username?: string; avatar?: string; agoraUid?: number };
         host2?: { id: string; username?: string; avatar?: string; agoraUid?: number };
+        remainingSeconds?: number;
+        duration?: number;
       }>(`/api/pk/join/${paramBattleId}`, {}, token);
       await applyBattleSession(data, 'host2');
 
@@ -494,6 +507,7 @@ export default function PKBattleScreen() {
         socketRef.current.emit('pk_opponent_joined', {
           battleId: data.battleId,
           user: joinedUser,
+          remainingSeconds: (data as { remainingSeconds?: number }).remainingSeconds,
         });
         pendingOpponentNotify.current = false;
       }
@@ -550,12 +564,6 @@ export default function PKBattleScreen() {
         host2_score: number;
       }>(`/api/pk/end/${battleData.battleId}`, {}, token);
       showWinnerModal(res.winnerId, res.host1_score, res.host2_score);
-      socketRef.current?.emit('pk_battle_ended', {
-        battleId: battleData.battleId,
-        winner: res.winnerId,
-        host1Score: res.host1_score,
-        host2Score: res.host2_score,
-      });
     } catch (error: unknown) {
       console.error('End battle error:', error);
     }

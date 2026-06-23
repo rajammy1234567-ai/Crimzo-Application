@@ -9,12 +9,15 @@ import {
   isInsufficientBalanceError,
   VIDEO_CALL_RATE_PER_MIN,
 } from '../lib/videoCallBilling';
+import { CALL_RING_TIMEOUT_MS } from '../lib/videoCallUi';
 
 export type IncomingCall = {
   callerId: string;
   callerName: string;
   callerAvatar: string | null;
   channelName: string;
+  ratePerMin?: number;
+  beansPerMin?: number;
 };
 
 type VideoCallContextValue = {
@@ -31,7 +34,15 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
   const { user, token } = useAuth();
   const router = useRouter();
   const socketRef = useRef<Socket | null>(null);
+  const ringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
+
+  const clearRingTimeout = useCallback(() => {
+    if (ringTimeoutRef.current) {
+      clearTimeout(ringTimeoutRef.current);
+      ringTimeoutRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     if (!token || !user?.id || !API_URL) {
@@ -45,12 +56,15 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
       socket.emit('join_user', { userId: user.id });
     });
 
-    socket.on('video_call_incoming', (data: IncomingCall) => {
+    socket.on('video_call_incoming', (data: IncomingCall & { ratePerMin?: number; beansPerMin?: number }) => {
       if (!data?.channelName || !data?.callerId) return;
       setIncomingCall(data);
+      const rateLine = data.ratePerMin
+        ? `\n\nThey pay ₹${data.ratePerMin}/min${data.beansPerMin ? ` · you earn ${data.beansPerMin} beans/min` : ''}`
+        : '';
       Alert.alert(
         'Incoming Video Call',
-        `${data.callerName} is calling you`,
+        `${data.callerName} is calling you${rateLine}`,
         [
           {
             text: 'Decline',
@@ -77,6 +91,8 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
                   role: 'callee',
                   peerId: data.callerId,
                   peerName: data.callerName,
+                  ratePerMin: data.ratePerMin != null ? String(data.ratePerMin) : '',
+                  beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : '',
                 },
               } as any);
             },
@@ -86,26 +102,34 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
       );
     });
 
+    socket.on('video_call_accepted', () => {
+      clearRingTimeout();
+    });
+
     socket.on('video_call_rejected', () => {
+      clearRingTimeout();
       Alert.alert('Call Declined', 'The other person declined your call.');
     });
 
     socket.on('video_call_ended', (data?: { reason?: string }) => {
+      clearRingTimeout();
       const msg = data?.reason === 'balance_exhausted'
         ? 'Call ended — wallet balance exhausted.'
         : 'The other person left the call.';
       Alert.alert('Call Ended', msg);
     });
 
-    socket.on('video_call_error', (data?: { code?: string; message?: string; wallet_balance?: number }) => {
+    socket.on('video_call_error', (data?: { code?: string; message?: string; wallet_balance?: number; ratePerMin?: number; beansPerMin?: number }) => {
+      clearRingTimeout();
       if (data?.code === 'FOLLOW_REQUIRED') {
-        Alert.alert('Follow Required', data.message || 'Follow this user and wait until they accept your follow request.');
+        Alert.alert('Follow First', data.message || 'Follow each other to start a video call.');
         return;
       }
       if (data?.code === 'INSUFFICIENT_BALANCE') {
+        const rate = data.ratePerMin ?? VIDEO_CALL_RATE_PER_MIN;
         Alert.alert(
           'Recharge Required',
-          `${data.message || `Video call costs ₹${VIDEO_CALL_RATE_PER_MIN}/min.`}\n\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
+          `${data.message || `Video call costs ₹${rate}/min.`}\n\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
           [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Add Money', onPress: () => router.push('/profile/wallet' as any) },
@@ -118,10 +142,11 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
 
     socketRef.current = socket;
     return () => {
+      clearRingTimeout();
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [token, user?.id, user?.username, router]);
+  }, [token, user?.id, user?.username, router, clearRingTimeout]);
 
   const startCall = useCallback(async (peerId: string | number, peerName: string, peerAvatar?: string | null) => {
     if (!user?.id || !socketRef.current || !token) {
@@ -132,30 +157,39 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
     try {
       const interaction = await apiGet<{
         canInteract?: boolean;
+        canVideoCall?: boolean;
+        isMutualFriend?: boolean;
         reason?: string;
       }>(`/api/user/interaction?userId=${peerId}`, token);
-      if (!interaction.canInteract) {
+      const allowed = interaction.canVideoCall ?? interaction.canInteract;
+      if (!allowed) {
         Alert.alert(
-          'Follow Required',
-          interaction.reason || 'Follow this user and wait until they accept your follow request.',
+          'Follow First',
+          interaction.reason || 'Follow each other to start a video call.',
         );
         return;
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 403) {
-        Alert.alert('Follow Required', e.message);
+        Alert.alert('Follow First', e.message);
         return;
       }
     }
 
+    let ratePerMin = VIDEO_CALL_RATE_PER_MIN;
+    let beansPerMin: number | undefined;
     try {
-      await checkVideoCallEligibility(token);
+      const eligibility = await checkVideoCallEligibility(token, peerId);
+      ratePerMin = eligibility.ratePerMin ?? VIDEO_CALL_RATE_PER_MIN;
+      beansPerMin = eligibility.beansPerMin;
     } catch (e) {
       if (isInsufficientBalanceError(e)) {
-        const data = e.data as { wallet_balance?: number; shortfall?: number };
+        const data = e.data as { wallet_balance?: number; ratePerMin?: number; beansPerMin?: number };
+        const rate = data.ratePerMin ?? VIDEO_CALL_RATE_PER_MIN;
+        const beansLine = data.beansPerMin ? `\nThey earn ${data.beansPerMin} beans/min` : '';
         Alert.alert(
           'Recharge Required',
-          `Please recharge your wallet first for video calls.\n\nRate: ₹${VIDEO_CALL_RATE_PER_MIN}/min\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
+          `Please recharge your wallet first for video calls.\n\nRate: ₹${rate}/min${beansLine}\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
           [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Add Money', onPress: () => router.push('/profile/wallet' as any) },
@@ -175,6 +209,12 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
       callerAvatar: user.avatar || null,
       channelName,
     });
+
+    clearRingTimeout();
+    ringTimeoutRef.current = setTimeout(() => {
+      Alert.alert('No Answer', `${peerName} did not answer.`, [{ text: 'OK' }]);
+    }, CALL_RING_TIMEOUT_MS);
+
     router.push({
       pathname: '/call',
       params: {
@@ -183,9 +223,11 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
         peerId: String(peerId),
         peerName,
         peerAvatar: peerAvatar || '',
+        ratePerMin: String(ratePerMin),
+        beansPerMin: beansPerMin != null ? String(beansPerMin) : '',
       },
     } as any);
-  }, [user?.id, user?.username, user?.avatar, token, router]);
+  }, [user?.id, user?.username, user?.avatar, token, router, clearRingTimeout]);
 
   const acceptCall = useCallback(() => {
     if (!incomingCall || !socketRef.current || !user?.id) return;
@@ -202,6 +244,8 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
         role: 'callee',
         peerId: incomingCall.callerId,
         peerName: incomingCall.callerName,
+        ratePerMin: incomingCall.ratePerMin != null ? String(incomingCall.ratePerMin) : '',
+        beansPerMin: incomingCall.beansPerMin != null ? String(incomingCall.beansPerMin) : '',
       },
     } as any);
     setIncomingCall(null);

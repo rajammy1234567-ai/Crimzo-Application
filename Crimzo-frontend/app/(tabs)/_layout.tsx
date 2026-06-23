@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
-import { Tabs, useRouter } from 'expo-router';
+import { Tabs, useRouter, useSegments } from 'expo-router';
+import { setAppTimeCategory, routeToAppCategory } from '../../lib/appTimeTracker';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,12 +25,17 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const { token, loading } = useAuth();
   const router = useRouter();
+  const segments = useSegments();
 
   useEffect(() => {
     if (!loading && !token) {
       router.replace('/(auth)/login');
     }
   }, [loading, token, router]);
+
+  useEffect(() => {
+    setAppTimeCategory(routeToAppCategory(segments.join('/')));
+  }, [segments]);
 
   const BOTTOM_OFFSET = insets.bottom;
 

@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { authenticateToken } = require('../middleware/auth');
 const task = require('../controllers/taskController');
 
+router.get('/streak', authenticateToken, task.getStreak);
 router.get('/', authenticateToken, task.getTasks);
 router.post('/checkin', authenticateToken, task.checkIn);
 router.post('/claim', authenticateToken, task.claimReward);
