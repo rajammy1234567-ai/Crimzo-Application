@@ -9,6 +9,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { PRIVACY_URL, TERMS_URL } from '../../lib/apiClient';
+import GoogleSignInButton from '../../components/auth/GoogleSignInButton';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -165,6 +166,17 @@ export default function LoginScreen() {
               <TouchableOpacity style={s.forgotBtn} onPress={handleForgotPassword}>
                 <Text style={s.forgotText}>Forgot Password?</Text>
               </TouchableOpacity>
+
+              <View style={s.dividerRow}>
+                <View style={s.dividerLine} />
+                <Text style={s.dividerText}>or</Text>
+                <View style={s.dividerLine} />
+              </View>
+
+              <GoogleSignInButton
+                disabled={loading}
+                onSuccess={() => router.replace('/(tabs)/home')}
+              />
             </View>
 
             <View style={s.footer}>
@@ -246,6 +258,13 @@ const s = StyleSheet.create({
 
   forgotBtn: { alignItems: 'center', marginTop: 16 },
   forgotText: { color: 'rgba(255,255,255,0.45)', fontSize: 13, fontWeight: '600' },
+
+  dividerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginTop: 20, marginBottom: 16,
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.08)' },
+  dividerText: { color: 'rgba(255,255,255,0.35)', fontSize: 12, fontWeight: '600' },
 
   footer: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',

@@ -69,6 +69,13 @@ interface AuthContextType {
   sendEmailOtp: (email: string) => Promise<void>;
   verifyEmailOtp: (email: string, otp: string) => Promise<{ isNewUser: boolean }>;
   completeEmailRegistration: (email: string, username: string, password: string) => Promise<void>;
+  signInWithGoogle: (profile: {
+    email: string;
+    name?: string;
+    googleId?: string;
+    avatar?: string;
+    idToken?: string;
+  }) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (userData: Partial<User>) => void;
 }
@@ -230,7 +237,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsGuest(false);
   };
 
-  // ── Email Login (for Gmail/Google accounts stored in DB — no password needed) ──
+  const signInWithGoogle = async (profile: {
+    email: string;
+    name?: string;
+    googleId?: string;
+    avatar?: string;
+    idToken?: string;
+  }) => {
+    try {
+      const data = await apiPost<{ token: string; user: User }>(
+        '/api/auth/google',
+        {
+          email: profile.email.trim().toLowerCase(),
+          name: profile.name,
+          googleId: profile.googleId,
+          avatar: profile.avatar,
+          idToken: profile.idToken,
+        },
+        null,
+        15000,
+      );
+      persistAuth(data.token, data.user);
+    } catch (error: unknown) {
+      throw new Error(error instanceof ApiError ? error.message : 'Google sign-in failed.');
+    }
+  };
+
+  // ── Email Login (legacy — email only, no OAuth) ──
   const emailLogin = async (email: string) => {
     try {
       const normalizedEmail = email.trim().toLowerCase();
@@ -358,7 +391,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, isGuest, login, emailLogin, register, guestLogin, testLogin, sendPhoneOtp, verifyPhoneOtp, sendEmailOtp, verifyEmailOtp, completeEmailRegistration, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, token, loading, isGuest, login, emailLogin, register, guestLogin, testLogin, sendPhoneOtp, verifyPhoneOtp, sendEmailOtp, verifyEmailOtp, completeEmailRegistration, signInWithGoogle, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

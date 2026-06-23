@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 
 import { PRIVACY_URL, TERMS_URL } from '../../lib/apiClient';
+import GoogleSignInButton from '../../components/auth/GoogleSignInButton';
 
 export default function RegisterScreen() {
   const [email, setEmail] = useState('');
@@ -271,6 +272,17 @@ export default function RegisterScreen() {
                   )}
                 </LinearGradient>
               </TouchableOpacity>
+
+              <View style={s.dividerRow}>
+                <View style={s.dividerLine} />
+                <Text style={s.dividerText}>or</Text>
+                <View style={s.dividerLine} />
+              </View>
+
+              <GoogleSignInButton
+                disabled={loading}
+                onSuccess={() => router.replace('/(tabs)/home')}
+              />
             </View>
 
             <View style={s.footer}>
@@ -404,6 +416,13 @@ const s = StyleSheet.create({
   btnGradient: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   btnRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   btnText: { color: '#FFF', fontSize: 17, fontWeight: '700', letterSpacing: 0.3 },
+
+  dividerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginTop: 18, marginBottom: 14,
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.08)' },
+  dividerText: { color: 'rgba(255,255,255,0.35)', fontSize: 12, fontWeight: '600' },
 
   footer: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',

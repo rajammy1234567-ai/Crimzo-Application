@@ -198,34 +198,63 @@ exports.verifyOtp = async (req, res) => {
   }
 };
 
+async function verifyGoogleIdToken(idToken) {
+  if (!idToken) return null;
+  try {
+    const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data?.email) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 // Google Login
 exports.googleLogin = async (req, res) => {
   try {
-    const { email, name, googleId, avatar } = req.body;
-    if (!email) {
+    const { email, name, googleId, avatar, idToken } = req.body;
+
+    let normalizedEmail = email ? email.trim().toLowerCase() : '';
+    let resolvedName = name;
+    let resolvedGoogleId = googleId;
+    let resolvedAvatar = avatar;
+
+    if (idToken) {
+      const verified = await verifyGoogleIdToken(idToken);
+      if (!verified) {
+        return res.status(401).json({ error: 'Invalid Google sign-in. Please try again.' });
+      }
+      normalizedEmail = String(verified.email).trim().toLowerCase();
+      resolvedName = verified.name || resolvedName;
+      resolvedGoogleId = verified.sub || resolvedGoogleId;
+      resolvedAvatar = verified.picture || resolvedAvatar;
+    }
+
+    if (!normalizedEmail) {
       return res.status(400).json({ error: 'Email is required from Google' });
     }
 
-    const normalizedEmail = email.trim().toLowerCase();
     let user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
-      const username = name || `User_${uuidv4().substring(0, 6)}`;
+      const username = resolvedName || `User_${uuidv4().substring(0, 6)}`;
       const crimzoId = await generateCrimzoId();
       user = await User.create({
         crimzo_id: crimzoId,
         email: normalizedEmail,
         password_hash: 'GOOGLE_AUTH_NO_PASSWORD',
         username,
-        avatar: avatar || null,
+        avatar: resolvedAvatar || null,
         diamonds: 0,
         beans: 0,
         country: 'India',
       });
       console.log('New Google user created, ID:', user.id);
     } else {
-      if (avatar && !user.avatar) {
-        user.avatar = avatar;
+      if (resolvedAvatar && !user.avatar) {
+        user.avatar = resolvedAvatar;
       }
       console.log('Existing Google user found, ID:', user.id);
     }
