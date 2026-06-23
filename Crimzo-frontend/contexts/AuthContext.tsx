@@ -1,6 +1,7 @@
 import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
+import { appAlert } from '../lib/appAlert';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Alert, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { API_URL, apiFetch, apiGet, apiPost, ApiError } from '../lib/apiClient';
 import { getApiUrlCandidates, setActiveApiUrl } from '../lib/apiConfig';
 if (typeof window !== 'undefined' || (typeof navigator !== 'undefined' && navigator.product === 'ReactNative')) {
@@ -131,7 +132,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (status === 403) {
         const banned = error instanceof ApiError && /suspended|banned/i.test(error.message);
         if (banned) {
-          Alert.alert('Account Suspended', error.message || 'Your account has been suspended.');
+          appAlert('Account Suspended', error.message || 'Your account has been suspended.');
         }
         await logout();
       } else if (status === 401 || status === 404) {
@@ -290,7 +291,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       persistAuth(data.token, userData);
     } catch (e) {
       console.error('TestLogin failed, backend may be offline:', e);
-      Alert.alert('Dev Login Failed', 'Backend is offline. Start the backend server first.');
+      appAlert('Dev Login Failed', 'Backend is offline. Start the backend server first.');
     }
   };
 

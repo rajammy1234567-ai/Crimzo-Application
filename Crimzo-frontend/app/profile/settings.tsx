@@ -1,19 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-  StatusBar,
-  Linking,
-  Switch,
-  Modal,
-  Platform,
-  Share,
-  TextInput,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Linking, Switch, Modal, Platform, Share, TextInput } from 'react-native';
 import { KeyboardModalFrame } from '../../components/KeyboardAware';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -204,7 +191,7 @@ export default function SettingsScreen() {
       setIsPrivateAccount(nextPrivate);
       updateUser({ ...user, is_private: nextPrivate } as any);
     } catch {
-      Alert.alert('Error', 'Could not update account privacy. Try again.');
+      appAlert('Error', 'Could not update account privacy. Try again.');
     } finally {
       setPrivacySaving(false);
     }
@@ -212,7 +199,7 @@ export default function SettingsScreen() {
 
   const handlePrivateAccountToggle = (nextPrivate: boolean) => {
     if (nextPrivate) {
-      Alert.alert(
+      appAlert(
         'Private Account',
         'Only people you approve can see your posts and stories. Your current followers stay the same.',
         [
@@ -254,7 +241,7 @@ export default function SettingsScreen() {
   };
 
   const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
+    appAlert('Logout', 'Are you sure you want to logout?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Logout',
@@ -268,7 +255,7 @@ export default function SettingsScreen() {
   };
 
   const handleClearCache = () => {
-    Alert.alert('Clear Cache', 'Clear temporary app data? Your login will stay saved.', [
+    appAlert('Clear Cache', 'Clear temporary app data? Your login will stay saved.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Clear',
@@ -279,7 +266,7 @@ export default function SettingsScreen() {
           );
           if (toRemove.length) await AsyncStorage.multiRemove(toRemove);
           await refreshCacheSize();
-          Alert.alert('Done', 'Cache cleared successfully.');
+          appAlert('Done', 'Cache cleared successfully.');
         },
       },
     ]);
@@ -299,7 +286,7 @@ export default function SettingsScreen() {
   };
 
   const pickLanguage = () => {
-    Alert.alert('App Language', 'Select your preferred language', [
+    appAlert('App Language', 'Select your preferred language', [
       { text: 'Automatic', onPress: () => persistSettings({ ...settings, language: 'Automatic' }) },
       { text: 'English', onPress: () => persistSettings({ ...settings, language: 'English' }) },
       { text: 'Hindi', onPress: () => persistSettings({ ...settings, language: 'Hindi' }) },
@@ -325,7 +312,7 @@ export default function SettingsScreen() {
         message: `I'm loving Crimzo! Join me — live streams, reels & more. ${PLAY_STORE_URL}`,
       });
     } catch {
-      Alert.alert('Rate Crimzo', 'Thank you! Find us on the Play Store as "Crimzo".');
+      appAlert('Rate Crimzo', 'Thank you! Find us on the Play Store as "Crimzo".');
     }
   };
 
@@ -334,11 +321,11 @@ export default function SettingsScreen() {
     const voice = Number(voiceRate);
     const chat = Number(chatRate);
     if (!Number.isFinite(voice) || voice < MIN_RATE_INR || voice > MAX_RATE_INR) {
-      Alert.alert('Invalid Rate', `Voice rate must be between ₹${MIN_RATE_INR} and ₹${MAX_RATE_INR}/min`);
+      appAlert('Invalid Rate', `Voice rate must be between ₹${MIN_RATE_INR} and ₹${MAX_RATE_INR}/min`);
       return;
     }
     if (!Number.isFinite(chat) || chat < MIN_RATE_INR || chat > MAX_RATE_INR) {
-      Alert.alert('Invalid Rate', `Chat rate must be between ₹${MIN_RATE_INR} and ₹${MAX_RATE_INR}/min`);
+      appAlert('Invalid Rate', `Chat rate must be between ₹${MIN_RATE_INR} and ₹${MAX_RATE_INR}/min`);
       return;
     }
     setRatesSaving(true);
@@ -353,12 +340,12 @@ export default function SettingsScreen() {
         }),
       });
       setRatesModalVisible(false);
-      Alert.alert(
+      appAlert(
         'Rates Updated',
         `Voice: ₹${voice}/min (${inrToBeans(voice)} beans/min)\nChat: ₹${chat}/min (${inrToBeans(chat)} beans/min)`,
       );
     } catch {
-      Alert.alert('Error', 'Could not save your rates. Try again.');
+      appAlert('Error', 'Could not save your rates. Try again.');
     } finally {
       setRatesSaving(false);
     }
@@ -366,7 +353,7 @@ export default function SettingsScreen() {
 
   const contactSupport = () => {
     Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=Crimzo%20Support`).catch(() => {
-      Alert.alert('Customer Service', `Email us at ${SUPPORT_EMAIL}`);
+      appAlert('Customer Service', `Email us at ${SUPPORT_EMAIL}`);
     });
   };
 

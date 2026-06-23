@@ -1,20 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  FlatList,
-  Image,
-  StatusBar,
-  ActivityIndicator,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  Modal,
-  Alert,
-  ScrollView,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Image, StatusBar, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Modal, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
@@ -257,7 +243,7 @@ export default function MessagesScreen() {
     if (!selectedChat || gifting) return;
     const myDiamonds = user?.diamonds ?? 0;
     if (myDiamonds < diamonds) {
-      Alert.alert(
+      appAlert(
         'Not Enough Diamonds',
         `You have ${myDiamonds} diamonds. Buy more from Wallet to send gifts.`,
         [
@@ -293,7 +279,7 @@ export default function MessagesScreen() {
         setShowGift(false);
       }
     } catch (e: unknown) {
-      Alert.alert('Gift Failed', e instanceof ApiError ? e.message : 'Could not send gift');
+      appAlert('Gift Failed', e instanceof ApiError ? e.message : 'Could not send gift');
     } finally {
       setGifting(false);
     }
@@ -343,7 +329,7 @@ export default function MessagesScreen() {
     } catch (e) {
       setChatMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
       if (e instanceof ApiError) {
-        Alert.alert(
+        appAlert(
           e.data && typeof e.data === 'object' && (e.data as { code?: string }).code === 'FOLLOW_REQUIRED'
             ? 'Follow Required'
             : 'Message Failed',

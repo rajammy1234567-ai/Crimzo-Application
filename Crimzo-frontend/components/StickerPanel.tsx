@@ -1,18 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-    View,
-    Text,
-    TouchableOpacity,
-    StyleSheet,
-    Modal,
-    FlatList,
-    Alert,
-    ActivityIndicator,
-    ScrollView,
-    Animated,
-    Easing,
-    Dimensions,
-} from 'react-native';
+import { appAlert } from '../lib/appAlert';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, FlatList, ActivityIndicator, ScrollView, Animated, Easing, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import axios from 'axios';
@@ -153,7 +141,7 @@ export default function StickerPanel({ visible, onClose, onSendSticker, token, r
         const sticker = confirmSticker;
         setConfirmSticker(null);
         if (diamonds < sticker.price) {
-            Alert.alert(
+            appAlert(
                 'Not Enough Diamonds',
                 `You need ${sticker.price} diamonds but only have ${diamonds}. Buy diamonds from Wallet to send gifts.`,
                 [
@@ -167,7 +155,7 @@ export default function StickerPanel({ visible, onClose, onSendSticker, token, r
             setSending(sticker.id);
             const stickerId = sticker.id != null ? String(sticker.id) : '';
             if (!stickerId) {
-                Alert.alert('Error', 'Invalid gift. Please refresh and try again.');
+                appAlert('Error', 'Invalid gift. Please refresh and try again.');
                 return;
             }
             const r = await axios.post(`${API_URL}/api/stickers/send`,
@@ -179,7 +167,7 @@ export default function StickerPanel({ visible, onClose, onSendSticker, token, r
             onSendSticker(sticker);
             onClose();
         } catch (e: any) {
-            Alert.alert('Error', e.response?.data?.error || 'Failed to send sticker');
+            appAlert('Error', e.response?.data?.error || 'Failed to send sticker');
         } finally {
             setSending(null);
         }

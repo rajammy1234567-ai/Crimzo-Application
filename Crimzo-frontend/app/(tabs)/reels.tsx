@@ -1,23 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Dimensions,
-  TouchableOpacity,
-  Image,
-  FlatList,
-  ActivityIndicator,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  Animated,
-  StatusBar,
-  Share,
-  RefreshControl,
-  Modal,
-  Alert,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Image, FlatList, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Animated, StatusBar, Share, RefreshControl, Modal } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/contexts/AuthContext';
@@ -279,7 +262,7 @@ function ReelItem({
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={() => {
-              Alert.alert(
+              appAlert(
                 'Reel Options',
                 '',
                 [
@@ -734,7 +717,7 @@ export default function ReelsScreen() {
 
   // ── Delete own reel from feed ──
   const handleDeleteReel = (reelId: string) => {
-    Alert.alert('Delete Reel', 'Are you sure you want to delete this reel?', [
+    appAlert('Delete Reel', 'Are you sure you want to delete this reel?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -748,10 +731,10 @@ export default function ReelsScreen() {
             if (data.success) {
               setReels(prev => prev.filter(r => r.id !== reelId));
             } else {
-              Alert.alert('Error', data.error || 'Failed to delete reel');
+              appAlert('Error', data.error || 'Failed to delete reel');
             }
           } catch (e) {
-            Alert.alert('Error', 'Failed to delete reel');
+            appAlert('Error', 'Failed to delete reel');
           }
         },
       },
@@ -785,10 +768,10 @@ export default function ReelsScreen() {
         setEditingReelId(null);
         setEditingCaption('');
       } else {
-        Alert.alert('Error', data.error || 'Failed to update reel');
+        appAlert('Error', data.error || 'Failed to update reel');
       }
     } catch (e) {
-      Alert.alert('Error', 'Failed to update reel');
+      appAlert('Error', 'Failed to update reel');
     }
   };
 

@@ -1,21 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Alert,
-  Animated,
-  Easing,
-  StatusBar,
-  Platform,
-  Modal,
-  TextInput,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Image,
-  ActivityIndicator,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, StyleSheet, ScrollView, Animated, Easing, StatusBar, Platform, Modal, TextInput, TouchableOpacity, KeyboardAvoidingView, Image, ActivityIndicator } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -94,7 +79,7 @@ export default function CreateScreen() {
   // ── Handlers ──
   const handleGoLive = () => {
     if (!token || isGuest) {
-      Alert.alert('Login Required', 'Please log in with your account to go live.');
+      appAlert('Login Required', 'Please log in with your account to go live.');
       return;
     }
     router.push('/live/broadcast');
@@ -105,7 +90,7 @@ export default function CreateScreen() {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please grant access to your media library to upload reels.');
+        appAlert('Permission Required', 'Please grant access to your media library to upload reels.');
         return;
       }
 
@@ -124,7 +109,7 @@ export default function CreateScreen() {
       setShowReelPreview(true);
     } catch (error: any) {
       console.error('Reel picker error:', error);
-      Alert.alert('Error', 'Failed to pick video');
+      appAlert('Error', 'Failed to pick video');
     }
   };
 
@@ -172,7 +157,7 @@ export default function CreateScreen() {
           setUploading(false);
           setUploadDone(false);
           setShowReelPreview(false);
-          Alert.alert('🎬 Reel Uploaded!', 'Your reel is now live for everyone to see.');
+          appAlert('🎬 Reel Uploaded!', 'Your reel is now live for everyone to see.');
         }, 1200);
       } else {
         throw new Error('Failed to save reel');
@@ -180,7 +165,7 @@ export default function CreateScreen() {
     } catch (error: any) {
       console.error('Reel upload error:', error?.message || error);
       setUploading(false);
-      Alert.alert('Upload Failed', error?.message || 'Something went wrong. Please try again.');
+      appAlert('Upload Failed', error?.message || 'Something went wrong. Please try again.');
     }
   };
 
@@ -189,7 +174,7 @@ export default function CreateScreen() {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please grant access to your media library to upload stories.');
+        appAlert('Permission Required', 'Please grant access to your media library to upload stories.');
         return;
       }
 
@@ -215,7 +200,7 @@ export default function CreateScreen() {
       setShowStoryPreview(true);
     } catch (error: any) {
       console.error('Story picker error:', error);
-      Alert.alert('Error', 'Failed to pick media');
+      appAlert('Error', 'Failed to pick media');
     }
   };
 
@@ -265,7 +250,7 @@ export default function CreateScreen() {
         setTimeout(() => {
           setUploading(false);
           setUploadDone(false);
-          Alert.alert('✨ Story Uploaded!', 'Your story is now visible to everyone for 24 hours.');
+          appAlert('✨ Story Uploaded!', 'Your story is now visible to everyone for 24 hours.');
         }, 1200);
       } else {
         throw new Error('Failed to save story');
@@ -273,7 +258,7 @@ export default function CreateScreen() {
     } catch (error: any) {
       console.error('Story upload error:', error?.message || error);
       setUploading(false);
-      Alert.alert('Upload Failed', error?.message || 'Something went wrong. Please try again.');
+      appAlert('Upload Failed', error?.message || 'Something went wrong. Please try again.');
     }
   };
 

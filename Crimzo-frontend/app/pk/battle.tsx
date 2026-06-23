@@ -1,24 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-  Animated,
-  Easing,
-  Dimensions,
-  StatusBar,
-  Platform,
-  PermissionsAndroid,
-  Image,
-  Modal,
-  TextInput,
-  FlatList,
-  KeyboardAvoidingView,
-  Keyboard,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Easing, Dimensions, StatusBar, Platform, PermissionsAndroid, Image, Modal, TextInput, FlatList, KeyboardAvoidingView, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
@@ -306,7 +288,7 @@ export default function PKBattleScreen() {
       setChatMessages((prev) => [...prev.slice(-40), data]);
     });
     s.on('gift_error', (data: any) => {
-      Alert.alert('Gift Error', data.message || 'Could not send gift');
+      appAlert('Gift Error', data.message || 'Could not send gift');
     });
     s.on('diamond_update', (data: { diamonds?: number }) => {
       if (typeof data?.diamonds === 'number') {
@@ -409,7 +391,7 @@ export default function PKBattleScreen() {
       const msg = error instanceof ApiError
         ? String((error.data as { details?: string; error?: string })?.details || error.message)
         : 'Failed to create battle';
-      Alert.alert('Error', msg);
+      appAlert('Error', msg);
       router.back();
     } finally {
       setLoading(false);
@@ -478,7 +460,7 @@ export default function PKBattleScreen() {
     } catch (error: unknown) {
       console.error('Resume battle error:', error);
       const msg = error instanceof ApiError ? error.message : 'Failed to resume battle';
-      Alert.alert('Error', msg);
+      appAlert('Error', msg);
       router.back();
     } finally {
       setLoading(false);
@@ -520,7 +502,7 @@ export default function PKBattleScreen() {
         return;
       }
       const msg = error instanceof ApiError ? error.message : 'Failed to join battle';
-      Alert.alert('Error', msg);
+      appAlert('Error', msg);
       router.back();
     } finally {
       setLoading(false);
@@ -571,7 +553,7 @@ export default function PKBattleScreen() {
   };
 
   const endBattleManual = () => {
-    Alert.alert('End Battle', 'Are you sure you want to end this PK battle?', [
+    appAlert('End Battle', 'Are you sure you want to end this PK battle?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'End Now', style: 'destructive', onPress: handleTimeUp },
     ]);

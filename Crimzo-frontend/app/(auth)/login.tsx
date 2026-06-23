@@ -1,9 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, Alert, ActivityIndicator,
-  Animated, StatusBar, ScrollView, Easing, Image, Linking,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Animated, StatusBar, ScrollView, Easing, Image, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { KEYBOARD_BEHAVIOR } from '../../components/KeyboardAware';
@@ -42,24 +39,24 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email || !isValidEmail(email.trim())) {
-      return Alert.alert('Invalid Email', 'Please enter a valid email address (e.g. user@gmail.com).');
+      return appAlert('Invalid Email', 'Please enter a valid email address (e.g. user@gmail.com).');
     }
     if (!password || password.length < 6) {
-      return Alert.alert('Invalid Password', 'Password must be at least 6 characters.');
+      return appAlert('Invalid Password', 'Password must be at least 6 characters.');
     }
     setLoading(true);
     try {
       await login(email.trim().toLowerCase(), password);
       router.replace('/(tabs)/home');
     } catch (err: any) {
-      Alert.alert('Login Failed', err.message || 'Please check your credentials and try again.');
+      appAlert('Login Failed', err.message || 'Please check your credentials and try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleForgotPassword = () => {
-    Alert.alert(
+    appAlert(
       'Forgot Password',
       'Please contact support at support@crimzo.com to reset your password.',
       [{ text: 'OK' }]

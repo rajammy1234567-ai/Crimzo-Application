@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { Alert } from 'react-native';
+import { appAlert } from '../lib/appAlert';
+
 import io, { Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import { API_URL } from '../lib/apiClient';
@@ -39,7 +40,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     socket.on('connect', registerPresence);
 
     socket.on('user_banned', (data: { message?: string }) => {
-      Alert.alert(
+      appAlert(
         'Account Suspended',
         data?.message || 'Your account has been suspended by an administrator.',
         [{ text: 'OK', onPress: () => logout() }],
@@ -101,7 +102,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       publish('notifications_updated', data);
       if (!appSettingsRef.current.notificationsEnabled) return;
       if (data?.type === 'follow_request') {
-        Alert.alert(
+        appAlert(
           data.title || 'New notification',
           data.body || 'You have a new follow request',
         );

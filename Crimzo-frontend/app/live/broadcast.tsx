@@ -1,20 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-  Animated,
-  Easing,
-  Dimensions,
-  StatusBar,
-  Modal,
-  Image,
-  PermissionsAndroid,
-  Platform,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Easing, Dimensions, StatusBar, Modal, Image, PermissionsAndroid, Platform } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
@@ -249,10 +235,10 @@ export default function BroadcastScreen() {
       promptedTalkRequestIds.current.add(requestId);
       setPendingTalkRequests((prev) => prev.filter((r) => r.id !== requestId));
       if (action === 'accept') {
-        Alert.alert('Request Accepted', 'The viewer can now chat on your live stream.');
+        appAlert('Request Accepted', 'The viewer can now chat on your live stream.');
       }
     } catch (e) {
-      Alert.alert('Error', e instanceof ApiError ? e.message : `Could not ${action} request`);
+      appAlert('Error', e instanceof ApiError ? e.message : `Could not ${action} request`);
     }
   }, [token]);
 
@@ -276,7 +262,7 @@ export default function BroadcastScreen() {
         requesterAvatar: data.requesterAvatar,
       }];
     });
-    Alert.alert(
+    appAlert(
       'Talk Request',
       `${data.requesterName || 'A viewer'} wants to chat with you on live.\n\nViewer pays ₹${rate}/min from wallet.\nYou earn ${beans} beans/min.`,
       [
@@ -364,7 +350,7 @@ export default function BroadcastScreen() {
       if (sessionId) {
         try { await apiPost(`/api/live/end/${sessionId}`, {}, token); } catch { }
       }
-      Alert.alert(
+      appAlert(
         'Stream Ended',
         data?.message || 'Your live stream was ended by a moderator.',
         [{ text: 'OK', onPress: () => router.replace('/(tabs)/home') }],
@@ -381,7 +367,7 @@ export default function BroadcastScreen() {
   const handleTimerExpired = useCallback(() => {
     if (timerExpired) return;
     setTimerExpired(true);
-    Alert.alert('Time Up!', 'Your stream duration has ended.', [{
+    appAlert('Time Up!', 'Your stream duration has ended.', [{
       text: 'OK', onPress: async () => {
         if (sessionId) {
           try { await apiPost(`/api/live/end/${sessionId}`, {}, token); } catch { }
@@ -473,7 +459,7 @@ export default function BroadcastScreen() {
       camGranted = cam.granted;
     }
     if (!camGranted) {
-      Alert.alert(
+      appAlert(
         'Camera Permission',
         'Camera access is needed for live preview. You can still go live — viewers will see your profile until camera is allowed.',
       );
@@ -486,11 +472,11 @@ export default function BroadcastScreen() {
 
   const startBroadcast = useCallback(async () => {
     if (Platform.OS === 'web') {
-      Alert.alert('Web Limitation', 'Live broadcast with camera is not fully supported on web. Please use the mobile app (Android/iOS) for full camera and streaming features.');
+      appAlert('Web Limitation', 'Live broadcast with camera is not fully supported on web. Please use the mobile app (Android/iOS) for full camera and streaming features.');
       return;
     }
     if (!token) {
-      Alert.alert('Login Required', 'Please log in to go live.');
+      appAlert('Login Required', 'Please log in to go live.');
       return;
     }
     setLoading(true);
@@ -543,14 +529,14 @@ export default function BroadcastScreen() {
         : e instanceof Error
           ? e.message
           : 'Failed to start broadcast.';
-      Alert.alert('Go Live Failed', msg);
+      appAlert('Go Live Failed', msg);
       setLoading(false);
     }
   }, [user, token, initBroadcastMedia]);
 
   const endBroadcast = useCallback(async () => {
     if (!sessionId) return;
-    Alert.alert('End Stream', 'Are you sure you want to end your live stream?', [
+    appAlert('End Stream', 'Are you sure you want to end your live stream?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'End Stream', style: 'destructive', onPress: async () => {

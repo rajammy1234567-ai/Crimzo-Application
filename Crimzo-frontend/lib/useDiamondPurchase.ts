@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import { Alert, Platform } from 'react-native';
+import { appAlert } from './appAlert';
+import { Platform } from 'react-native';
 import { apiPost, ApiError } from './apiClient';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -38,7 +39,7 @@ export function useDiamondPurchase() {
     productType: 'diamonds' | 'beans' = 'diamonds',
   ) => {
     if (!token) {
-      Alert.alert('Login Required', 'Please log in to purchase.');
+      appAlert('Login Required', 'Please log in to purchase.');
       return;
     }
 
@@ -51,7 +52,7 @@ export function useDiamondPurchase() {
       );
 
       if (data.mode === 'dev_mock') {
-        Alert.alert(
+        appAlert(
           'Test Payment',
           'Razorpay keys not configured. Use test mode to credit diamonds without real payment?',
           [
@@ -71,14 +72,14 @@ export function useDiamondPurchase() {
                       diamonds: verified.diamonds,
                       beans: verified.beans,
                     });
-                    Alert.alert(
+                    appAlert(
                       '✅ Success',
                       `+${verified.credited?.toLocaleString()} ${verified.productType} added to your wallet!`,
                     );
                   }
                 } catch (e) {
                   const msg = e instanceof ApiError ? e.message : 'Payment failed';
-                  Alert.alert('Error', msg);
+                  appAlert('Error', msg);
                 } finally {
                   setPaying(false);
                 }
@@ -92,7 +93,7 @@ export function useDiamondPurchase() {
       setCheckout(data);
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : 'Could not start payment';
-      Alert.alert('Payment Error', msg);
+      appAlert('Payment Error', msg);
     } finally {
       setPaying(false);
     }
@@ -127,14 +128,14 @@ export function useDiamondPurchase() {
           diamonds: verified.diamonds,
           beans: verified.beans,
         });
-        Alert.alert(
+        appAlert(
           '✅ Payment Successful',
           `+${verified.credited?.toLocaleString()} ${verified.productType} added to your wallet!`,
         );
       }
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : 'Verification failed';
-      Alert.alert('Payment Error', msg);
+      appAlert('Payment Error', msg);
     } finally {
       setPaying(false);
       setCheckout(null);
@@ -143,13 +144,13 @@ export function useDiamondPurchase() {
 
   const handlePaymentError = useCallback((message: string) => {
     setCheckout(null);
-    Alert.alert('Payment Failed', message);
+    appAlert('Payment Failed', message);
   }, []);
 
   const handlePaymentCancel = useCallback(() => {
     setCheckout(null);
     if (Platform.OS !== 'web') {
-      Alert.alert('Cancelled', 'Payment was cancelled.');
+      appAlert('Cancelled', 'Payment was cancelled.');
     }
   }, []);
 

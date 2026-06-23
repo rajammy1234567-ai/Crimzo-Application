@@ -1,21 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  Animated,
-  Easing,
-  Dimensions,
-  StatusBar,
-  Platform,
-  Image,
-  TextInput,
-  KeyboardAvoidingView,
-  Keyboard,
-  Alert,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Easing, Dimensions, StatusBar, Platform, Image, TextInput, KeyboardAvoidingView, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
@@ -184,7 +169,7 @@ export default function PKWatchScreen() {
     } catch (error: unknown) {
       console.error('Fetch battle error:', error);
       const msg = error instanceof ApiError ? error.message : 'Failed to join battle';
-      Alert.alert('Error', msg, [{ text: 'OK', onPress: () => router.back() }]);
+      appAlert('Error', msg, [{ text: 'OK', onPress: () => router.back() }]);
     } finally {
       setLoading(false);
     }
@@ -258,7 +243,7 @@ export default function PKWatchScreen() {
       setViewerCount(data.count || 0);
     });
     sock.on('gift_error', (data: any) => {
-      Alert.alert('Gift Failed', data?.message || 'Could not send gift');
+      appAlert('Gift Failed', data?.message || 'Could not send gift');
     });
     sock.on('diamond_update', (data: { diamonds?: number }) => {
       if (typeof data?.diamonds === 'number') updateUser({ diamonds: data.diamonds });

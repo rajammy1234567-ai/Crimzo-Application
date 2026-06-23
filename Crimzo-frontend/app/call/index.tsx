@@ -1,15 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  Platform,
-  PermissionsAndroid,
-  StatusBar,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, PermissionsAndroid, StatusBar } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -142,7 +133,7 @@ export default function VideoCallScreen() {
 
         if (tick.canContinue === false) {
           clearBillingTimer();
-          Alert.alert(
+          appAlert(
             'Balance Low',
             'Insufficient balance for the next minute. Ending the call.',
             [{ text: 'OK', onPress: () => endCall('balance_exhausted') }],
@@ -151,7 +142,7 @@ export default function VideoCallScreen() {
       } catch (e) {
         if (isBalanceExhaustedError(e)) {
           clearBillingTimer();
-          Alert.alert(
+          appAlert(
             'Balance Over',
             'Wallet balance exhausted — ending the video call.',
             [{ text: 'OK', onPress: () => endCall('balance_exhausted') }],
@@ -182,14 +173,14 @@ export default function VideoCallScreen() {
       }
     } catch (e) {
       if (e instanceof ApiError && (e.data as { code?: string })?.code === 'INSUFFICIENT_BALANCE') {
-        Alert.alert(
+        appAlert(
           'Recharge Required',
           e.message || `Video call costs ₹${ratePerMin}/min.`,
           [{ text: 'OK', onPress: () => endCall() }],
         );
         return;
       }
-      Alert.alert('Billing Error', e instanceof ApiError ? e.message : 'Could not start call billing');
+      appAlert('Billing Error', e instanceof ApiError ? e.message : 'Could not start call billing');
     }
   }, [token, channelName, peerId, role, startBillingLoop, updateUser, ratePerMin, endCall]);
 
@@ -222,7 +213,7 @@ export default function VideoCallScreen() {
       if (!isAgoraNativeLinked) {
         setLoading(false);
         setCallPhase('connected');
-        Alert.alert(
+        appAlert(
           'Dev Build Required',
           'Real video needs a custom dev build (react-native-agora). Signaling works — install dev build for camera.',
         );
@@ -249,7 +240,7 @@ export default function VideoCallScreen() {
         },
         onUserOffline: () => {
           setRemoteUid(null);
-          Alert.alert('Call Ended', `${peerName} left the call`, [
+          appAlert('Call Ended', `${peerName} left the call`, [
             { text: 'OK', onPress: () => endCall() },
           ]);
         },
@@ -270,7 +261,7 @@ export default function VideoCallScreen() {
         : (e instanceof Error ? e.message : 'Call failed');
       const code = e instanceof ApiError ? (e.data as { code?: string })?.code : undefined;
       if (code === 'INSUFFICIENT_BALANCE') {
-        Alert.alert(
+        appAlert(
           'Recharge Required',
           msg,
           [
@@ -280,20 +271,20 @@ export default function VideoCallScreen() {
         );
         return;
       }
-      Alert.alert('Call Failed', msg, [{ text: 'OK', onPress: () => endCall() }]);
+      appAlert('Call Failed', msg, [{ text: 'OK', onPress: () => endCall() }]);
     }
   }, [channelName, token, user?.id, peerName, role, peerId, isCaller, initCallBilling, endCall, router]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
-      Alert.alert('Mobile Only', '1-on-1 video call requires the Android/iOS app with Agora dev build.', [
+      appAlert('Mobile Only', '1-on-1 video call requires the Android/iOS app with Agora dev build.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
       return;
     }
 
     if (!channelName || !token || !user?.id) {
-      Alert.alert('Error', 'Invalid call session', [{ text: 'OK', onPress: () => router.back() }]);
+      appAlert('Error', 'Invalid call session', [{ text: 'OK', onPress: () => router.back() }]);
       return;
     }
 
@@ -302,7 +293,7 @@ export default function VideoCallScreen() {
     socket.on('video_call_ended', () => endCall());
     socket.on('video_call_rejected', () => {
       clearRingTimeout();
-      Alert.alert('Call Declined', 'The other person declined your call.', [
+      appAlert('Call Declined', 'The other person declined your call.', [
         { text: 'OK', onPress: () => endCall('declined') },
       ]);
     });
@@ -316,7 +307,7 @@ export default function VideoCallScreen() {
 
     if (isCaller) {
       ringTimeoutRef.current = setTimeout(() => {
-        Alert.alert('No Answer', `${peerName} did not answer.`, [
+        appAlert('No Answer', `${peerName} did not answer.`, [
           { text: 'OK', onPress: () => endCall('no_answer') },
         ]);
       }, CALL_RING_TIMEOUT_MS);

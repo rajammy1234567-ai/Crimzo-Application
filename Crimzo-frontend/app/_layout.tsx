@@ -3,11 +3,13 @@ import { Stack } from 'expo-router';
 import { AuthProvider } from '../contexts/AuthContext';
 import { RealtimeProvider } from '../contexts/RealtimeProvider';
 import { VideoCallProvider } from '../contexts/VideoCallContext';
+import { DialogProvider } from '../contexts/DialogProvider';
 import { StatusBar } from 'expo-status-bar';
 
 export default function RootLayout() {
   return (
     <AuthProvider>
+      <DialogProvider>
       <RealtimeProvider>
       <VideoCallProvider>
       <StatusBar style="light" />
@@ -50,6 +52,7 @@ export default function RootLayout() {
       </Stack>
       </VideoCallProvider>
       </RealtimeProvider>
+      </DialogProvider>
     </AuthProvider>
   );
 }

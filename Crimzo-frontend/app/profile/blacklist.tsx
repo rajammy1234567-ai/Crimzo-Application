@@ -1,15 +1,6 @@
 import React, { useCallback, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  FlatList,
-  Image,
-  ActivityIndicator,
-  StatusBar,
-  Alert,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Image, ActivityIndicator, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -42,7 +33,7 @@ export default function BlacklistScreen() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const unblock = (user: BlockedUser) => {
-    Alert.alert('Unblock', `Unblock ${user.username}?`, [
+    appAlert('Unblock', `Unblock ${user.username}?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Unblock',
@@ -51,7 +42,7 @@ export default function BlacklistScreen() {
             await apiPost('/api/user/unblock', { userId: user.id }, token);
             setList((prev) => prev.filter((u) => u.id !== user.id));
           } catch {
-            Alert.alert('Error', 'Could not unblock user');
+            appAlert('Error', 'Could not unblock user');
           }
         },
       },

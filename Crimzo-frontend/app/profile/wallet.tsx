@@ -1,18 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  StatusBar,
-  Dimensions,
-  Image,
-  Animated,
-  Easing,
-  Alert,
-  Modal,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Dimensions, Image, Animated, Easing, Modal } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -71,7 +59,7 @@ export default function WalletScreen() {
 
   useEffect(() => {
     if (isGuest) {
-      Alert.alert(
+      appAlert(
         'Account Required',
         'Create an account to use wallet, recharge, and withdraw.',
         [{ text: 'OK', onPress: () => router.back() }],
@@ -152,7 +140,7 @@ export default function WalletScreen() {
     const amount = isDia ? pkg.diamonds! : pkg.beans!;
     const canAfford = walletBalance >= pkg.price;
     setSelPkg(pkg.id);
-    Alert.alert(
+    appAlert(
       `Buy ${isDia ? 'Diamonds' : 'Beans'}`,
       `${fmt(amount)} for ${price(pkg.price)}\n\nPay directly via Razorpay (UPI/Card) or use wallet balance.`,
       [
@@ -184,7 +172,7 @@ export default function WalletScreen() {
   };
 
   const tapHelper = (h: typeof TOPUP_HELPERS[0]) => {
-    Alert.alert(h.name, `ID: ${h.userId}\nRating: ⭐ ${h.rating}\n\nContact this helper for discounted diamonds.`);
+    appAlert(h.name, `ID: ${h.userId}\nRating: ⭐ ${h.rating}\n\nContact this helper for discounted diamonds.`);
   };
 
   const payInfo = PAYMENT_METHODS.find(p => p.id === payMethod)!;
@@ -445,7 +433,7 @@ export default function WalletScreen() {
         <TouchableOpacity
           style={s.btm}
           activeOpacity={0.7}
-          onPress={() => Alert.alert('Recharge Status', 'No recent recharges found.')}
+          onPress={() => appAlert('Recharge Status', 'No recent recharges found.')}
         >
           <Text style={s.btmTxt}>Check My Recharge Status</Text>
           <Ionicons name="chevron-forward" size={15} color="rgba(255,255,255,0.35)" />

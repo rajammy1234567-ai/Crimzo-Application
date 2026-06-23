@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Alert, Platform } from 'react-native';
+import { appAlert } from './appAlert';
+import { Platform } from 'react-native';
 import { apiGet, apiPost, apiDelete, ApiError } from './apiClient';
 import { useAuth } from '../contexts/AuthContext';
 import type { PaymentMethodInfo } from '../components/payments/SetupPaymentModal';
@@ -106,7 +107,7 @@ export function useWallet() {
     upi_id?: string;
   }) => {
     if (!token) {
-      Alert.alert('Login Required', 'Please log in first.');
+      appAlert('Login Required', 'Please log in first.');
       return { success: false };
     }
     setBusy(true);
@@ -128,7 +129,7 @@ export function useWallet() {
         emailMasked: res.emailMasked,
       };
     } catch (e) {
-      Alert.alert('Error', e instanceof ApiError ? e.message : 'Setup failed');
+      appAlert('Error', e instanceof ApiError ? e.message : 'Setup failed');
       return { success: false };
     } finally {
       setBusy(false);
@@ -147,12 +148,12 @@ export function useWallet() {
         setPaymentMethod(res.paymentMethod);
         setHasVerifiedPayment(true);
         setIsPendingVerification(false);
-        Alert.alert('✅ Verified', 'Payment method active! You can now add money.');
+        appAlert('✅ Verified', 'Payment method active! You can now add money.');
         return true;
       }
       return false;
     } catch (e) {
-      Alert.alert('Wrong OTP', e instanceof ApiError ? e.message : 'Verification failed');
+      appAlert('Wrong OTP', e instanceof ApiError ? e.message : 'Verification failed');
       return false;
     } finally {
       setBusy(false);
@@ -164,10 +165,10 @@ export function useWallet() {
     setBusy(true);
     try {
       const res = await apiPost<{ devHint?: string }>('/api/payments/method/resend-otp', {}, token);
-      Alert.alert('OTP Sent', 'Check your email for new OTP');
+      appAlert('OTP Sent', 'Check your email for new OTP');
       return { devHint: res.devHint };
     } catch (e) {
-      Alert.alert('Error', e instanceof ApiError ? e.message : 'Could not resend OTP');
+      appAlert('Error', e instanceof ApiError ? e.message : 'Could not resend OTP');
     } finally {
       setBusy(false);
     }
@@ -176,7 +177,7 @@ export function useWallet() {
   const removePaymentMethod = useCallback(async () => {
     if (!token) return;
     return new Promise<void>((resolve) => {
-      Alert.alert('Change Method', 'Remove current bank/UPI?', [
+      appAlert('Change Method', 'Remove current bank/UPI?', [
         { text: 'Cancel', style: 'cancel', onPress: () => resolve() },
         {
           text: 'Remove',
@@ -189,7 +190,7 @@ export function useWallet() {
               setHasVerifiedPayment(false);
               setIsPendingVerification(false);
             } catch (e) {
-              Alert.alert('Error', e instanceof ApiError ? e.message : 'Failed');
+              appAlert('Error', e instanceof ApiError ? e.message : 'Failed');
             } finally {
               setBusy(false);
               resolve();
@@ -208,7 +209,7 @@ export function useWallet() {
           : method.bank_name
             ? `${method.bank_name} •••• ${method.account_last4}`
             : 'Razorpay (UPI / Card / Net Banking)');
-      Alert.alert(
+      appAlert(
         'Confirm Payment',
         `₹${amountInr.toLocaleString('en-IN')} — ${via}\n\nWill be added to your wallet. Proceed?`,
         [
@@ -220,7 +221,7 @@ export function useWallet() {
 
   const addMoney = useCallback(async (amountInr: number) => {
     if (!token) {
-      Alert.alert('Login Required', 'Please log in first.');
+      appAlert('Login Required', 'Please log in first.');
       return { needsSetup: false };
     }
 
@@ -249,13 +250,13 @@ export function useWallet() {
           );
           if (verified.success) {
             syncBalances(verified);
-            Alert.alert(
+            appAlert(
               '✅ Money Added',
               `₹${verified.creditedInr?.toLocaleString('en-IN')} added to your wallet!\nBalance: ₹${verified.wallet_balance?.toLocaleString('en-IN')}`,
             );
           }
         } catch (e) {
-          Alert.alert('Error', e instanceof ApiError ? e.message : 'Payment failed');
+          appAlert('Error', e instanceof ApiError ? e.message : 'Payment failed');
         } finally {
           setBusy(false);
         }
@@ -270,9 +271,9 @@ export function useWallet() {
         if (code === 'PAYMENT_NOT_VERIFIED' || code === 'BANK_NOT_LINKED') {
           return { needsSetup: true };
         }
-        Alert.alert('Error', e.message);
+        appAlert('Error', e.message);
       } else {
-        Alert.alert('Error', 'Could not start payment');
+        appAlert('Error', 'Could not start payment');
       }
       return { needsSetup: false };
     } finally {
@@ -285,7 +286,7 @@ export function useWallet() {
     productType: 'diamonds' | 'beans' = 'diamonds',
   ): Promise<boolean> => {
     if (!token) {
-      Alert.alert('Login Required', 'Please log in first.');
+      appAlert('Login Required', 'Please log in first.');
       return false;
     }
 
@@ -307,7 +308,7 @@ export function useWallet() {
         }>('/api/payments/verify', { orderId: data.orderId, devMock: true }, token);
         if (verified.success) {
           syncBalances(verified);
-          Alert.alert(
+          appAlert(
             '✅ Purchase Successful',
             `+${verified.credited?.toLocaleString()} ${verified.productType} added!`,
           );
@@ -319,7 +320,7 @@ export function useWallet() {
       setCheckout({ ...data, checkoutKind: 'package', productType });
       return true;
     } catch (e) {
-      Alert.alert('Error', e instanceof ApiError ? e.message : 'Could not start payment');
+      appAlert('Error', e instanceof ApiError ? e.message : 'Could not start payment');
       return false;
     } finally {
       setBusy(false);
@@ -354,7 +355,7 @@ export function useWallet() {
         );
         if (verified.success) {
           syncBalances(verified);
-          Alert.alert(
+          appAlert(
             '✅ Payment Successful',
             `+${verified.credited?.toLocaleString()} ${verified.productType} added to your account!`,
           );
@@ -372,14 +373,14 @@ export function useWallet() {
         );
         if (verified.success) {
           syncBalances(verified);
-          Alert.alert(
+          appAlert(
             '✅ Money Added',
             `₹${verified.creditedInr?.toLocaleString('en-IN')} added to your wallet!`,
           );
         }
       }
     } catch (e) {
-      Alert.alert('Error', e instanceof ApiError ? e.message : 'Verification failed');
+      appAlert('Error', e instanceof ApiError ? e.message : 'Verification failed');
     } finally {
       setBusy(false);
       setCheckout(null);
@@ -390,13 +391,13 @@ export function useWallet() {
 
   const handleCheckoutError = useCallback((message: string) => {
     setCheckout(null);
-    Alert.alert('Payment Failed', message);
+    appAlert('Payment Failed', message);
   }, []);
 
   const cancelCheckout = useCallback(() => {
     setCheckout(null);
     if (Platform.OS !== 'web') {
-      Alert.alert('Cancelled', 'Payment was cancelled.');
+      appAlert('Cancelled', 'Payment was cancelled.');
     }
   }, []);
 
@@ -407,7 +408,7 @@ export function useWallet() {
     productType: 'diamonds' | 'beans' = 'diamonds',
   ): Promise<boolean> => {
     if (!token) {
-      Alert.alert('Login Required', 'Please log in first.');
+      appAlert('Login Required', 'Please log in first.');
       return false;
     }
 
@@ -421,7 +422,7 @@ export function useWallet() {
 
       if (res.success) {
         syncBalances(res);
-        Alert.alert(
+        appAlert(
           '✅ Purchase Successful',
           `${res.credited?.toLocaleString()} ${res.productType} added!\nSpent: ₹${res.spentInr?.toLocaleString('en-IN')} from wallet`,
         );
@@ -431,7 +432,7 @@ export function useWallet() {
     } catch (e) {
       if (e instanceof ApiError && e.status === 400) {
         const data = e.data as PurchaseResponse;
-        Alert.alert(
+        appAlert(
           'Insufficient Balance',
           `You need ₹${data.required?.toLocaleString('en-IN')} but only have ₹${data.available?.toLocaleString('en-IN')}.\n\nPlease add money first.`,
           [
@@ -443,7 +444,7 @@ export function useWallet() {
           ],
         );
       } else {
-        Alert.alert('Error', e instanceof ApiError ? e.message : 'Purchase failed');
+        appAlert('Error', e instanceof ApiError ? e.message : 'Purchase failed');
       }
       return false;
     } finally {
@@ -467,7 +468,7 @@ export function useWallet() {
 
   const withdrawMoney = useCallback(async (amountInr: number) => {
     if (!token) {
-      Alert.alert('Login Required', 'Please log in first.');
+      appAlert('Login Required', 'Please log in first.');
       return false;
     }
     setBusy(true);
@@ -502,7 +503,7 @@ export function useWallet() {
           : res.status === 'pending'
             ? '📋 Withdrawal Requested'
             : '⏳ Withdrawal Initiated';
-        Alert.alert(
+        appAlert(
           alertTitle,
           (res.message || 'Withdrawal submitted') + payoutNote + utrNote + statusNote + convertedNote,
         );
@@ -515,9 +516,9 @@ export function useWallet() {
         const data = e.data as { minWithdraw?: number; availableInr?: number };
         const extra = data.minWithdraw ? `\n\nMinimum: ₹${data.minWithdraw}` : '';
         const avail = data.availableInr != null ? `\nAvailable: ₹${data.availableInr.toLocaleString('en-IN')}` : '';
-        Alert.alert('Cannot Withdraw', e.message + extra + avail);
+        appAlert('Cannot Withdraw', e.message + extra + avail);
       } else {
-        Alert.alert('Error', 'Withdrawal failed');
+        appAlert('Error', 'Withdrawal failed');
       }
       return false;
     } finally {

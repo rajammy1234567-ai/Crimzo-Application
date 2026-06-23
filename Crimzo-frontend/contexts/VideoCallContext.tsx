@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { Alert } from 'react-native';
+import { appAlert } from '../lib/appAlert';
+
 import { useRouter } from 'expo-router';
 import io, { Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
@@ -62,7 +63,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
       const rateLine = data.ratePerMin
         ? `\n\nThey pay ₹${data.ratePerMin}/min${data.beansPerMin ? ` · you earn ${data.beansPerMin} beans/min` : ''}`
         : '';
-      Alert.alert(
+      appAlert(
         'Incoming Video Call',
         `${data.callerName} is calling you${rateLine}`,
         [
@@ -108,7 +109,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
 
     socket.on('video_call_rejected', () => {
       clearRingTimeout();
-      Alert.alert('Call Declined', 'The other person declined your call.');
+      appAlert('Call Declined', 'The other person declined your call.');
     });
 
     socket.on('video_call_ended', (data?: { reason?: string }) => {
@@ -116,18 +117,18 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
       const msg = data?.reason === 'balance_exhausted'
         ? 'Call ended — wallet balance exhausted.'
         : 'The other person left the call.';
-      Alert.alert('Call Ended', msg);
+      appAlert('Call Ended', msg);
     });
 
     socket.on('video_call_error', (data?: { code?: string; message?: string; wallet_balance?: number; ratePerMin?: number; beansPerMin?: number }) => {
       clearRingTimeout();
       if (data?.code === 'FOLLOW_REQUIRED') {
-        Alert.alert('Follow First', data.message || 'Follow each other to start a video call.');
+        appAlert('Follow First', data.message || 'Follow each other to start a video call.');
         return;
       }
       if (data?.code === 'INSUFFICIENT_BALANCE') {
         const rate = data.ratePerMin ?? VIDEO_CALL_RATE_PER_MIN;
-        Alert.alert(
+        appAlert(
           'Recharge Required',
           `${data.message || `Video call costs ₹${rate}/min.`}\n\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
           [
@@ -137,7 +138,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
         );
         return;
       }
-      Alert.alert('Call Error', data?.message || 'Could not start video call.');
+      appAlert('Call Error', data?.message || 'Could not start video call.');
     });
 
     socketRef.current = socket;
@@ -150,7 +151,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
 
   const startCall = useCallback(async (peerId: string | number, peerName: string, peerAvatar?: string | null) => {
     if (!user?.id || !socketRef.current || !token) {
-      Alert.alert('Error', 'Could not start call. Check your connection.');
+      appAlert('Error', 'Could not start call. Check your connection.');
       return;
     }
 
@@ -163,7 +164,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
       }>(`/api/user/interaction?userId=${peerId}`, token);
       const allowed = interaction.canVideoCall ?? interaction.canInteract;
       if (!allowed) {
-        Alert.alert(
+        appAlert(
           'Follow First',
           interaction.reason || 'Follow each other to start a video call.',
         );
@@ -171,7 +172,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 403) {
-        Alert.alert('Follow First', e.message);
+        appAlert('Follow First', e.message);
         return;
       }
     }
@@ -187,7 +188,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
         const data = e.data as { wallet_balance?: number; ratePerMin?: number; beansPerMin?: number };
         const rate = data.ratePerMin ?? VIDEO_CALL_RATE_PER_MIN;
         const beansLine = data.beansPerMin ? `\nThey earn ${data.beansPerMin} beans/min` : '';
-        Alert.alert(
+        appAlert(
           'Recharge Required',
           `Please recharge your wallet first for video calls.\n\nRate: ₹${rate}/min${beansLine}\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
           [
@@ -197,7 +198,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
         );
         return;
       }
-      Alert.alert('Error', e instanceof ApiError ? e.message : 'Could not verify wallet balance');
+      appAlert('Error', e instanceof ApiError ? e.message : 'Could not verify wallet balance');
       return;
     }
 
@@ -212,7 +213,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
 
     clearRingTimeout();
     ringTimeoutRef.current = setTimeout(() => {
-      Alert.alert('No Answer', `${peerName} did not answer.`, [{ text: 'OK' }]);
+      appAlert('No Answer', `${peerName} did not answer.`, [{ text: 'OK' }]);
     }, CALL_RING_TIMEOUT_MS);
 
     router.push({

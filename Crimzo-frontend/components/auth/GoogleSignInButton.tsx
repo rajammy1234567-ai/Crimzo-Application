@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import {
-  TouchableOpacity, Text, StyleSheet, ActivityIndicator, Alert, View, Platform,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, View, Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
 import { Ionicons } from '@expo/vector-icons';
@@ -125,7 +124,7 @@ export default function GoogleSignInButton({ onSuccess, disabled }: Props) {
     if (!response || response.type !== 'success') {
       if (response?.type === 'error') {
         setBusy(false);
-        Alert.alert(
+        appAlert(
           'Google Sign-In Failed',
           formatGoogleAuthError(response.error?.message),
         );
@@ -151,7 +150,7 @@ export default function GoogleSignInButton({ onSuccess, disabled }: Props) {
         onSuccess?.();
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Google sign-in failed';
-        Alert.alert('Google Sign-In Failed', formatGoogleAuthError(message));
+        appAlert('Google Sign-In Failed', formatGoogleAuthError(message));
       } finally {
         setBusy(false);
       }
@@ -162,7 +161,7 @@ export default function GoogleSignInButton({ onSuccess, disabled }: Props) {
 
   const handlePress = async () => {
     if (!request) {
-      Alert.alert('Google Sign-In', 'Google login is still loading. Try again in a moment.');
+      appAlert('Google Sign-In', 'Google login is still loading. Try again in a moment.');
       return;
     }
     setBusy(true);
@@ -171,7 +170,7 @@ export default function GoogleSignInButton({ onSuccess, disabled }: Props) {
     } catch (err: unknown) {
       setBusy(false);
       const message = err instanceof Error ? err.message : 'Could not open Google sign-in';
-      Alert.alert('Google Sign-In Failed', formatGoogleAuthError(message));
+      appAlert('Google Sign-In Failed', formatGoogleAuthError(message));
     }
   };
 

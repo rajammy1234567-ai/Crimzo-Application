@@ -1,16 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Dimensions,
-  Animated,
-  Easing,
-  Alert,
-  Platform,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Animated, Easing, Platform } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -81,7 +71,7 @@ export default function GiftsScreen() {
     if (busy) return;
     const canAfford = walletBalance >= pkg.price;
     setSelPkg(pkg.id);
-    Alert.alert(
+    appAlert(
       'Buy Diamonds',
       `${fmt(pkg.diamonds)} Diamonds for ${price(pkg.price)}\n\nPay via Razorpay or use wallet balance.`,
       [

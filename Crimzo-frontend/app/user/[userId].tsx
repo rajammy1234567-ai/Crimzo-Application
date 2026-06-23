@@ -1,16 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Image,
-  ActivityIndicator,
-  StatusBar,
-  Alert,
-  Dimensions,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, ActivityIndicator, StatusBar, Dimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -76,7 +66,7 @@ export default function UserProfileScreen() {
       }
     } catch (e) {
       console.error('User profile error:', e);
-      Alert.alert('Error', 'Could not load profile');
+      appAlert('Error', 'Could not load profile');
       router.back();
     } finally {
       setLoading(false);
@@ -212,9 +202,9 @@ export default function UserProfileScreen() {
         friends_count: res.friends_count,
       });
       fetchProfile();
-      Alert.alert('Accepted', `${profile?.username} is now following you`);
+      appAlert('Accepted', `${profile?.username} is now following you`);
     } catch (e) {
-      Alert.alert('Error', 'Could not accept request');
+      appAlert('Error', 'Could not accept request');
     } finally {
       setFollowLoading(false);
     }
@@ -227,7 +217,7 @@ export default function UserProfileScreen() {
       await apiPost('/api/user/follow/reject', { requesterId: userId }, token);
       setProfile((p: any) => ({ ...p, hasIncomingRequest: false }));
     } catch (e) {
-      Alert.alert('Error', 'Could not decline request');
+      appAlert('Error', 'Could not decline request');
     } finally {
       setFollowLoading(false);
     }
@@ -236,7 +226,7 @@ export default function UserProfileScreen() {
   const openFollowList = async (type: 'followers' | 'following' | 'friends') => {
     if (!token || !userId) return;
     if (profile?.is_private && !profile?.canViewContent) {
-      Alert.alert(
+      appAlert(
         'Private Account',
         'Follow this account to see their followers, following, and posts.',
       );
@@ -252,7 +242,7 @@ export default function UserProfileScreen() {
       );
       if (data.canViewList === false) {
         setListVisible(false);
-        Alert.alert('Private Account', 'Follow this account to see this list.');
+        appAlert('Private Account', 'Follow this account to see this list.');
         return;
       }
       setListData(data[type] || []);
@@ -297,7 +287,7 @@ export default function UserProfileScreen() {
 
   const guardInteraction = () => {
     if (profile?.canInteract) return true;
-    Alert.alert(
+    appAlert(
       'Follow Required',
       profile?.interactionBlockedReason
         || 'Follow this user and wait until they accept your follow request.',
@@ -462,17 +452,17 @@ export default function UserProfileScreen() {
           <TouchableOpacity
             style={s.moreBtn}
             onPress={() => {
-              Alert.alert(profile.username, undefined, [
+              appAlert(profile.username, undefined, [
                 {
                   text: 'Block User',
                   style: 'destructive',
                   onPress: async () => {
                     try {
                       await apiPost('/api/user/block', { userId: profile.id }, token);
-                      Alert.alert('Blocked', `${profile.username} has been blocked`);
+                      appAlert('Blocked', `${profile.username} has been blocked`);
                       router.back();
                     } catch {
-                      Alert.alert('Error', 'Could not block user');
+                      appAlert('Error', 'Could not block user');
                     }
                   },
                 },

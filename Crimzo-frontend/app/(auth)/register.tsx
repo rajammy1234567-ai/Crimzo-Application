@@ -1,9 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, Alert, ActivityIndicator,
-  Animated, StatusBar, ScrollView, Image, Easing, Modal, Linking,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Animated, StatusBar, ScrollView, Image, Easing, Modal, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { KEYBOARD_BEHAVIOR } from '../../components/KeyboardAware';
@@ -53,7 +50,7 @@ export default function RegisterScreen() {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        return Alert.alert('Permission Required', 'Please grant access to your photo library to set a profile photo.');
+        return appAlert('Permission Required', 'Please grant access to your photo library to set a profile photo.');
       }
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
@@ -89,19 +86,19 @@ export default function RegisterScreen() {
     const trimmedEmail = email.trim().toLowerCase();
 
     if (!trimmedUsername || trimmedUsername.length < 3) {
-      return Alert.alert('Invalid Username', 'Username must be at least 3 characters.');
+      return appAlert('Invalid Username', 'Username must be at least 3 characters.');
     }
     if (/\s/.test(trimmedUsername)) {
-      return Alert.alert('Invalid Username', 'Username cannot contain spaces.');
+      return appAlert('Invalid Username', 'Username cannot contain spaces.');
     }
     if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
-      return Alert.alert('Invalid Email', 'Please enter a valid email address (e.g. user@gmail.com).');
+      return appAlert('Invalid Email', 'Please enter a valid email address (e.g. user@gmail.com).');
     }
     if (!password || password.length < 6) {
-      return Alert.alert('Weak Password', 'Password must be at least 6 characters.');
+      return appAlert('Weak Password', 'Password must be at least 6 characters.');
     }
     if (password !== confirmPassword) {
-      return Alert.alert('Password Mismatch', 'The passwords you entered do not match.');
+      return appAlert('Password Mismatch', 'The passwords you entered do not match.');
     }
 
     setLoading(true);
@@ -109,7 +106,7 @@ export default function RegisterScreen() {
       await register(trimmedEmail, password, trimmedUsername, avatarUri || undefined);
       router.replace('/(tabs)/home');
     } catch (err: any) {
-      Alert.alert('Registration Failed', err.message || 'Please try again.');
+      appAlert('Registration Failed', err.message || 'Please try again.');
     } finally {
       setLoading(false);
     }

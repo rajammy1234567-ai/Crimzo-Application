@@ -1,18 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Image,
-  Alert,
-  ActivityIndicator,
-  StatusBar,
-  Modal,
-  Clipboard,
-  TextInput,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, ActivityIndicator, StatusBar, Modal, Clipboard, TextInput } from 'react-native';
 import { KeyboardAwareScrollView, KeyboardModalFrame } from '../../components/KeyboardAware';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -88,7 +76,7 @@ export default function EditProfileScreen() {
 
   const copyToClipboard = () => {
     Clipboard.setString(String(user?.crimzo_id || user?.id || ''));
-    Alert.alert('Copied', 'Crimzo ID copied to clipboard!');
+    appAlert('Copied', 'Crimzo ID copied to clipboard!');
   };
 
   const pickAvatar = async () => {
@@ -169,11 +157,11 @@ export default function EditProfileScreen() {
         if (field === 'tags') setTags(value);
         if (field === 'gender') setGender(value);
       } else {
-        Alert.alert('Error', data.error || 'Failed to update profile');
+        appAlert('Error', data.error || 'Failed to update profile');
       }
     } catch (e) {
       console.error('Update profile error:', e);
-      Alert.alert('Error', 'Network error. Please try again.');
+      appAlert('Error', 'Network error. Please try again.');
     }
   };
 
@@ -203,7 +191,7 @@ export default function EditProfileScreen() {
         openEditModal('Self Introduction', 'bio', selfIntro);
         break;
       case 'gender':
-        Alert.alert('Select Gender', '', [
+        appAlert('Select Gender', '', [
           { text: 'Male', onPress: async () => { setGender('Male'); await updateProfileField('gender', 'Male'); } },
           { text: 'Female', onPress: async () => { setGender('Female'); await updateProfileField('gender', 'Female'); } },
           { text: 'Other', onPress: async () => { setGender('Other'); await updateProfileField('gender', 'Other'); } },
@@ -214,14 +202,14 @@ export default function EditProfileScreen() {
         openEditModal('Age', 'age', age);
         break;
       case 'location':
-        Alert.alert('Location Display', '', [
+        appAlert('Location Display', '', [
           { text: 'Show', onPress: async () => { setLocation('Visible'); await updateProfileField('show_location', 'true'); } },
           { text: 'Hidden', onPress: async () => { setLocation('Hidden'); await updateProfileField('show_location', 'false'); } },
           { text: 'Cancel', style: 'cancel' },
         ]);
         break;
       case 'language':
-        Alert.alert('Select Language', '', [
+        appAlert('Select Language', '', [
           { text: 'English', onPress: async () => { setLanguage('English'); await updateProfileField('language', 'English'); } },
           { text: 'Hindi', onPress: async () => { setLanguage('Hindi'); await updateProfileField('language', 'Hindi'); } },
           { text: 'Cancel', style: 'cancel' },

@@ -1,15 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  StatusBar,
-  Image,
-  Alert,
-  Dimensions,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Image, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -134,10 +125,10 @@ export default function TasksScreen() {
       if (res.success) {
         setCheckedIn(true);
         setPendingReward(res.pendingReward || pendingReward + 50);
-        Alert.alert('Check In', `You earned ${res.added || 50} beans!`);
+        appAlert('Check In', `You earned ${res.added || 50} beans!`);
       }
     } catch (e) {
-      Alert.alert('Error', 'Check-in failed');
+      appAlert('Error', 'Check-in failed');
     }
   };
 
@@ -159,7 +150,7 @@ export default function TasksScreen() {
         const parts = [];
         if (res.claimed) parts.push(`${res.claimed} beans`);
         if (res.claimedDiamonds) parts.push(`${res.claimedDiamonds} diamonds`);
-        Alert.alert('Reward Claimed!', parts.length ? `You received ${parts.join(' + ')}!` : 'Nothing to claim');
+        appAlert('Reward Claimed!', parts.length ? `You received ${parts.join(' + ')}!` : 'Nothing to claim');
         setPendingReward(0);
         setPendingDiamonds(0);
         if (res.beans != null || res.diamonds != null) {
@@ -171,7 +162,7 @@ export default function TasksScreen() {
         }
       }
     } catch (e) {
-      Alert.alert('Error', 'Could not claim reward');
+      appAlert('Error', 'Could not claim reward');
     }
   };
 
@@ -186,10 +177,10 @@ export default function TasksScreen() {
         await apiPost('/api/tasks/complete', { taskKey: task.key }, token);
         fetchTasks();
       } catch (e: any) {
-        Alert.alert('Task', e?.message || 'Complete the required action first');
+        appAlert('Task', e?.message || 'Complete the required action first');
       }
     } else {
-      Alert.alert('Task', 'Complete this task by doing the action in the app.');
+      appAlert('Task', 'Complete this task by doing the action in the app.');
     }
   };
 

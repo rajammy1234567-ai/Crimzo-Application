@@ -1,20 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-  Animated,
-  Easing,
-  Dimensions,
-  StatusBar,
-  Image,
-  Platform,
-  PermissionsAndroid,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Easing, Dimensions, StatusBar, Image, Platform, PermissionsAndroid } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { useVideoCall } from '../../contexts/VideoCallContext';
@@ -84,6 +71,7 @@ export default function WatchScreen() {
   const { user, token, updateUser } = useAuth();
   const { startCall } = useVideoCall();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [streamData, setStreamData] = useState<any>(null);
   const [viewerCount, setViewerCount] = useState(0);
@@ -167,7 +155,7 @@ export default function WatchScreen() {
         if (tick.totalCharged != null) setTalkCharged(tick.totalCharged);
         if (tick.canContinue === false) {
           clearTalkBilling();
-          Alert.alert('Balance Low', 'Insufficient balance for the next minute. Ending the chat.', [
+          appAlert('Balance Low', 'Insufficient balance for the next minute. Ending the chat.', [
             { text: 'OK', onPress: () => void finalizeTalkBilling() },
           ]);
         }
@@ -175,7 +163,7 @@ export default function WatchScreen() {
         if (isBalanceExhaustedError(e)) {
           clearTalkBilling();
           void finalizeTalkBilling();
-          Alert.alert('Balance Over', 'Wallet balance exhausted — you can no longer chat.');
+          appAlert('Balance Over', 'Wallet balance exhausted — you can no longer chat.');
         }
       }
     }, 60000);
@@ -201,10 +189,10 @@ export default function WatchScreen() {
         startTalkBillingLoop();
         const chatRate = streamData?.hostChatRatePerMin ?? 1;
         const chatBeans = streamData?.hostChatBeansPerMin ?? hostRates.chatBeansPerMin;
-        Alert.alert('Connected!', `You can now chat with the host. ₹${chatRate}/min is being charged. Host earns ${chatBeans} beans/min.`);
+        appAlert('Connected!', `You can now chat with the host. ₹${chatRate}/min is being charged. Host earns ${chatBeans} beans/min.`);
       }
     } catch (e) {
-      Alert.alert('Billing Error', e instanceof ApiError ? e.message : 'Could not start talk billing');
+      appAlert('Billing Error', e instanceof ApiError ? e.message : 'Could not start talk billing');
     }
   }, [token, sessionId, startTalkBillingLoop, updateUser, streamData, hostRates.chatBeansPerMin]);
 
@@ -248,12 +236,12 @@ export default function WatchScreen() {
         setTalkStatus('pending');
         const chatRate = streamData?.hostChatRatePerMin ?? hostRates.chatRatePerMin;
         const chatBeans = streamData?.hostChatBeansPerMin ?? hostRates.chatBeansPerMin;
-        Alert.alert('Request Sent', `Request sent to the host. Chat at ₹${chatRate}/min once accepted. Host earns ${chatBeans} beans/min.`);
+        appAlert('Request Sent', `Request sent to the host. Chat at ₹${chatRate}/min once accepted. Host earns ${chatBeans} beans/min.`);
       }
     } catch (e) {
       if (isInsufficientBalanceError(e)) {
         const data = e.data as { wallet_balance?: number };
-        Alert.alert(
+        appAlert(
           'Recharge Required',
           `Please recharge your wallet first for live chat.\n\nRate: ₹${hostRates.chatRatePerMin}/min\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
           [
@@ -262,7 +250,7 @@ export default function WatchScreen() {
           ],
         );
       } else {
-        Alert.alert('Error', e instanceof ApiError ? e.message : 'Request failed');
+        appAlert('Error', e instanceof ApiError ? e.message : 'Request failed');
       }
     } finally {
       setRequestingTalk(false);
@@ -272,7 +260,7 @@ export default function WatchScreen() {
   const promptTalkRequest = useCallback(() => {
     if (talkPromptShownRef.current || canChat || talkStatus === 'pending') return;
     talkPromptShownRef.current = true;
-    Alert.alert(
+    appAlert(
       'Chat with the host?',
       `Send a request to chat with this live host.\n\n₹${hostRates.chatRatePerMin}/min from wallet\nHost earns ${hostRates.chatBeansPerMin} beans/min\nChat opens once accepted.`,
       [
@@ -317,7 +305,7 @@ export default function WatchScreen() {
       setStreamEnded(true);
       clearTalkBilling();
       void finalizeTalkBilling();
-      Alert.alert(
+      appAlert(
         'Stream Ended',
         data?.message || 'The host has ended the live stream.',
         [{ text: 'OK', onPress: () => router.replace('/(tabs)/home') }],
@@ -331,7 +319,7 @@ export default function WatchScreen() {
     s.on('live_talk_rejected', () => {
       setTalkStatus('rejected');
       setTalkRequestId(null);
-      Alert.alert('Request Declined', 'The host declined your chat request.');
+      appAlert('Request Declined', 'The host declined your chat request.');
     });
     socketRef.current = s;
     return () => { 
@@ -419,7 +407,7 @@ export default function WatchScreen() {
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Failed to join stream';
-      Alert.alert('Error', msg, [{ text: 'OK', onPress: () => router.replace('/(tabs)/home') }]);
+      appAlert('Error', msg, [{ text: 'OK', onPress: () => router.replace('/(tabs)/home') }]);
     } finally {
       setLoading(false);
     }
@@ -510,7 +498,7 @@ export default function WatchScreen() {
 
   const handleVoiceCall = () => {
     if (!streamData?.hostId) return;
-    Alert.alert(
+    appAlert(
       'Voice Call',
       `Call ${streamData.hostUsername} while they are live?\n\n₹${hostRates.voiceRatePerMin}/min from wallet\nHost earns ${hostRates.voiceBeansPerMin} beans/min`,
       [
@@ -632,32 +620,64 @@ export default function WatchScreen() {
         </Animated.View>
       </SafeAreaView>
 
-      {/* Side voice + chat actions with per-host pricing */}
+      {/* Call + Chat — highlighted above live chat input */}
       {isViewer && (
-        <View style={s.sideActions}>
-          <TouchableOpacity style={s.sideBtn} onPress={handleVoiceCall} activeOpacity={0.8}>
-            <View style={[s.sideBtnCircle, s.voiceBtnCircle]}>
-              <Ionicons name="call" size={20} color="#4CD964" />
-            </View>
-            <Text style={s.sideBtnLabel}>Voice</Text>
-            <Text style={s.sideBtnPrice}>₹{hostRates.voiceRatePerMin}/min</Text>
-            <Text style={s.sideBtnBeans}>{hostRates.voiceBeansPerMin} beans</Text>
+        <View style={[s.actionBar, { bottom: 62 + Math.max(insets.bottom, 8) }]}>
+          <TouchableOpacity
+            style={[s.actionBarBtnWrap, { shadowColor: '#10B981' }]}
+            onPress={handleVoiceCall}
+            activeOpacity={0.88}
+          >
+            <LinearGradient
+              colors={['#34D399', '#10B981', '#059669']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={s.actionBarBtn}
+            >
+              <View style={s.actionBarIcon}>
+                <Ionicons name="call" size={22} color="#FFF" />
+              </View>
+              <View style={s.actionBarTextCol}>
+                <Text style={s.actionBarTitle}>Call</Text>
+                <Text style={s.actionBarRate}>₹{hostRates.voiceRatePerMin}/min</Text>
+              </View>
+            </LinearGradient>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={s.sideBtn}
+            style={[s.actionBarBtnWrap, {
+              shadowColor: talkStatus === 'active' ? '#F59E0B' : talkStatus === 'pending' ? '#64748B' : '#3B82F6',
+            }]}
             onPress={handleChatRequest}
             disabled={requestingTalk || talkStatus === 'pending' || canChat}
-            activeOpacity={0.8}
+            activeOpacity={0.88}
           >
-            <View style={[s.sideBtnCircle, talkStatus === 'active' ? s.chatActiveCircle : s.chatBtnCircle]}>
-              <Ionicons name="chatbubbles" size={20} color={talkStatus === 'active' ? '#FFD700' : '#00BFFF'} />
-            </View>
-            <Text style={s.sideBtnLabel}>
-              {talkStatus === 'active' ? 'Chatting' : talkStatus === 'pending' ? 'Pending' : 'Chat'}
-            </Text>
-            <Text style={s.sideBtnPrice}>₹{hostRates.chatRatePerMin}/min</Text>
-            <Text style={s.sideBtnBeans}>{hostRates.chatBeansPerMin} beans</Text>
+            <LinearGradient
+              colors={
+                talkStatus === 'active'
+                  ? ['#FBBF24', '#F59E0B', '#D97706']
+                  : talkStatus === 'pending'
+                    ? ['#94A3B8', '#64748B', '#475569']
+                    : ['#60A5FA', '#3B82F6', '#2563EB']
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[s.actionBarBtn, (requestingTalk || talkStatus === 'pending' || canChat) && s.actionBarBtnDisabled]}
+            >
+              <View style={s.actionBarIcon}>
+                <Ionicons
+                  name={talkStatus === 'active' ? 'chatbubble' : talkStatus === 'pending' ? 'time' : 'chatbubble-ellipses'}
+                  size={22}
+                  color="#FFF"
+                />
+              </View>
+              <View style={s.actionBarTextCol}>
+                <Text style={s.actionBarTitle}>
+                  {talkStatus === 'active' ? 'Chatting' : talkStatus === 'pending' ? 'Pending' : 'Chat'}
+                </Text>
+                <Text style={s.actionBarRate}>₹{hostRates.chatRatePerMin}/min</Text>
+              </View>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       )}
@@ -783,29 +803,60 @@ const s = StyleSheet.create({
   },
   talkRequestText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
 
-  sideActions: {
+  actionBar: {
     position: 'absolute',
+    left: 12,
     right: 12,
-    top: '32%',
-    zIndex: 25,
-    gap: 16,
-    alignItems: 'center',
+    zIndex: 30,
+    flexDirection: 'row',
+    gap: 10,
   },
-  sideBtn: { alignItems: 'center', gap: 2, maxWidth: 72 },
-  sideBtnCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+  actionBarBtnWrap: {
+    flex: 1,
+    borderRadius: 18,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.7,
+    shadowRadius: 12,
+    elevation: 14,
+  },
+  actionBarBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  actionBarBtnDisabled: { opacity: 0.72 },
+  actionBarIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.22)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.35)',
   },
-  voiceBtnCircle: { borderColor: 'rgba(76,217,100,0.35)', backgroundColor: 'rgba(76,217,100,0.15)' },
-  chatBtnCircle: { borderColor: 'rgba(0,191,255,0.35)', backgroundColor: 'rgba(0,191,255,0.12)' },
-  chatActiveCircle: { borderColor: 'rgba(255,215,0,0.45)', backgroundColor: 'rgba(255,215,0,0.18)' },
-  sideBtnLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 10, fontWeight: '700' },
-  sideBtnPrice: { color: '#FFD700', fontSize: 9, fontWeight: '800' },
-  sideBtnBeans: { color: 'rgba(255,149,0,0.9)', fontSize: 8, fontWeight: '600' },
+  actionBarTextCol: { flex: 1 },
+  actionBarTitle: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+    textShadowColor: 'rgba(0,0,0,0.35)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  actionBarRate: {
+    color: '#FFFDE7',
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 2,
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
 });

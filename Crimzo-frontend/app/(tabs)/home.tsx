@@ -1,13 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, StyleSheet, Alert, Platform } from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, StyleSheet, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { gradients } from '../../lib/theme';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useTabFocus } from '../../lib/useTabFocus';
 import { useAuth } from '../../contexts/AuthContext';
-import { useVideoCall } from '../../contexts/VideoCallContext';
-import { resolveRates } from '../../lib/userRates';
 import { apiGet, ApiError, apiDelete, apiUpload } from '../../lib/apiClient';
 
 const TRANSIENT_HTTP = new Set([502, 503, 504]);
@@ -43,19 +42,8 @@ import { subscribe } from '../../lib/realtimeSync';
 import { useNotifications } from '../../lib/useNotifications';
 import { normalizeStoryUserId } from '../../lib/storyUtils';
 
-type LiveStreamItem = {
-  id: string | number;
-  user_id?: string | number;
-  username: string;
-  avatar?: string | null;
-  voice_rate_per_min?: number;
-  chat_rate_per_min?: number;
-  talk_rate_per_min?: number;
-};
-
 export default function HomeScreen() {
   const { user, token, isGuest } = useAuth();
-  const { startCall } = useVideoCall();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('for-you');
   const [liveStreams, setLiveStreams] = useState<any[]>([]);
@@ -216,53 +204,10 @@ export default function HomeScreen() {
 
   const openBroadcast = () => {
     if (!token || isGuest) {
-      Alert.alert('Login Required', 'Please log in with your account to go live.');
+      appAlert('Login Required', 'Please log in with your account to go live.');
       return;
     }
     router.push('/live/broadcast');
-  };
-
-  const requireLogin = () => {
-    if (!token || isGuest) {
-      Alert.alert('Login Required', 'Please log in with your account to use this feature.');
-      return false;
-    }
-    return true;
-  };
-
-  const handleCallStream = (stream: LiveStreamItem) => {
-    if (!requireLogin()) return;
-    const hostId = stream.user_id;
-    if (!hostId || String(hostId) === String(user?.id)) return;
-    const rates = resolveRates(stream.voice_rate_per_min, stream.chat_rate_per_min);
-    Alert.alert(
-      'Voice Call',
-      `Call ${stream.username} while they are live?\n\n₹${rates.voiceRatePerMin}/min from your wallet`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Call',
-          onPress: () => startCall(hostId, stream.username || 'Host', stream.avatar ?? null),
-        },
-      ],
-    );
-  };
-
-  const handleChatStream = (stream: LiveStreamItem) => {
-    if (!requireLogin()) return;
-    if (String(stream.user_id) === String(user?.id)) return;
-    const rates = resolveRates(stream.voice_rate_per_min, stream.chat_rate_per_min);
-    Alert.alert(
-      'Chat with Host',
-      `Join ${stream.username}'s live and request to chat.\n\n₹${rates.chatRatePerMin}/min once accepted`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Join & Chat',
-          onPress: () => router.push(`/live/watch?sessionId=${stream.id}&talk=1`),
-        },
-      ],
-    );
   };
 
   // ── Story actions ──
@@ -270,7 +215,7 @@ export default function HomeScreen() {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please grant access to your media library to upload stories.');
+        appAlert('Permission Required', 'Please grant access to your media library to upload stories.');
         return;
       }
 
@@ -315,11 +260,11 @@ export default function HomeScreen() {
 
       if (response.success) {
         fetchStories();
-        Alert.alert('✨ Story Uploaded!', 'Your story is now visible to your followers for 24 hours.');
+        appAlert('✨ Story Uploaded!', 'Your story is now visible to your followers for 24 hours.');
       }
     } catch (error: any) {
       console.error('Story upload error:', error);
-      Alert.alert('Upload Failed', error?.message || 'Something went wrong.');
+      appAlert('Upload Failed', error?.message || 'Something went wrong.');
     } finally {
       setUploadingStory(false);
     }
@@ -392,8 +337,6 @@ export default function HomeScreen() {
           refreshing={refreshing}
           onRefresh={onRefresh}
           onWatchStream={(id) => router.push(`/live/watch?sessionId=${id}`)}
-          onCallStream={handleCallStream}
-          onChatStream={handleChatStream}
           onStartBroadcast={openBroadcast}
         />
       )}

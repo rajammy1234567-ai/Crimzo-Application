@@ -1,24 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  Image,
-  Dimensions,
-  RefreshControl,
-  Alert,
-  StatusBar,
-  Animated,
-  Modal,
-  FlatList,
-  ActivityIndicator,
-  Platform,
-  TextInput,
-  Share,
-  Clipboard,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Dimensions, RefreshControl, StatusBar, Animated, Modal, FlatList, ActivityIndicator, Platform, TextInput, Share, Clipboard } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,7 +15,6 @@ import FollowListModal from '../../components/profile/FollowListModal';
 import { parseFollowResponse } from '../../lib/followHelpers';
 import { useTabFocus } from '../../lib/useTabFocus';
 import { subscribe } from '../../lib/realtimeSync';
-
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const REEL_THUMB_W = (SW - 6) / 3;
@@ -302,7 +283,7 @@ export default function ProfileScreen() {
 
   // ── Delete reel ──
   const handleDeleteReel = (reelId: string) => {
-    Alert.alert('Delete Reel', 'Are you sure you want to delete this reel?', [
+    appAlert('Delete Reel', 'Are you sure you want to delete this reel?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive', onPress: async () => {
@@ -314,10 +295,10 @@ export default function ProfileScreen() {
             if (data.success) {
               setMyReels(prev => prev.filter(r => r.id !== reelId));
             } else {
-              Alert.alert('Error', data.error || 'Failed to delete reel');
+              appAlert('Error', data.error || 'Failed to delete reel');
             }
           } catch (e) {
-            Alert.alert('Error', 'Failed to delete reel');
+            appAlert('Error', 'Failed to delete reel');
           }
         }
       },
@@ -356,10 +337,10 @@ export default function ProfileScreen() {
         setProfileEditingId(null);
         setProfileEditingCaption('');
       } else {
-        Alert.alert('Error', data.error || 'Failed to update');
+        appAlert('Error', data.error || 'Failed to update');
       }
     } catch (e) {
-      Alert.alert('Error', 'Failed to update reel');
+      appAlert('Error', 'Failed to update reel');
     }
   };
 
@@ -390,7 +371,7 @@ export default function ProfileScreen() {
           break;
         case 'Settings': router.push('/profile/settings' as any); break;
         case 'Help & Support':
-          Alert.alert('Help & Support', `Email: support@crimzo.app\n${getBuildLabel()}`);
+          appAlert('Help & Support', `Email: support@crimzo.app\n${getBuildLabel()}`);
           break;
         default: break;
       }
@@ -400,7 +381,7 @@ export default function ProfileScreen() {
   const handleLogout = () => {
     closeMenu();
     setTimeout(() => {
-      Alert.alert('Logout', 'Are you sure you want to logout?', [
+      appAlert('Logout', 'Are you sure you want to logout?', [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Logout', style: 'destructive', onPress: async () => { await logout(); router.replace('/(auth)/login'); } },
       ]);
@@ -474,7 +455,7 @@ export default function ProfileScreen() {
                   const id = user?.crimzo_id || String(user?.id || '');
                   if (id) {
                     Clipboard.setString(id);
-                    Alert.alert('Copied', 'Crimzo ID copied!');
+                    appAlert('Copied', 'Crimzo ID copied!');
                   }
                 }}
                 activeOpacity={0.8}
@@ -668,7 +649,7 @@ export default function ProfileScreen() {
                 <TouchableOpacity
                   style={s.reelMenuBtn}
                   onPress={() => {
-                    Alert.alert(
+                    appAlert(
                       'Reel Options',
                       '',
                       [

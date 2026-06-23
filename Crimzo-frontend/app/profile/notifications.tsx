@@ -1,15 +1,6 @@
 import React, { useCallback, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  FlatList,
-  Image,
-  ActivityIndicator,
-  StatusBar,
-  Alert,
-} from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Image, ActivityIndicator, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -51,7 +42,7 @@ export default function NotificationsScreen() {
         followers_count?: number;
         friends_count?: number;
       }>('/api/user/follow/accept', { requesterId: item.actor_id }, token);
-      Alert.alert('Accepted', `${item.actor_username || 'User'} is now following you`);
+      appAlert('Accepted', `${item.actor_username || 'User'} is now following you`);
       publish('notifications_updated');
       publish('follow_updated', {
         followers_count: res.followers_count,
@@ -59,7 +50,7 @@ export default function NotificationsScreen() {
       });
       refresh();
     } catch {
-      Alert.alert('Error', 'Could not accept request');
+      appAlert('Error', 'Could not accept request');
     } finally {
       setActing(null);
     }
@@ -72,7 +63,7 @@ export default function NotificationsScreen() {
       await apiPost('/api/user/follow/reject', { requesterId: item.actor_id }, token);
       refresh();
     } catch {
-      Alert.alert('Error', 'Could not reject request');
+      appAlert('Error', 'Could not reject request');
     } finally {
       setActing(null);
     }

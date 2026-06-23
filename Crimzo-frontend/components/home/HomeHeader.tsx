@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { appAlert } from '../../lib/appAlert';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import CrimzoNavLogo from './CrimzoNavLogo';
@@ -27,7 +28,7 @@ const HomeHeader: React.FC<Props> = ({
     if (onNotification) {
       onNotification();
     } else {
-      Alert.alert('Notifications', 'You have no new notifications.');
+      appAlert('Notifications', 'You have no new notifications.');
     }
   };
 
