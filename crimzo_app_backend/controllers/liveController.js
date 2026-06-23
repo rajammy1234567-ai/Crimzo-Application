@@ -6,7 +6,7 @@ const LiveTalkSession = require('../models/LiveTalkSession');
 const User = require('../models/User');
 const { getBillingSettings } = require('../utils/billingSettings');
 const { resolveUserRates } = require('../utils/userRates');
-const { emitLiveStreamsUpdated, getIo } = require('../utils/socketEmitter');
+const { emitLiveStreamsUpdated } = require('../utils/socketEmitter');
 
 const STALE_LIVE_MS = 6 * 60 * 60 * 1000; // 6 hours max live session
 const LIVE_JOIN_GRACE_MS = 30 * 1000; // allow brief window after go-live before socket joins
@@ -102,38 +102,25 @@ function mapActiveSession(ls, billingSettings) {
   };
 }
 
-async function sessionHostIsPresent(sessionId, hostId, io) {
-  if (!io || !sessionId || !hostId) return false;
-  const clients = await io.in(`live_${sessionId}`).fetchSockets();
-  return clients.some((socket) => String(socket.crimzoUserId) === String(hostId));
+function filterCurrentlyLiveSessions(sessions) {
+  const now = Date.now();
+  return sessions.filter((ls) => {
+    const host = ls.user_id;
+    if (!host) return false;
+    if (host.status === 'live') return true;
+    const startedAt = ls.started_at ? new Date(ls.started_at).getTime() : 0;
+    return now - startedAt < LIVE_JOIN_GRACE_MS;
+  });
 }
 
-async function resolveCurrentlyLiveSessions(sessions, io) {
-  const verified = [];
-
-  for (const ls of sessions) {
-    const host = ls.user_id;
-    const hostId = host?._id || host?.id || ls.user_id;
-    if (!hostId) continue;
-
-    const startedAt = ls.started_at ? new Date(ls.started_at).getTime() : 0;
-    const inGrace = Date.now() - startedAt < LIVE_JOIN_GRACE_MS;
-    const hostPresent = await sessionHostIsPresent(ls._id, hostId, io);
-
-    if (hostPresent || (inGrace && host?.status === 'live')) {
-      verified.push(ls);
-      continue;
-    }
-
-    if (!inGrace) {
-      await finalizeLiveSessionEnd(ls._id, io, {
-        message: 'This live stream has ended.',
-        notifyViewers: true,
-      });
-    }
-  }
-
-  return verified;
+async function loadActiveLiveSessions() {
+  return LiveSession.find({ status: 'active' })
+    .sort({ viewers_count: -1, started_at: -1 })
+    .populate(
+      'user_id',
+      'username avatar country bio followers_count status voice_rate_per_min_inr chat_rate_per_min_inr',
+    )
+    .lean();
 }
 
 // Start live stream
@@ -232,14 +219,11 @@ exports.createEndLive = (io) => async (req, res) => {
 // Get active live streams
 exports.getActiveStreams = async (req, res) => {
   try {
-    const io = getIo();
-    const billingSettings = await getBillingSettings();
-    const sessions = await LiveSession.find({ status: 'active' })
-      .sort({ viewers_count: -1, started_at: -1 })
-      .populate('user_id', 'username avatar country bio followers_count status voice_rate_per_min_inr chat_rate_per_min_inr')
-      .lean();
-
-    const liveNow = await resolveCurrentlyLiveSessions(sessions, io);
+    const [billingSettings, sessions] = await Promise.all([
+      getBillingSettings(),
+      loadActiveLiveSessions(),
+    ]);
+    const liveNow = filterCurrentlyLiveSessions(sessions);
     const streams = liveNow.map((ls) => mapActiveSession(ls, billingSettings));
 
     res.json({ success: true, streams, billing: billingSettings });
@@ -252,14 +236,15 @@ exports.getActiveStreams = async (req, res) => {
 // Get live users for home page
 exports.getLiveUsers = async (req, res) => {
   try {
-    const io = getIo();
-    const billingSettings = await getBillingSettings();
-    const sessions = await LiveSession.find({ status: 'active' })
-      .sort({ viewers_count: -1, started_at: -1 })
-      .populate('user_id', 'id username avatar country status voice_rate_per_min_inr chat_rate_per_min_inr')
-      .lean();
+    const [billingSettings, sessions] = await Promise.all([
+      getBillingSettings(),
+      LiveSession.find({ status: 'active' })
+        .sort({ viewers_count: -1, started_at: -1 })
+        .populate('user_id', 'id username avatar country status voice_rate_per_min_inr chat_rate_per_min_inr')
+        .lean(),
+    ]);
 
-    const liveNow = await resolveCurrentlyLiveSessions(sessions, io);
+    const liveNow = filterCurrentlyLiveSessions(sessions);
     const liveUsers = liveNow.map((ls) => {
         const u = ls.user_id || {};
         const rates = resolveUserRates(u, billingSettings);

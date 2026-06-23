@@ -6,7 +6,26 @@ import { gradients } from '../../lib/theme';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useTabFocus } from '../../lib/useTabFocus';
 import { useAuth } from '../../contexts/AuthContext';
-import { apiGet, apiDelete, apiUpload } from '../../lib/apiClient';
+import { apiGet, ApiError, apiDelete, apiUpload } from '../../lib/apiClient';
+
+const TRANSIENT_HTTP = new Set([502, 503, 504]);
+
+async function fetchLiveActiveStreams(token: string) {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await apiGet<{ streams?: unknown[] }>('/api/live/active', token, 15000);
+    } catch (err) {
+      lastErr = err;
+      if (err instanceof ApiError && TRANSIENT_HTTP.has(err.status) && attempt < 2) {
+        await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import StoryViewer from '../../components/StoryViewer';
@@ -112,9 +131,13 @@ export default function HomeScreen() {
   const fetchActiveStreams = async () => {
     if (!token) return;
     try {
-      const res = await apiGet<{ streams?: unknown[] }>('/api/live/active', token);
+      const res = await fetchLiveActiveStreams(token);
       setLiveStreams(res.streams || []);
     } catch (error) {
+      if (error instanceof ApiError && TRANSIENT_HTTP.has(error.status)) {
+        console.warn('Live streams temporarily unavailable (server waking up)');
+        return;
+      }
       console.error('Fetch active streams error:', error);
     }
   };
@@ -157,7 +180,7 @@ export default function HomeScreen() {
     }
     try {
       const [streamsRes, countRes, storiesRes] = await Promise.all([
-        apiGet<{ streams?: unknown[] }>('/api/live/active', token),
+        fetchLiveActiveStreams(token),
         apiGet<{ count?: number }>('/api/users/online-count', token),
         apiGet<{ storyGroups?: unknown[] }>('/api/stories', token),
       ]);
