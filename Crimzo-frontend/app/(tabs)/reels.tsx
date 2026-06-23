@@ -29,6 +29,7 @@ import { apiFetch, apiGet, apiPost, apiDelete, resolveMediaUrl } from '../../lib
 import { subscribe } from '../../lib/realtimeSync';
 import { parseFollowResponse } from '../../lib/followHelpers';
 import { getTabBarHeight } from '../../lib/theme';
+import { KEYBOARD_BEHAVIOR, KeyboardModalFrame } from '../../components/KeyboardAware';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -458,9 +459,10 @@ function CommentsSheet({
     <Animated.View style={[styles.commentsOverlay, { transform: [{ translateY: slideAnim }] }]}>
       <TouchableOpacity style={styles.commentsBackdrop} onPress={onClose} activeOpacity={1} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.commentsSheet}
+        behavior={KEYBOARD_BEHAVIOR}
+        style={styles.commentsSheetWrap}
       >
+        <View style={styles.commentsSheet}>
         {/* Handle */}
         <View style={styles.sheetHandle}>
           <View style={styles.sheetHandleBar} />
@@ -551,6 +553,7 @@ function CommentsSheet({
               <Ionicons name="send" size={20} color={newComment.trim() ? '#FFF' : '#666'} />
             )}
           </TouchableOpacity>
+        </View>
         </View>
       </KeyboardAvoidingView>
     </Animated.View>
@@ -1038,11 +1041,8 @@ export default function ReelsScreen() {
         transparent
         onRequestClose={() => setShowEditModal(false)}
       >
-        <View style={styles.editModalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.editModalCard}
-          >
+        <KeyboardModalFrame style={styles.editModalOverlay}>
+          <View style={styles.editModalCard}>
             <Text style={styles.editModalTitle}>Edit Caption</Text>
             <TextInput
               style={styles.editCaptionInput}
@@ -1072,8 +1072,8 @@ export default function ReelsScreen() {
                 <Text style={[styles.editBtnText, styles.editSaveBtnText]}>Save</Text>
               </TouchableOpacity>
             </View>
-          </KeyboardAvoidingView>
-        </View>
+          </View>
+        </KeyboardModalFrame>
       </Modal>
 
       {/* Reel Upload Modal */}
@@ -1370,16 +1370,16 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 100,
+    justifyContent: 'flex-end',
   },
   commentsBackdrop: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
+  commentsSheetWrap: {
+    width: '100%',
+  },
   commentsSheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     height: SCREEN_HEIGHT * 0.55,
     backgroundColor: '#1C1C1E',
     borderTopLeftRadius: 20,
@@ -1644,7 +1644,7 @@ function ReelUploadModal({
 
         {/* Caption + Post button */}
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={KEYBOARD_BEHAVIOR}
           style={rumStyles.bottomBar}
         >
           <TextInput

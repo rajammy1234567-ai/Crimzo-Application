@@ -538,24 +538,12 @@ export default function BroadcastScreen() {
         engineRef.current = null;
       }
       setAgoraReady(false);
-      const code = e instanceof ApiError ? (e.data as { code?: string })?.code : undefined;
       const msg = e instanceof ApiError
         ? e.message
         : e instanceof Error
           ? e.message
           : 'Failed to start broadcast.';
-      if (code === 'DAILY_TIME_REQUIRED') {
-        Alert.alert(
-          '1 Hour Required',
-          msg,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'View Progress', onPress: () => router.push('/profile/tasks' as any) },
-          ],
-        );
-      } else {
-        Alert.alert('Go Live Failed', msg);
-      }
+      Alert.alert('Go Live Failed', msg);
       setLoading(false);
     }
   }, [user, token, initBroadcastMedia]);

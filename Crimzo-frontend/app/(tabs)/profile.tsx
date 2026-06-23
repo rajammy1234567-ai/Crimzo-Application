@@ -15,7 +15,6 @@ import {
   FlatList,
   ActivityIndicator,
   Platform,
-  KeyboardAvoidingView,
   TextInput,
   Share,
   Clipboard,
@@ -28,12 +27,13 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { apiGet, apiPost, apiDelete, apiFetch, resolveMediaUrl } from '../../lib/apiClient';
+import { KeyboardModalFrame } from '../../components/KeyboardAware';
 import { getBuildLabel } from '../../lib/buildInfo';
 import FollowListModal from '../../components/profile/FollowListModal';
 import { parseFollowResponse } from '../../lib/followHelpers';
 import { useTabFocus } from '../../lib/useTabFocus';
 import { subscribe } from '../../lib/realtimeSync';
-import { useVideoCall } from '../../contexts/VideoCallContext';
+
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const REEL_THUMB_W = (SW - 6) / 3;
@@ -43,7 +43,7 @@ const REEL_THUMB_W = (SW - 6) / 3;
 // ══════════════════════════════════════════════════════════════
 export default function ProfileScreen() {
   const { user, token, logout, updateUser } = useAuth();
-  const { startCall } = useVideoCall();
+
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
@@ -768,10 +768,6 @@ export default function ProfileScreen() {
         onClose={() => setListModalVisible(false)}
         onToggleFollow={handleFollowFromList}
         onOpenProfile={openUserFromList}
-        onVideoCall={(id, username, avatar) => {
-          setListModalVisible(false);
-          startCall(id, username, avatar);
-        }}
         onMessage={(id, username) => {
           setListModalVisible(false);
           router.push(`/profile/messages?userId=${id}&username=${encodeURIComponent(username)}` as any);
@@ -785,11 +781,8 @@ export default function ProfileScreen() {
         transparent
         onRequestClose={() => setProfileEditVisible(false)}
       >
-        <View style={m.editModalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={m.editModalCard}
-          >
+        <KeyboardModalFrame style={m.editModalOverlay}>
+            <View style={m.editModalCard}>
             <Text style={m.editModalTitle}>Edit Caption</Text>
             <TextInput
               style={m.editCaptionInput}
@@ -818,8 +811,8 @@ export default function ProfileScreen() {
                 <Text style={[m.editBtnText, m.editSaveBtnText]}>Save</Text>
               </TouchableOpacity>
             </View>
-          </KeyboardAvoidingView>
-        </View>
+          </View>
+        </KeyboardModalFrame>
       </Modal>
     </View>
   );

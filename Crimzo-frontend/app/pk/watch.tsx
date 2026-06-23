@@ -19,6 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
+import { KEYBOARD_BEHAVIOR } from '../../components/KeyboardAware';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import io from 'socket.io-client';
@@ -419,7 +420,7 @@ export default function PKWatchScreen() {
 
       {/* ── Bottom Panel: Chat + Gifts ── */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={KEYBOARD_BEHAVIOR}
         style={s.bottomPanel}
         keyboardVerticalOffset={0}
       >

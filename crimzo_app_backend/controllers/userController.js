@@ -7,7 +7,11 @@ const Reel = require('../models/Reel');
 const GiftHistory = require('../models/GiftHistory');
 const { pushNotification } = require('../utils/notificationHelper');
 const { emitFollowUpdated, emitFollowStatusChanged } = require('../utils/socketEmitter');
-const { getInteractionPermission } = require('../utils/followPermissions');
+const {
+  getInteractionPermission,
+  canViewProfileContent,
+  canViewPrivateProfileDetails,
+} = require('../utils/followPermissions');
 const {
   toObjectId,
   syncUserFollowCounts,
@@ -136,6 +140,7 @@ exports.getFullProfile = async (req, res) => {
     ]);
     const reelViews = reelAgg[0]?.totalViews || 0;
     const reelLikes = reelAgg[0]?.totalLikes || 0;
+    const postsCount = await Reel.countDocuments({ user_id: userId });
 
     const sentAgg = await GiftHistory.aggregate([
       { $match: { sender_id: new (require('mongoose')).Types.ObjectId(userId) } },
@@ -162,6 +167,11 @@ exports.getFullProfile = async (req, res) => {
     const counts = await syncUserFollowCounts(userId);
     const billingSettings = await getBillingSettings();
     const userRates = buildRatesPayload(u, billingSettings);
+    const canViewContent = canViewProfileContent(req.user.id, userId, {
+      isPrivate: !!u.is_private,
+      isFollowing: followState.isFollowing,
+      isMutualFriend: interaction.isMutualFriend,
+    });
 
     res.json({
       success: true,
@@ -186,6 +196,7 @@ exports.getFullProfile = async (req, res) => {
         totalStreams,
         totalViews: reelViews,
         totalLikes: reelLikes,
+        posts_count: postsCount,
         totalDiamondsSpent: sentAgg[0]?.total || 0,
         totalBeansEarned: receivedAgg[0]?.total || 0,
         isFollowing: followState.isFollowing,
@@ -195,6 +206,7 @@ exports.getFullProfile = async (req, res) => {
         followsYou: interaction.followsYou,
         isMutualFriend: interaction.isMutualFriend,
         canInteract: interaction.canInteract,
+        canViewContent,
         interactionBlockedReason: interaction.reason,
         isLive: !!liveCheck,
         liveSessionId: liveCheck ? liveCheck.id : null,
@@ -550,7 +562,7 @@ exports.updateProfile = async (req, res) => {
     const {
       username, bio, country, avatar, gender, age, language,
       second_language, tags, show_location, push_notifications_enabled,
-      voice_rate_per_min_inr, chat_rate_per_min_inr,
+      voice_rate_per_min_inr, chat_rate_per_min_inr, is_private,
     } = req.body;
     const userId = req.user.id;
 
@@ -567,6 +579,9 @@ exports.updateProfile = async (req, res) => {
     if (show_location !== undefined) update.show_location = !!show_location;
     if (push_notifications_enabled !== undefined) {
       update.push_notifications_enabled = !!push_notifications_enabled;
+    }
+    if (is_private !== undefined) {
+      update.is_private = !!is_private;
     }
     if (voice_rate_per_min_inr !== undefined) {
       const parsed = parseRateUpdate(voice_rate_per_min_inr);
@@ -605,6 +620,7 @@ exports.updateProfile = async (req, res) => {
         tags: updated.tags,
         show_location: updated.show_location,
         push_notifications_enabled: updated.push_notifications_enabled !== false,
+        is_private: !!updated.is_private,
         voice_rate_per_min_inr: rates.voice_rate_per_min_inr,
         chat_rate_per_min_inr: rates.chat_rate_per_min_inr,
         voiceRatePerMin: rates.voiceRatePerMin,
@@ -712,6 +728,19 @@ async function formatFollowListUser(currentUserId, profileUserId, u) {
   };
 }
 
+async function canViewerSeePrivateProfileDetails(viewerId, profileUserId) {
+  if (String(viewerId) === String(profileUserId)) return true;
+  const target = await User.findById(profileUserId).select('is_private').lean();
+  if (!target) return false;
+  if (!target.is_private) return true;
+  const perm = await getInteractionPermission(viewerId, profileUserId);
+  return canViewPrivateProfileDetails(viewerId, profileUserId, {
+    isPrivate: true,
+    isFollowing: perm.isFollowing,
+    isMutualFriend: perm.isMutualFriend,
+  });
+}
+
 // Get followers list
 exports.getFollowers = async (req, res) => {
   try {
@@ -719,6 +748,11 @@ exports.getFollowers = async (req, res) => {
     const currentUserId = req.user.id;
     const oid = toObjectId(userId);
     if (!oid) return res.json({ success: true, followers: [] });
+
+    const allowed = await canViewerSeePrivateProfileDetails(currentUserId, userId);
+    if (!allowed) {
+      return res.json({ success: true, followers: [], isPrivate: true, canViewList: false });
+    }
 
     const follows = await Follow.find({ following_id: oid })
       .sort({ created_at: -1 })
@@ -743,6 +777,11 @@ exports.getFollowing = async (req, res) => {
     const oid = toObjectId(userId);
     if (!oid) return res.json({ success: true, following: [] });
 
+    const allowed = await canViewerSeePrivateProfileDetails(currentUserId, userId);
+    if (!allowed) {
+      return res.json({ success: true, following: [], isPrivate: true, canViewList: false });
+    }
+
     const follows = await Follow.find({ follower_id: oid })
       .sort({ created_at: -1 })
       .populate('following_id', 'username avatar bio is_online');
@@ -765,6 +804,11 @@ exports.getFriends = async (req, res) => {
     const currentUserId = req.user.id;
     const oid = toObjectId(userId);
     if (!oid) return res.json({ success: true, friends: [] });
+
+    const allowed = await canViewerSeePrivateProfileDetails(currentUserId, userId);
+    if (!allowed) {
+      return res.json({ success: true, friends: [], isPrivate: true, canViewList: false });
+    }
 
     const following = await Follow.find({ follower_id: oid }).select('following_id').lean();
     const followingIds = following.map((f) => f.following_id).filter(Boolean);

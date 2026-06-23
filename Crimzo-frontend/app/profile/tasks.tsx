@@ -315,19 +315,19 @@ export default function TasksScreen() {
           <View style={styles.appTimeCard}>
             <View style={styles.appTimeHeader}>
               <Ionicons name="time-outline" size={18} color="#9333EA" />
-              <Text style={styles.appTimeTitle}>Daily Stream Requirement</Text>
+              <Text style={styles.appTimeTitle}>Day Streak Progress</Text>
             </View>
             <Text style={styles.appTimeSub}>
-              Spend 1 hour/day on the app to go live · {appTime.total_minutes || 0}/60 min
+              Spend 1 hour/day in the app to count a streak day · {appTime.total_minutes || 0}/60 min
             </Text>
             <View style={styles.appTimeTrack}>
               <View style={[styles.appTimeFill, { width: `${appTime.progress_percent || 0}%` }]} />
             </View>
             {appTime.requirement_met ? (
-              <Text style={styles.appTimeDone}>✓ Requirement met — you can go live today</Text>
+              <Text style={styles.appTimeDone}>✓ 1 hour done — check in to add today to your streak</Text>
             ) : (
               <Text style={styles.appTimePending}>
-                {appTime.remaining_minutes || 60} min left · use Home, Reels, Live, Messages, PK
+                {appTime.remaining_minutes || 60} min left · Home, Reels, Live, Messages, PK count
               </Text>
             )}
           </View>

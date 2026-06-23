@@ -7,6 +7,7 @@ const User = require('../models/User');
 const Follow = require('../models/Follow');
 const FollowRequest = require('../models/FollowRequest');
 const BlockedUser = require('../models/BlockedUser');
+const { getInteractionPermission, canViewProfileContent } = require('../utils/followPermissions');
 const { uploadToCloudinary } = require('../config/cloudinary');
 const mongoose = require('mongoose');
 
@@ -385,7 +386,26 @@ exports.getUserReels = async (req, res) => {
 
     // Guard against invalid ObjectId from client state (prevents cast errors/500)
     if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return res.json({ success: true, reels: [] });
+      return res.json({ success: true, reels: [], canViewContent: false });
+    }
+
+    const isOwn = String(currentUserId) === String(userId);
+    if (!isOwn) {
+      const [target, interaction] = await Promise.all([
+        User.findById(userId).select('is_private').lean(),
+        getInteractionPermission(currentUserId, userId),
+      ]);
+      if (!target) {
+        return res.json({ success: true, reels: [], canViewContent: false });
+      }
+      const allowed = canViewProfileContent(currentUserId, userId, {
+        isPrivate: !!target.is_private,
+        isFollowing: interaction.isFollowing,
+        isMutualFriend: interaction.isMutualFriend,
+      });
+      if (!allowed) {
+        return res.json({ success: true, reels: [], canViewContent: false });
+      }
     }
 
     const reels = await Reel.find({ user_id: new mongoose.Types.ObjectId(userId) })
@@ -416,7 +436,7 @@ exports.getUserReels = async (req, res) => {
       };
     }));
 
-    res.json({ success: true, reels: formattedReels });
+    res.json({ success: true, reels: formattedReels, canViewContent: true });
   } catch (error) {
     console.error('Get user reels error:', error);
     res.status(500).json({ error: 'Failed to get user reels' });

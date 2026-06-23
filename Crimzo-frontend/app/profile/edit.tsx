@@ -12,9 +12,8 @@ import {
   Modal,
   Clipboard,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
+import { KeyboardAwareScrollView, KeyboardModalFrame } from '../../components/KeyboardAware';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
@@ -274,7 +273,7 @@ export default function EditProfileScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScrollView style={styles.scroll} includeTopInset>
         {/* Avatar Row */}
         <TouchableOpacity style={styles.avatarRow} onPress={pickAvatar} activeOpacity={0.7}>
           <Text style={styles.fieldLabel}>My Avatar</Text>
@@ -344,7 +343,7 @@ export default function EditProfileScreen() {
         </View>
 
         <View style={{ height: 40 }} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* Avatar Preview Modal */}
       <Modal visible={showAvatarPreview} animationType="fade" transparent statusBarTranslucent>
@@ -379,7 +378,7 @@ export default function EditProfileScreen() {
 
       {/* Generic Text Edit Modal */}
       <Modal visible={editModalVisible} animationType="slide" transparent statusBarTranslucent>
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardModalFrame style={styles.modalOverlay}>
           <View style={styles.inputModalContent}>
             <Text style={styles.inputModalTitle}>Edit {editLabel}</Text>
 
@@ -420,7 +419,7 @@ export default function EditProfileScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </KeyboardAvoidingView>
+        </KeyboardModalFrame>
       </Modal>
     </View>
   );

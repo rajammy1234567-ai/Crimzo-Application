@@ -17,9 +17,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
-import { useVideoCall } from '../../contexts/VideoCallContext';
+
 import { apiGet, apiPost, resolveMediaUrl } from '../../lib/apiClient';
 import FollowListModal, { FollowUser } from '../../components/profile/FollowListModal';
+import ReelProfileGrid from '../../components/profile/ReelProfileGrid';
 import { subscribe, publish } from '../../lib/realtimeSync';
 import { parseFollowResponse } from '../../lib/followHelpers';
 
@@ -30,13 +31,13 @@ function formatNumber(n?: number) {
   return String(n);
 }
 
+type FollowListResponse = Record<string, FollowUser[]> & { canViewList?: boolean };
+
 export default function UserProfileScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user: me, token } = useAuth();
-  const { startCall } = useVideoCall();
-
   const [profile, setProfile] = useState<any>(null);
   const [reels, setReels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,18 +52,28 @@ export default function UserProfileScreen() {
     if (!token || !userId) return;
     setLoading(true);
     try {
-      const [profileRes, reelsRes] = await Promise.all([
-        apiGet<{ profile?: any }>(`/api/user/profile/full?userId=${userId}`, token),
-        apiGet<{ reels?: any[] }>(`/api/reels/user/${userId}`, token),
-      ]);
-      if (profileRes.profile) setProfile(profileRes.profile);
-      setReels(
-        (reelsRes.reels || []).map((r) => ({
-          ...r,
-          video_url: resolveMediaUrl(r.video_url),
-          thumbnail_url: r.thumbnail_url ? resolveMediaUrl(r.thumbnail_url) : null,
-        })),
+      const profileRes = await apiGet<{ profile?: any }>(
+        `/api/user/profile/full?userId=${userId}`,
+        token,
       );
+      if (profileRes.profile) setProfile(profileRes.profile);
+
+      const canView = profileRes.profile?.canViewContent !== false;
+      if (canView) {
+        const reelsRes = await apiGet<{ reels?: any[]; canViewContent?: boolean }>(
+          `/api/reels/user/${userId}`,
+          token,
+        );
+        setReels(
+          (reelsRes.reels || []).map((r) => ({
+            ...r,
+            video_url: resolveMediaUrl(r.video_url),
+            thumbnail_url: r.thumbnail_url ? resolveMediaUrl(r.thumbnail_url) : null,
+          })),
+        );
+      } else {
+        setReels([]);
+      }
     } catch (e) {
       console.error('User profile error:', e);
       Alert.alert('Error', 'Could not load profile');
@@ -87,20 +98,29 @@ export default function UserProfileScreen() {
         if (!p) return p;
         const isFollowing = data.isFollowing ?? p.isFollowing;
         const isRequested = data.isRequested ?? p.isRequested;
+        const followsYou = !!p?.followsYou;
+        const isMutualFriend = isFollowing && followsYou;
+        const canInteract = isFollowing || followsYou;
+        const canViewContent = p?.is_private
+          ? isFollowing || isMutualFriend
+          : true;
         return {
           ...p,
           isFollowing,
           isRequested,
-          canInteract: isFollowing || !!p?.followsYou,
-          interactionBlockedReason: (isFollowing || p?.followsYou)
+          isMutualFriend,
+          canInteract,
+          canViewContent,
+          interactionBlockedReason: canInteract
             ? null
             : isRequested
               ? 'Wait until they accept your follow request.'
-              : 'Follow each other to unlock message and video call.',
+              : 'Follow each other to unlock messaging.',
         };
       });
+      if (data.isFollowing) fetchProfile();
     });
-  }, [userId]);
+  }, [userId, fetchProfile]);
 
   useFocusEffect(
     useCallback(() => {
@@ -125,30 +145,41 @@ export default function UserProfileScreen() {
         friends_count?: number;
       }>('/api/user/follow', { userId }, token);
       const { isFollowing, isRequested } = parseFollowResponse(res);
-      setProfile((p: any) => ({
-        ...p,
-        isFollowing,
-        isRequested,
-        canInteract: isFollowing || !!p?.followsYou,
-        interactionBlockedReason: (isFollowing || p?.followsYou)
-          ? null
-          : isRequested
-            ? 'Wait until they accept your follow request.'
-            : 'Follow each other to unlock message and video call.',
-        followers_count: res.followers_count ?? (
-          res.action === 'unfollowed'
-            ? Math.max(0, (p?.followers_count || 0) - 1)
-            : res.action === 'followed'
-              ? (p?.followers_count || 0) + 1
-              : p?.followers_count
-        ),
-        friends_count: res.friends_count ?? p?.friends_count,
-      }));
+      setProfile((p: any) => {
+        const followsYou = !!p?.followsYou;
+        const isMutualFriend = isFollowing && followsYou;
+        const canInteract = isFollowing || followsYou;
+        const canViewContent = p?.is_private ? isFollowing || isMutualFriend : true;
+        return {
+          ...p,
+          isFollowing,
+          isRequested,
+          isMutualFriend,
+          canInteract,
+          canViewContent,
+          interactionBlockedReason: canInteract
+            ? null
+            : isRequested
+              ? 'Wait until they accept your follow request.'
+              : 'Follow each other to unlock messaging.',
+          followers_count: res.followers_count ?? (
+            res.action === 'unfollowed'
+              ? Math.max(0, (p?.followers_count || 0) - 1)
+              : res.action === 'followed'
+                ? (p?.followers_count || 0) + 1
+                : p?.followers_count
+          ),
+          friends_count: res.friends_count ?? p?.friends_count,
+        };
+      });
       if (res.following_count != null || res.friends_count != null) {
         publish('follow_updated', {
           following_count: res.following_count,
           friends_count: res.friends_count,
         });
+      }
+      if (res.action === 'followed' || res.action === 'unfollowed') {
+        fetchProfile();
       }
     } catch (e) {
       console.error('Follow error:', e);
@@ -169,6 +200,10 @@ export default function UserProfileScreen() {
         ...p,
         hasIncomingRequest: false,
         followsYou: true,
+        isMutualFriend: !!p?.isFollowing,
+        canInteract: true,
+        canViewContent: true,
+        interactionBlockedReason: null,
         followers_count: res.followers_count ?? (p?.followers_count || 0) + 1,
         friends_count: res.friends_count ?? p?.friends_count,
       }));
@@ -176,6 +211,7 @@ export default function UserProfileScreen() {
         followers_count: res.followers_count,
         friends_count: res.friends_count,
       });
+      fetchProfile();
       Alert.alert('Accepted', `${profile?.username} is now following you`);
     } catch (e) {
       Alert.alert('Error', 'Could not accept request');
@@ -199,14 +235,26 @@ export default function UserProfileScreen() {
 
   const openFollowList = async (type: 'followers' | 'following' | 'friends') => {
     if (!token || !userId) return;
+    if (profile?.is_private && !profile?.canViewContent) {
+      Alert.alert(
+        'Private Account',
+        'Follow this account to see their followers, following, and posts.',
+      );
+      return;
+    }
     setListType(type);
     setListVisible(true);
     setListLoading(true);
     try {
-      const data = await apiGet<Record<string, FollowUser[]>>(
+      const data = await apiGet<FollowListResponse>(
         `/api/user/${type}/${userId}`,
         token,
       );
+      if (data.canViewList === false) {
+        setListVisible(false);
+        Alert.alert('Private Account', 'Follow this account to see this list.');
+        return;
+      }
       setListData(data[type] || []);
     } catch (e) {
       console.error('Follow list error:', e);
@@ -262,11 +310,6 @@ export default function UserProfileScreen() {
     router.push(`/profile/messages?userId=${profile.id}&username=${encodeURIComponent(profile.username || '')}` as any);
   };
 
-  const handleVideoCall = () => {
-    if (!guardInteraction()) return;
-    startCall(profile.id, profile.username, profile.avatar);
-  };
-
   const openUserProfile = (id: string) => {
     setListVisible(false);
     if (String(id) === String(me?.id)) {
@@ -287,6 +330,9 @@ export default function UserProfileScreen() {
   }
 
   const initial = (profile.username || 'U').charAt(0).toUpperCase();
+  const postsCount = profile.canViewContent
+    ? reels.length
+    : (profile.posts_count ?? 0);
 
   return (
     <View style={s.container}>
@@ -322,23 +368,47 @@ export default function UserProfileScreen() {
           )}
         </View>
 
-        <Text style={s.username}>{profile.username}</Text>
+        <View style={s.usernameRow}>
+          <Text style={s.username}>{profile.username}</Text>
+          {profile.is_private ? (
+            <Ionicons name="lock-closed" size={16} color="rgba(255,255,255,0.55)" />
+          ) : null}
+        </View>
         {profile.crimzo_id ? (
           <Text style={s.crimzoId}>ID: {profile.crimzo_id}</Text>
         ) : null}
         {profile.bio ? <Text style={s.bio}>{profile.bio}</Text> : null}
 
-        {!profile.canInteract && (
+        {profile.isMutualFriend ? (
+          <View style={s.friendsPill}>
+            <Ionicons name="people" size={14} color="#4CD964" />
+            <Text style={s.friendsPillText}>Friends · posts unlocked</Text>
+          </View>
+        ) : null}
+
+        {profile.is_private && !profile.canViewContent ? (
+          <View style={s.privateBanner}>
+            <Ionicons name="lock-closed-outline" size={28} color="#FFF" />
+            <Text style={s.privateTitle}>This account is private</Text>
+            <Text style={s.privateSub}>
+              {profile.isRequested
+                ? 'Your follow request is pending. Posts unlock when they accept.'
+                : 'Follow this account to see their photos and videos.'}
+            </Text>
+          </View>
+        ) : null}
+
+        {!profile.canInteract && !(profile.is_private && !profile.canViewContent) && (
           <Text style={s.interactionHint}>
             {profile.isRequested
-              ? 'Follow request sent — message & call unlock when they accept.'
-              : 'Follow each other to unlock message and video call.'}
+              ? 'Follow request sent — messages unlock when they accept.'
+              : 'Follow each other to unlock messaging.'}
           </Text>
         )}
 
         <View style={s.statsRow}>
           <View style={s.stat}>
-            <Text style={s.statNum}>{reels.length}</Text>
+            <Text style={s.statNum}>{postsCount}</Text>
             <Text style={s.statLabel}>Posts</Text>
           </View>
           <TouchableOpacity style={s.stat} onPress={() => openFollowList('followers')}>
@@ -390,12 +460,6 @@ export default function UserProfileScreen() {
             <Text style={[s.messageText, !profile.canInteract && s.actionDisabledText]}>Message</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[s.videoCallBtn, !profile.canInteract && s.actionDisabled]}
-            onPress={handleVideoCall}
-          >
-            <Ionicons name="videocam" size={20} color={profile.canInteract ? '#4CD964' : '#666'} />
-          </TouchableOpacity>
-          <TouchableOpacity
             style={s.moreBtn}
             onPress={() => {
               Alert.alert(profile.username, undefined, [
@@ -434,30 +498,23 @@ export default function UserProfileScreen() {
           <Ionicons name="grid-outline" size={22} color="#FFF" />
         </View>
 
-        {reels.length === 0 ? (
-          <View style={s.empty}>
-            <Ionicons name="camera-outline" size={40} color="#333" />
-            <Text style={s.emptyText}>No posts yet</Text>
-          </View>
-        ) : (
-          <View style={s.grid}>
-            {reels.map((reel) => (
-              <View key={reel.id} style={s.thumb}>
-                {reel.thumbnail_url ? (
-                  <Image source={{ uri: reel.thumbnail_url }} style={s.thumbImg} />
-                ) : (
-                  <View style={[s.thumbImg, s.thumbPH]}>
-                    <Ionicons name="play" size={20} color="#666" />
-                  </View>
-                )}
-                <View style={s.thumbOverlay}>
-                  <Ionicons name="heart" size={11} color="#FFF" />
-                  <Text style={s.thumbLikes}>{formatNumber(reel.likes_count)}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
+        <ReelProfileGrid
+          reels={reels}
+          token={token}
+          canView={profile.canViewContent !== false}
+          lockedMessage={
+            profile.is_private
+              ? profile.isRequested
+                ? 'Follow request pending — posts unlock when they accept'
+                : 'Follow this private account to see posts'
+              : profile.isRequested
+                ? 'Posts unlock when they accept your follow request'
+                : profile.followsYou && !profile.isFollowing
+                  ? 'Follow back to see their posts'
+                  : 'Follow each other to see posts and play reels'
+          }
+          emptyMessage="No posts yet"
+        />
       </ScrollView>
 
       <FollowListModal
@@ -469,10 +526,6 @@ export default function UserProfileScreen() {
         onClose={() => setListVisible(false)}
         onToggleFollow={handleFollowFromList}
         onOpenProfile={openUserProfile}
-        onVideoCall={(id, username, avatar) => {
-          setListVisible(false);
-          startCall(id, username, avatar);
-        }}
         onMessage={(id, username) => {
           setListVisible(false);
           router.push(`/profile/messages?userId=${id}&username=${encodeURIComponent(username)}` as any);
@@ -526,12 +579,31 @@ const s = StyleSheet.create({
     borderColor: '#000',
   },
   liveText: { color: '#FFF', fontSize: 10, fontWeight: '900' },
+  usernameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+  },
   username: {
     color: '#FFF',
     fontSize: 22,
     fontWeight: '800',
     textAlign: 'center',
-    paddingHorizontal: 20,
+  },
+  privateBanner: {
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    gap: 6,
+  },
+  privateTitle: { color: '#FFF', fontSize: 15, fontWeight: '800' },
+  privateSub: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
   },
   crimzoId: { color: '#888', fontSize: 13, textAlign: 'center', marginTop: 4 },
   bio: {
@@ -550,6 +622,20 @@ const s = StyleSheet.create({
     marginTop: 10,
     lineHeight: 17,
   },
+  friendsPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: 'rgba(76,217,100,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(76,217,100,0.25)',
+  },
+  friendsPillText: { color: '#4CD964', fontSize: 12, fontWeight: '700' },
   actionDisabled: { opacity: 0.45 },
   actionDisabledText: { color: '#888' },
   statsRow: {
@@ -590,16 +676,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
   messageText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
-  videoCallBtn: {
-    width: 44,
-    backgroundColor: 'rgba(76,217,100,0.15)',
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(76,217,100,0.3)',
-  },
   moreBtn: {
     width: 36,
     paddingVertical: 10,

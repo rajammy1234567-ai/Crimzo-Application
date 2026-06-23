@@ -8,10 +8,10 @@ router.post('/confirm', authenticateToken, reel.confirmUpload);    // save to DB
 router.post('/upload', authenticateToken, flexibleSingle(), reel.uploadReel);
 router.get('/feed', authenticateToken, reel.getFeed);
 router.get('/me', authenticateToken, reel.getMyReels);
+router.get('/user/:userId', authenticateToken, reel.getUserReels);
 router.post('/:reelId/like', authenticateToken, reel.likeReel);
 router.post('/:reelId/comment', authenticateToken, reel.addComment);
 router.get('/:reelId/comments', authenticateToken, reel.getComments);
-router.get('/user/:userId', authenticateToken, reel.getUserReels);
 router.delete('/:reelId', authenticateToken, reel.deleteReel);
 router.patch('/:reelId', authenticateToken, reel.updateReel);
 router.post('/:reelId/view', authenticateToken, reel.viewReel);

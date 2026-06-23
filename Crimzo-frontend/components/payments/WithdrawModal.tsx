@@ -3,12 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
+import { KeyboardSheet } from '../KeyboardAware';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { PaymentMethodInfo } from './SetupPaymentModal';
@@ -68,9 +68,8 @@ export default function WithdrawModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
-        <View style={s.sheet} onStartShouldSetResponder={() => true}>
+    <KeyboardSheet visible={visible} onClose={onClose}>
+        <View style={s.sheet}>
           <View style={s.handle} />
           <Text style={s.title}>Withdraw Earnings</Text>
           <Text style={s.sub}>
@@ -184,8 +183,7 @@ export default function WithdrawModal({
             </LinearGradient>
           </TouchableOpacity>
         </View>
-      </TouchableOpacity>
-    </Modal>
+    </KeyboardSheet>
   );
 }
 

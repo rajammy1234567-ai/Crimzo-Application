@@ -100,10 +100,25 @@ async function assertCanInteract(viewerId, targetId) {
   return perm;
 }
 
+/** Reels/posts on profile: public accounts for all; private needs accepted follow or mutual friends */
+function canViewProfileContent(viewerId, targetId, { isPrivate = false, isFollowing = false, isMutualFriend = false } = {}) {
+  if (!viewerId || !targetId) return false;
+  if (String(viewerId) === String(targetId)) return true;
+  if (!isPrivate) return true;
+  return isFollowing || isMutualFriend;
+}
+
+/** Followers/following lists & stories — same rules as profile content */
+function canViewPrivateProfileDetails(viewerId, targetId, opts = {}) {
+  return canViewProfileContent(viewerId, targetId, opts);
+}
+
 module.exports = {
   isFollowingUser,
   isFollowedByUser,
   isMutualFollow,
   getInteractionPermission,
   assertCanInteract,
+  canViewProfileContent,
+  canViewPrivateProfileDetails,
 };

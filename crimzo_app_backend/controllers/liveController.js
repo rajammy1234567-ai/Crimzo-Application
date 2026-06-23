@@ -129,17 +129,6 @@ exports.startLive = async (req, res) => {
     const { location } = req.body;
     const userId = req.user.id;
 
-    try {
-      const { assertDailyAppTimeRequirement } = require('../utils/appTimeService');
-      await assertDailyAppTimeRequirement(userId);
-    } catch (timeErr) {
-      return res.status(timeErr.statusCode || 403).json({
-        error: timeErr.message,
-        code: timeErr.code || 'DAILY_TIME_REQUIRED',
-        stats: timeErr.stats,
-      });
-    }
-
     // End any stuck active sessions for this host (app crash / force close)
     const stale = await LiveSession.updateMany(
       { user_id: userId, status: 'active' },

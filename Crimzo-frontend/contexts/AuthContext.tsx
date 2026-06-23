@@ -52,6 +52,7 @@ interface User {
   totalLikes?: number;
   is_online: boolean;
   status: string;
+  is_private?: boolean;
 }
 
 interface AuthContextType {

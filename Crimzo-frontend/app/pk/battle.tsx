@@ -22,6 +22,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
+import { KEYBOARD_BEHAVIOR } from '../../components/KeyboardAware';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import io from 'socket.io-client';
@@ -787,7 +788,7 @@ export default function PKBattleScreen() {
       {/* ── GIFT PANEL (Bottom) ── */}
       {isActive && (
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={KEYBOARD_BEHAVIOR}
           style={styles.bottomPanel}
           keyboardVerticalOffset={0}
         >

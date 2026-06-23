@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const Story = require('../models/Story');
 const User = require('../models/User');
 const Follow = require('../models/Follow');
+const { getInteractionPermission, canViewPrivateProfileDetails } = require('../utils/followPermissions');
 const { uploadToCloudinary } = require('../config/cloudinary');
 
 const STORY_TTL_MS = 24 * 60 * 60 * 1000;
@@ -171,12 +172,26 @@ exports.getAllStories = async (req, res) => {
       .lean();
     const followingIds = new Set(followingRows.map((f) => String(f.following_id)));
 
+    const otherOwnerIds = Object.keys(grouped).filter((id) => id !== userKey);
+    const privateOwners = otherOwnerIds.length
+      ? await User.find({ _id: { $in: otherOwnerIds }, is_private: true }).select('_id').lean()
+      : [];
+    const privateOwnerSet = new Set(privateOwners.map((u) => String(u._id)));
+
     const result = [];
     if (grouped[userKey]) result.push(grouped[userKey]);
-    for (const ownerId of Object.keys(grouped)) {
-      if (ownerId !== userKey && followingIds.has(ownerId)) {
-        result.push(grouped[ownerId]);
+    for (const ownerId of otherOwnerIds) {
+      if (!followingIds.has(ownerId)) continue;
+      if (privateOwnerSet.has(ownerId)) {
+        const perm = await getInteractionPermission(userId, ownerId);
+        const allowed = canViewPrivateProfileDetails(userId, ownerId, {
+          isPrivate: true,
+          isFollowing: perm.isFollowing,
+          isMutualFriend: perm.isMutualFriend,
+        });
+        if (!allowed) continue;
       }
+      result.push(grouped[ownerId]);
     }
 
     res.json({ success: true, storyGroups: result });
@@ -191,6 +206,24 @@ exports.getUserStories = async (req, res) => {
   try {
     await purgeExpiredStories();
     const { userId } = req.params;
+    const viewerId = req.user.id;
+
+    if (String(viewerId) !== String(userId)) {
+      const target = await User.findById(userId).select('is_private').lean();
+      if (!target) return res.json({ success: true, stories: [], canViewContent: false });
+      if (target.is_private) {
+        const perm = await getInteractionPermission(viewerId, userId);
+        const allowed = canViewPrivateProfileDetails(viewerId, userId, {
+          isPrivate: true,
+          isFollowing: perm.isFollowing,
+          isMutualFriend: perm.isMutualFriend,
+        });
+        if (!allowed) {
+          return res.json({ success: true, stories: [], canViewContent: false, isPrivate: true });
+        }
+      }
+    }
+
     const now = new Date();
     const stories = await Story.find({ user_id: userId, expires_at: { $gt: now } })
       .sort({ created_at: 1 })

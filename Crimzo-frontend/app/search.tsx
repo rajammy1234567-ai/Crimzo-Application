@@ -8,9 +8,11 @@ import {
   FlatList,
   Image,
   ActivityIndicator,
+  KeyboardAvoidingView,
   Platform,
   StatusBar,
 } from 'react-native';
+import { KEYBOARD_BEHAVIOR } from '../components/KeyboardAware';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -102,7 +104,10 @@ export default function SearchScreen() {
   };
 
   return (
-    <View style={[s.container, { paddingTop: insets.top }]}>
+    <KeyboardAvoidingView
+      style={[s.container, { paddingTop: insets.top }]}
+      behavior={KEYBOARD_BEHAVIOR}
+    >
       <StatusBar barStyle="light-content" />
 
       <View style={s.topBar}>
@@ -150,6 +155,7 @@ export default function SearchScreen() {
           data={results}
           keyExtractor={(item) => item.id}
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
           contentContainerStyle={{ paddingBottom: 40 }}
           renderItem={({ item, index }) => (
             <TouchableOpacity
@@ -200,7 +206,7 @@ export default function SearchScreen() {
           )}
         />
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

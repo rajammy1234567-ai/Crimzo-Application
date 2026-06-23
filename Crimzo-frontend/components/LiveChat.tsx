@@ -19,6 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import io from 'socket.io-client';
 
 import { API_URL } from '../lib/apiClient';
+import { KEYBOARD_BEHAVIOR } from './KeyboardAware';
 const { width: SW } = Dimensions.get('window');
 const MAX_VISIBLE = 8;
 
@@ -325,7 +326,7 @@ export default function LiveChat({
 
     return (
         <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={KEYBOARD_BEHAVIOR}
             style={cs.container}
             keyboardVerticalOffset={0}
         >

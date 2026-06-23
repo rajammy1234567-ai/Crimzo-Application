@@ -24,6 +24,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import * as ImagePicker from 'expo-image-picker';
 import { apiFetch, apiUpload } from '../../lib/apiClient';
 import { useTabFocus } from '../../lib/useTabFocus';
+import { KEYBOARD_BEHAVIOR } from '../../components/KeyboardAware';
 
 import {
   GoLiveCard,
@@ -546,7 +547,7 @@ function ReelPreviewModal({
 
         {/* Caption + Post button at bottom (Instagram style) */}
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={KEYBOARD_BEHAVIOR}
           style={rpmStyles.bottomBar}
         >
           <TextInput

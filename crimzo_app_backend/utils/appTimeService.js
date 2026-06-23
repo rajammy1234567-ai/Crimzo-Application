@@ -42,22 +42,9 @@ async function getTodayAppTime(userId) {
   };
 }
 
-async function assertDailyAppTimeRequirement(userId) {
-  const stats = await getTodayAppTime(userId);
-  if (stats.requirement_met) return stats;
-  const err = new Error(
-    `Spend at least 1 hour on the app today to go live. Progress: ${stats.total_minutes}/60 min.`,
-  );
-  err.code = 'DAILY_TIME_REQUIRED';
-  err.statusCode = 403;
-  err.stats = stats;
-  throw err;
-}
-
 module.exports = {
   DAILY_REQUIRED_SECONDS,
   todayKey,
   recordAppTime,
   getTodayAppTime,
-  assertDailyAppTimeRequirement,
 };

@@ -3,12 +3,11 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  ScrollView,
 } from 'react-native';
+import { KeyboardSheet } from '../KeyboardAware';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -123,10 +122,8 @@ export default function SetupPaymentModal({
   }[step];
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
-        <View style={s.sheet} onStartShouldSetResponder={() => true}>
-          <ScrollView showsVerticalScrollIndicator={false}>
+    <KeyboardSheet visible={visible} onClose={onClose}>
+        <View style={s.sheet}>
             <View style={s.handle} />
             <Text style={s.title}>{stepTitle}</Text>
 
@@ -317,10 +314,8 @@ export default function SetupPaymentModal({
                 </TouchableOpacity>
               </>
             )}
-          </ScrollView>
         </View>
-      </TouchableOpacity>
-    </Modal>
+    </KeyboardSheet>
   );
 }
 

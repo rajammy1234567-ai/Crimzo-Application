@@ -14,6 +14,7 @@ import {
   Share,
   TextInput,
 } from 'react-native';
+import { KeyboardModalFrame } from '../../components/KeyboardAware';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
@@ -140,6 +141,8 @@ export default function SettingsScreen() {
   const [chatRate, setChatRate] = useState('1');
   const [ratesModalVisible, setRatesModalVisible] = useState(false);
   const [ratesSaving, setRatesSaving] = useState(false);
+  const [isPrivateAccount, setIsPrivateAccount] = useState(false);
+  const [privacySaving, setPrivacySaving] = useState(false);
 
   const refreshCacheSize = useCallback(async () => {
     const bytes = await estimateCacheSize();
@@ -158,11 +161,13 @@ export default function SettingsScreen() {
             profile?: {
               language?: string;
               push_notifications_enabled?: boolean;
+              is_private?: boolean;
               voiceRatePerMin?: number;
               chatRatePerMin?: number;
             };
           }>('/api/user/profile/full', token);
           if (res.success && res.profile) {
+            setIsPrivateAccount(!!res.profile.is_private);
             const lang = res.profile.language === 'Hindi' ? 'Hindi'
               : res.profile.language === 'English' ? 'English'
                 : local.language;
@@ -185,6 +190,40 @@ export default function SettingsScreen() {
       }
     })();
   }, [token, refreshCacheSize]);
+
+  const persistPrivateAccount = async (nextPrivate: boolean) => {
+    if (!token) return;
+    setPrivacySaving(true);
+    try {
+      await apiFetch('/api/user/profile', {
+        method: 'PUT',
+        token,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_private: nextPrivate }),
+      });
+      setIsPrivateAccount(nextPrivate);
+      updateUser({ ...user, is_private: nextPrivate } as any);
+    } catch {
+      Alert.alert('Error', 'Could not update account privacy. Try again.');
+    } finally {
+      setPrivacySaving(false);
+    }
+  };
+
+  const handlePrivateAccountToggle = (nextPrivate: boolean) => {
+    if (nextPrivate) {
+      Alert.alert(
+        'Private Account',
+        'Only people you approve can see your posts and stories. Your current followers stay the same.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Turn On', onPress: () => persistPrivateAccount(true) },
+        ],
+      );
+      return;
+    }
+    persistPrivateAccount(false);
+  };
 
   const persistSettings = async (next: AppSettings) => {
     setSettings(next);
@@ -363,6 +402,20 @@ export default function SettingsScreen() {
       ],
     },
     {
+      title: 'Privacy',
+      items: [
+        {
+          icon: 'lock-closed-outline',
+          label: 'Private Account',
+          value: isPrivateAccount ? 'On' : 'Off',
+          toggle: true,
+          hideChevron: true,
+          toggleValue: isPrivateAccount,
+          onToggle: handlePrivateAccountToggle,
+        },
+      ],
+    },
+    {
       title: 'Account',
       items: [
         {
@@ -457,7 +510,7 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 40 }}
       >
-        {saving && (
+        {(saving || privacySaving) && (
           <Text style={styles.syncHint}>Saving preferences…</Text>
         )}
 
@@ -519,7 +572,7 @@ export default function SettingsScreen() {
 
       {/* ── Creator rates ── */}
       <Modal visible={ratesModalVisible} animationType="slide" onRequestClose={() => setRatesModalVisible(false)}>
-        <View style={[styles.ratesContainer, { paddingTop: insets.top }]}>
+        <KeyboardModalFrame style={[styles.ratesContainer, { paddingTop: insets.top }]}>
           <View style={styles.ratesHeader}>
             <TouchableOpacity onPress={() => setRatesModalVisible(false)} style={styles.backBtn}>
               <Ionicons name="close" size={24} color="#1A1A1A" />
@@ -527,7 +580,11 @@ export default function SettingsScreen() {
             <Text style={styles.ratesTitle}>Set Your Rates</Text>
             <View style={{ width: 40 }} />
           </View>
-          <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+          <ScrollView
+            contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+          >
             <Text style={styles.ratesHint}>
               Viewers pay from wallet (₹/min). You earn beans — e.g. 2 min at ₹1/min = ₹2 deducted from them, {inrToBeans(2)} beans added to you.
             </Text>
@@ -561,7 +618,7 @@ export default function SettingsScreen() {
               <Text style={styles.ratesSaveText}>{ratesSaving ? 'Saving…' : 'Save Rates'}</Text>
             </TouchableOpacity>
           </ScrollView>
-        </View>
+        </KeyboardModalFrame>
       </Modal>
 
       {/* ── About ── */}
