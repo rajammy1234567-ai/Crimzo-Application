@@ -58,7 +58,15 @@ exports.getDashboardStats = async (req, res) => {
     const totalWalletBalance = walletAgg[0]?.total || 0;
 
     const videoCallRevenueAgg = await VideoCallSession.aggregate([
-      { $group: { _id: null, total: { $sum: '$totalCharged' }, sessions: { $sum: 1 } } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: '$totalCharged' },
+          sessions: { $sum: 1 },
+          peerBeans: { $sum: '$peer_beans_earned' },
+          platformBeans: { $sum: '$platform_beans_earned' },
+        },
+      },
     ]);
     const liveTalkRevenueAgg = await LiveTalkSession.aggregate([
       { $group: { _id: null, total: { $sum: '$total_charged' }, sessions: { $sum: 1 } } },
@@ -88,6 +96,9 @@ exports.getDashboardStats = async (req, res) => {
         totalWalletBalance,
         videoCallRevenue: videoCallRevenueAgg[0]?.total || 0,
         videoCallSessions: videoCallRevenueAgg[0]?.sessions || 0,
+        videoCallPeerBeans: videoCallRevenueAgg[0]?.peerBeans || 0,
+        videoCallPlatformBeans: videoCallRevenueAgg[0]?.platformBeans || 0,
+        platformBeansEarned: billingSettings.platformBeansEarned || 0,
         liveTalkRevenue: liveTalkRevenueAgg[0]?.total || 0,
         liveTalkSessions: liveTalkRevenueAgg[0]?.sessions || 0,
         pendingTalkRequests: await LiveTalkRequest.countDocuments({ status: 'pending' }),

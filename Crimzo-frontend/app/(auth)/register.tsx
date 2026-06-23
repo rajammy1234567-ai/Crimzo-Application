@@ -146,7 +146,7 @@ export default function RegisterScreen() {
             <View style={s.logoSection}>
               <Animated.View style={[s.glowRing, { opacity: glowAnim }]} />
               <Image
-                source={require('../../assets/images/crimzo_logo1.png')}
+                source={require('../../assets/images/crimzo_logo_header.png')}
                 style={s.logoImg}
                 resizeMode="contain"
               />
@@ -367,7 +367,7 @@ const s = StyleSheet.create({
     top: '50%', left: '50%',
     transform: [{ translateX: -80 }, { translateY: -80 }],
   },
-  logoImg: { width: 260, height: 110, marginBottom: 14 },
+  logoImg: { width: 300, height: 96, marginBottom: 14 },
   logoSub: {
     fontSize: 11, color: 'rgba(255,255,255,0.5)', letterSpacing: 3,
     marginTop: 6, fontWeight: '600',

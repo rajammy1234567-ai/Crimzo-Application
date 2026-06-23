@@ -13,6 +13,9 @@ function normalizeSettings(doc) {
     liveTalkRatePerMin: Math.max(0, doc?.live_talk_rate_per_min_inr ?? LIVE_TALK_RATE_PER_MIN_INR),
     videoCallBillingEnabled: doc?.video_call_billing_enabled !== false,
     liveTalkBillingEnabled: doc?.live_talk_billing_enabled !== false,
+    platformBeansEarned: Math.max(0, Number(doc?.platform_beans_earned) || 0),
+    callReceiverShare: doc?.call_receiver_share ?? 0.7,
+    callPlatformShare: doc?.call_platform_share ?? 0.3,
     updated_at: doc?.updated_at || null,
   };
 }

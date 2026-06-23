@@ -47,7 +47,7 @@ export default function Index() {
 
         {/* Logo */}
         <Image
-          source={require('../assets/images/crimzo_logo1.png')}
+          source={require('../assets/images/crimzo_logo_header.png')}
           style={styles.logo}
           resizeMode="contain"
         />
@@ -84,7 +84,8 @@ const styles = StyleSheet.create({
   },
 
   logo: {
-    width: 220, height: 90,
+    width: 280,
+    height: 89,
     marginBottom: 16,
   },
 

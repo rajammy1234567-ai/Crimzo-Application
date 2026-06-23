@@ -1,18 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { appAlert } from '../../lib/appAlert';
-import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, View, Platform } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
-import * as Google from 'expo-auth-session/providers/google';
+import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import {
-  getGoogleAuthRequestConfig,
-  getGoogleWebClientRedirectUris,
+  ANDROID_PACKAGE,
+  getGoogleWebClientId,
+  GOOGLE_ANDROID_RELEASE_SHA1,
   isExpoGo,
   isGoogleSignInAvailable,
+  supportsNativeGoogleSignIn,
 } from '../../lib/googleAuthConfig';
-
-WebBrowser.maybeCompleteAuthSession();
 
 type GoogleProfile = {
   email: string;
@@ -22,82 +20,98 @@ type GoogleProfile = {
   idToken?: string;
 };
 
-async function fetchGoogleProfile(
-  accessToken?: string | null,
-  idToken?: string | null,
-): Promise<GoogleProfile | null> {
-  if (accessToken) {
-    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.email) {
-        return {
-          email: data.email,
-          name: data.name,
-          googleId: data.sub,
-          avatar: data.picture,
-          idToken: idToken || undefined,
-        };
-      }
-    }
-  }
-
-  if (idToken) {
-    try {
-      const payload = idToken.split('.')[1];
-      if (payload) {
-        const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
-        const decoded = JSON.parse(atob(normalized));
-        if (decoded?.email) {
-          return {
-            email: decoded.email,
-            name: decoded.name,
-            googleId: decoded.sub,
-            avatar: decoded.picture,
-            idToken,
-          };
-        }
-      }
-    } catch {
-      // fall through
-    }
-  }
-
-  return null;
-}
-
 function formatGoogleAuthError(message?: string): string {
   const lower = (message || '').toLowerCase();
+  if (lower.includes('developer_error') || lower.includes('10:')) {
+    return [
+      'Google Console — Android OAuth client check:',
+      '',
+      `• Package name: ${ANDROID_PACKAGE}`,
+      `• SHA-1 fingerprint: ${GOOGLE_ANDROID_RELEASE_SHA1}`,
+      '• Web client ID .env / eas.json mein sahi ho',
+      '',
+      'Fix ke baad naya APK: npm run build:apk',
+    ].join('\n');
+  }
   if (
     lower.includes('access blocked')
+    || lower.includes('access_denied')
+    || lower.includes('403')
     || lower.includes('authorization error')
-    || lower.includes('invalid_request')
-    || lower.includes('redirect_uri')
+    || lower.includes('org_internal')
   ) {
-    const webRedirects = getGoogleWebClientRedirectUris().join('\n• ');
-    const lines = [
-      'Google OAuth setup check:',
+    return [
+      '"Access blocked" = Google OAuth app abhi Testing mode mein hai.',
       '',
-      'Web client → Authorized redirect URIs (sirf https):',
-      `• ${webRedirects}`,
+      'Google Cloud Console fix:',
+      '1. console.cloud.google.com → APIs & Services',
+      '2. OAuth consent screen → Test users',
+      '3. ADD USERS → jis Gmail se login kar rahe ho woh add karo',
+      '   (ya Publishing status → Production publish karo)',
       '',
-      'OAuth consent screen → Test users mein apna Gmail add karo (Testing mode)',
-    ];
-    if (!isExpoGo() && Platform.OS === 'android') {
-      lines.push(
-        '',
-        'APK ke liye Android client check karo:',
-        '• Package: com.livestreamhub',
-        '• SHA-1: APK jis keystore se sign hua uska fingerprint',
-        '(com.livestreamhub:/oauthredirect Web client pe mat dalo — Google reject karta hai)',
-      );
-    }
-    lines.push('', `Details: ${message || 'Authorization error'}`);
-    return lines.join('\n');
+      'Credentials check:',
+      `• Android client — package ${ANDROID_PACKAGE}`,
+      `• SHA-1: ${GOOGLE_ANDROID_RELEASE_SHA1}`,
+      '',
+      'Expo Go mein kaam nahi karega — latest APK install karo.',
+      'Config change ke baad: npm run build:apk',
+    ].join('\n');
+  }
+  if (lower.includes('invalid_request') || lower.includes('redirect_uri')) {
+    return [
+      'OAuth redirect misconfigured.',
+      '',
+      'Google Console → Credentials → Android OAuth client verify karo.',
+      `Package: ${ANDROID_PACKAGE}`,
+      `SHA-1: ${GOOGLE_ANDROID_RELEASE_SHA1}`,
+      '',
+      'Naya APK build karo: npm run build:apk',
+      '',
+      `Details: ${message || 'Invalid request'}`,
+    ].join('\n');
   }
   return message || 'Could not sign in with Google.';
+}
+
+async function signInWithNativeGoogle(): Promise<GoogleProfile> {
+  const {
+    GoogleSignin,
+    isSuccessResponse,
+    isErrorWithCode,
+    statusCodes,
+  } = require('@react-native-google-signin/google-signin');
+
+  GoogleSignin.configure({
+    webClientId: getGoogleWebClientId(),
+    offlineAccess: false,
+    scopes: ['email', 'profile'],
+  });
+
+  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+
+  const result = await GoogleSignin.signIn();
+  if (!isSuccessResponse(result)) {
+    throw new Error('Google sign-in was cancelled.');
+  }
+
+  let idToken = result.data.idToken;
+  if (!idToken) {
+    const tokens = await GoogleSignin.getTokens();
+    idToken = tokens.idToken;
+  }
+
+  const email = result.data.user.email;
+  if (!email) {
+    throw new Error('Google did not return an email for this account.');
+  }
+
+  return {
+    email,
+    name: result.data.user.name || undefined,
+    googleId: result.data.user.id,
+    avatar: result.data.user.photo || undefined,
+    idToken: idToken || undefined,
+  };
 }
 
 type Props = {
@@ -108,73 +122,65 @@ type Props = {
 export default function GoogleSignInButton({ onSuccess, disabled }: Props) {
   const { signInWithGoogle } = useAuth();
   const [busy, setBusy] = useState(false);
-  const authConfig = getGoogleAuthRequestConfig();
-
-  const [request, response, promptAsync] = Google.useAuthRequest(authConfig);
 
   useEffect(() => {
-    if (__DEV__) {
-      console.log('[Google Auth] redirectUri:', authConfig.redirectUri);
-      console.log('[Google Auth] mode:', isExpoGo() ? 'Expo Go' : 'standalone');
-      console.log('[Google Auth] Web client redirect (https only):', getGoogleWebClientRedirectUris());
+    if (!supportsNativeGoogleSignIn()) return;
+    try {
+      const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+      GoogleSignin.configure({
+        webClientId: getGoogleWebClientId(),
+        offlineAccess: false,
+        scopes: ['email', 'profile'],
+      });
+    } catch (e) {
+      console.warn('[Google Auth] native configure failed:', e);
     }
-  }, [authConfig.redirectUri]);
-
-  useEffect(() => {
-    if (!response || response.type !== 'success') {
-      if (response?.type === 'error') {
-        setBusy(false);
-        appAlert(
-          'Google Sign-In Failed',
-          formatGoogleAuthError(response.error?.message),
-        );
-      } else if (response?.type === 'dismiss' || response?.type === 'cancel') {
-        setBusy(false);
-      }
-      return;
-    }
-
-    (async () => {
-      try {
-        const accessToken = response.authentication?.accessToken
-          || (response.params as { access_token?: string })?.access_token;
-        const idToken = response.authentication?.idToken
-          || (response.params as { id_token?: string })?.id_token;
-
-        const profile = await fetchGoogleProfile(accessToken, idToken);
-        if (!profile?.email) {
-          throw new Error('Google did not return an email for this account.');
-        }
-
-        await signInWithGoogle(profile);
-        onSuccess?.();
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Google sign-in failed';
-        appAlert('Google Sign-In Failed', formatGoogleAuthError(message));
-      } finally {
-        setBusy(false);
-      }
-    })();
-  }, [response, signInWithGoogle, onSuccess]);
+  }, []);
 
   if (!isGoogleSignInAvailable()) return null;
 
   const handlePress = async () => {
-    if (!request) {
-      appAlert('Google Sign-In', 'Google login is still loading. Try again in a moment.');
+    if (isExpoGo()) {
+      appAlert(
+        'Use Installed App',
+        'Continue with Google works in the Crimzo APK / dev build.\n\nExpo Go mein email se login karo, ya latest APK install karo.',
+      );
       return;
     }
+
+    if (!supportsNativeGoogleSignIn()) {
+      appAlert(
+        'Google Sign-In',
+        'Rebuild the app after updating Google config:\nnpx expo run:android\nor npm run build:apk',
+      );
+      return;
+    }
+
     setBusy(true);
     try {
-      await promptAsync();
+      const profile = await signInWithNativeGoogle();
+      await signInWithGoogle(profile);
+      onSuccess?.();
     } catch (err: unknown) {
-      setBusy(false);
-      const message = err instanceof Error ? err.message : 'Could not open Google sign-in';
+      const { isErrorWithCode, statusCodes } = require('@react-native-google-signin/google-signin');
+      if (isErrorWithCode(err as object)) {
+        const gErr = err as { code: string };
+        if (gErr.code === statusCodes.SIGN_IN_CANCELLED) return;
+        if (gErr.code === statusCodes.IN_PROGRESS) return;
+        if (gErr.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+          appAlert('Google Play Services', 'Please install or update Google Play Services on your device.');
+          return;
+        }
+      }
+      const message = err instanceof Error ? err.message : 'Google sign-in failed';
+      if (message.toLowerCase().includes('cancel')) return;
       appAlert('Google Sign-In Failed', formatGoogleAuthError(message));
+    } finally {
+      setBusy(false);
     }
   };
 
-  const isDisabled = disabled || busy || !request;
+  const isDisabled = disabled || busy;
 
   return (
     <TouchableOpacity

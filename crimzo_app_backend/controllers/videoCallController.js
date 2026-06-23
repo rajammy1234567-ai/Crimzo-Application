@@ -5,7 +5,7 @@ const {
   buildVideoCallBalancePayload,
 } = require('../utils/billingSettings');
 const { resolveUserRates } = require('../utils/userRates');
-const { chargeLiveTalkMinute, InsufficientWalletError } = require('../utils/liveTalkCharge');
+const { chargeCallMinute, InsufficientWalletError } = require('../utils/liveTalkCharge');
 const { getIo, userRoom } = require('../utils/socketEmitter');
 
 async function getPeerVoiceRate(peerId, settings) {
@@ -111,7 +111,7 @@ exports.startSession = async (req, res) => {
 
     let chargeResult;
     try {
-      chargeResult = await chargeLiveTalkMinute({
+      chargeResult = await chargeCallMinute({
         talkerId: req.user.id,
         hostId: peerId,
         rateInr: rate,
@@ -137,6 +137,7 @@ exports.startSession = async (req, res) => {
       minutesCharged: 1,
       totalCharged: rate,
       peer_beans_earned: chargeResult.beansEarned,
+      platform_beans_earned: chargeResult.platformBeans,
       status: 'active',
       startedAt: new Date(),
       lastTickAt: new Date(),
@@ -203,7 +204,7 @@ exports.tickBilling = async (req, res) => {
 
     let chargeResult;
     try {
-      chargeResult = await chargeLiveTalkMinute({
+      chargeResult = await chargeCallMinute({
         talkerId: req.user.id,
         hostId: session.peerId,
         rateInr: rate,
@@ -227,6 +228,7 @@ exports.tickBilling = async (req, res) => {
     session.minutesCharged += 1;
     session.totalCharged += rate;
     session.peer_beans_earned = (session.peer_beans_earned || 0) + chargeResult.beansEarned;
+    session.platform_beans_earned = (session.platform_beans_earned || 0) + (chargeResult.platformBeans || 0);
     session.lastTickAt = new Date();
     await session.save();
 

@@ -4,7 +4,7 @@
     "slug": "crimzo",
     "version": "4.0.2",
     "orientation": "portrait",
-    "icon": "./assets/images/crimzo_logo1.png",
+    "icon": "./assets/images/CRIMZO_ICON.png",
     "scheme": "crimzo",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
@@ -20,7 +20,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/crimzo_logo1.png",
+        "foregroundImage": "./assets/images/CRIMZO_ICON.png",
         "backgroundColor": "#000000"
       },
       "package": "com.livestreamhub",
@@ -69,8 +69,8 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/crimzo_logo1.png",
-          "imageWidth": 200,
+          "image": "./assets/images/crimzo_logo_header.png",
+          "imageWidth": 280,
           "resizeMode": "contain",
           "backgroundColor": "#000000"
         }

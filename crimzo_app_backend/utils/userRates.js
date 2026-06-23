@@ -1,4 +1,5 @@
 const { inrToBeans } = require('./beanConversion');
+const { receiverBeansFromInr, platformBeansFromInr } = require('./callCommission');
 
 const MIN_RATE_INR = 1;
 const MAX_RATE_INR = 10000;
@@ -21,13 +22,17 @@ function resolveUserRates(user, billingSettings) {
     user?.chat_rate_per_min_inr,
     billingSettings?.liveTalkRatePerMin ?? 1,
   );
-  const voiceBeansPerMin = inrToBeans(voiceRatePerMin);
+  const voiceGrossBeansPerMin = inrToBeans(voiceRatePerMin);
+  const voiceBeansPerMin = receiverBeansFromInr(voiceRatePerMin);
+  const voicePlatformBeansPerMin = platformBeansFromInr(voiceRatePerMin);
   const chatBeansPerMin = inrToBeans(chatRatePerMin);
 
   return {
     voiceRatePerMin,
     chatRatePerMin,
+    voiceGrossBeansPerMin,
     voiceBeansPerMin,
+    voicePlatformBeansPerMin,
     chatBeansPerMin,
     voice_rate_per_min_inr: voiceRatePerMin,
     chat_rate_per_min_inr: chatRatePerMin,

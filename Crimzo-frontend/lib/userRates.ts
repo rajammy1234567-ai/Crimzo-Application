@@ -3,6 +3,15 @@ import { inrToBeans } from './diamondPackages';
 export const MIN_RATE_INR = 1;
 export const MAX_RATE_INR = 10000;
 
+/** Voice call: callee gets 70%, platform (owner) keeps 30% */
+export const CALL_RECEIVER_SHARE = 0.7;
+export const CALL_PLATFORM_SHARE = 0.3;
+
+export function receiverBeansFromCallInr(inr: number): number {
+  const gross = inrToBeans(inr);
+  return Math.floor(gross * CALL_RECEIVER_SHARE);
+}
+
 export type UserRates = {
   voiceRatePerMin: number;
   chatRatePerMin: number;
@@ -20,7 +29,7 @@ export function resolveRates(
   return {
     voiceRatePerMin: voice,
     chatRatePerMin: chat,
-    voiceBeansPerMin: inrToBeans(voice),
+    voiceBeansPerMin: receiverBeansFromCallInr(voice),
     chatBeansPerMin: inrToBeans(chat),
   };
 }
