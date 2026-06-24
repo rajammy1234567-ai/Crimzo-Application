@@ -84,7 +84,7 @@ export default function CreateScreen() {
     }
     router.push('/live/broadcast');
   };
-  const handlePKBattle = () => router.push('/pk/lobby');
+  const handlePKBattle = () => router.push('/(tabs)/home?tab=gaming' as any);
 
   const handleUploadReel = async () => {
     try {

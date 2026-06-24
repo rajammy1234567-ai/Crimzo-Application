@@ -83,8 +83,10 @@ async function parseResponse<T>(response: Response): Promise<T> {
     : await response.text().catch(() => '');
 
   if (!response.ok) {
+    const payload = typeof data === 'object' && data ? (data as { error?: string; details?: string }) : null;
     const message =
-      (typeof data === 'object' && data && 'error' in data && String((data as { error?: string }).error)) ||
+      payload?.details ||
+      payload?.error ||
       `Request failed (${response.status})`;
     throw new ApiError(message, response.status, data);
   }

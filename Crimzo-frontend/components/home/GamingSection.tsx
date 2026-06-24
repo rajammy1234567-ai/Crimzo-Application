@@ -5,13 +5,14 @@ import {
     Animated, Easing, Dimensions, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 const { width: SW } = Dimensions.get('window');
 const CARD_W = (SW - 22) / 2;
 import io from 'socket.io-client';
 import { API_URL, apiGet } from '../../lib/apiClient';
 import { sameUserId } from '../../lib/agoraUid';
+import { isPkBattleWinner } from '../../lib/pkBattleCard';
 
 interface PKBattle {
     battle_id: string;
@@ -28,11 +29,7 @@ interface PKBattle {
     winner_username?: string | null;
 }
 
-function isPkWinner(battle: PKBattle, side: 'host1' | 'host2'): boolean {
-    if (battle.status !== 'ended' || !battle.winner_id) return false;
-    const hostId = side === 'host1' ? battle.host1_id : battle.host2_id;
-    return !!hostId && sameUserId(battle.winner_id, hostId);
-}
+
 
 interface Props {
     token: string;
@@ -80,9 +77,10 @@ const PKBattleCard: React.FC<{
 }> = ({ battle, isOwnBattle, onWatch, onJoin, onResume }) => {
     const h1Initial = (battle.host1_username || 'H').charAt(0).toUpperCase();
     const isWaiting = battle.status === 'waiting';
+    const isActive = battle.status === 'active';
     const isEnded = battle.status === 'ended';
-    const host1Won = isPkWinner(battle, 'host1');
-    const host2Won = isPkWinner(battle, 'host2');
+    const host1Won = isPkBattleWinner(battle, 'host1');
+    const host2Won = isPkBattleWinner(battle, 'host2');
 
     return (
         <View style={st.pkCard}>
@@ -95,7 +93,7 @@ const PKBattleCard: React.FC<{
                     >
                         {!isEnded && <PulsingDot />}
                         <Text style={st.pkBadgeText}>
-                            {isEnded ? 'ENDED' : isWaiting ? 'WAITING' : 'LIVE PK'}
+                            {isEnded ? 'BATTLE ENDED' : isWaiting ? 'WAITING' : isActive ? 'LIVE BATTLE' : 'PK'}
                         </Text>
                     </LinearGradient>
                     {!isWaiting && (
@@ -118,10 +116,9 @@ const PKBattleCard: React.FC<{
                                     <Text style={st.pkAvatarText}>{h1Initial}</Text>
                                 </LinearGradient>
                             )}
-                            {host1Won && (
-                                <View style={st.pkWinnerTag}>
-                                    <Ionicons name="trophy" size={9} color="#FFD700" />
-                                    <Text style={st.pkWinnerTagText}>WINNER</Text>
+                            {isEnded && host1Won && (
+                                <View style={st.pkCrownBadge}>
+                                    <MaterialCommunityIcons name="crown" size={12} color="#FFD700" />
                                 </View>
                             )}
                         </View>
@@ -156,10 +153,9 @@ const PKBattleCard: React.FC<{
                                     <Ionicons name="help" size={20} color="#555" />
                                 </View>
                             )}
-                            {host2Won && (
-                                <View style={[st.pkWinnerTag, { borderColor: 'rgba(48,209,88,0.5)' }]}>
-                                    <Ionicons name="trophy" size={9} color="#FFD700" />
-                                    <Text style={st.pkWinnerTagText}>WINNER</Text>
+                            {isEnded && host2Won && (
+                                <View style={st.pkCrownBadge}>
+                                    <MaterialCommunityIcons name="crown" size={12} color="#FFD700" />
                                 </View>
                             )}
                         </View>
@@ -423,6 +419,12 @@ const st = StyleSheet.create({
         borderRadius: 6, borderWidth: 1, borderColor: 'rgba(255,215,0,0.35)',
     },
     pkWinnerNameTagText: { color: '#FFD700', fontSize: 8, fontWeight: '900', letterSpacing: 0.4 },
+    pkCrownBadge: {
+        position: 'absolute', top: -6, alignSelf: 'center',
+        width: 24, height: 24, borderRadius: 12,
+        backgroundColor: 'rgba(0,0,0,0.9)', borderWidth: 1.5, borderColor: '#FFD700',
+        alignItems: 'center', justifyContent: 'center', zIndex: 2,
+    },
     pkWinnerTag: {
         position: 'absolute', bottom: -4, flexDirection: 'row', alignItems: 'center', gap: 2,
         backgroundColor: 'rgba(0,0,0,0.85)', paddingHorizontal: 6, paddingVertical: 2,

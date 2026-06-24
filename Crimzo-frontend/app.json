@@ -24,7 +24,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.livestreamhub",
-      "versionCode": 22,
+      "versionCode": 24,
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",
@@ -85,7 +85,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "99122ad8-ee1b-4a9c-a0c7-7f25e1c136d2"
+        "projectId": "3494a0fa-1301-44ba-9bc4-4ff2d26f2c02"
       }
     },
     "owner": "dev_eas_office_viz001"

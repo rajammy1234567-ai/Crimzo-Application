@@ -388,10 +388,12 @@ export default function PKBattleScreen() {
       }
     } catch (error: unknown) {
       console.error('Create battle error:', error);
-      const msg = error instanceof ApiError
-        ? String((error.data as { details?: string; error?: string })?.details || error.message)
-        : 'Failed to create battle';
-      appAlert('Error', msg);
+      const errData = error instanceof ApiError
+        ? (error.data as { details?: string; error?: string; hint?: string })
+        : null;
+      const msg = errData?.details || errData?.error || (error instanceof ApiError ? error.message : 'Failed to create battle');
+      const hint = errData?.hint;
+      appAlert('Error', hint ? `${msg}\n\n${hint}` : msg);
       router.back();
     } finally {
       setLoading(false);

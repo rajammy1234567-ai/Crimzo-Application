@@ -4,7 +4,7 @@ import { View, StyleSheet, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { gradients } from '../../lib/theme';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useTabFocus } from '../../lib/useTabFocus';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiGet, ApiError, apiDelete, apiUpload } from '../../lib/apiClient';
@@ -36,8 +36,8 @@ import {
   StoriesRow,
   HomeTabs,
   LiveStreamGrid,
-  GamingSection,
 } from '../../components/home';
+import { PKLobbyContent } from '../pk/lobby';
 import { subscribe } from '../../lib/realtimeSync';
 import { useNotifications } from '../../lib/useNotifications';
 import { normalizeStoryUserId } from '../../lib/storyUtils';
@@ -45,6 +45,7 @@ import { normalizeStoryUserId } from '../../lib/storyUtils';
 export default function HomeScreen() {
   const { user, token, isGuest } = useAuth();
   const router = useRouter();
+  const { tab: tabParam } = useLocalSearchParams<{ tab?: string }>();
   const [activeTab, setActiveTab] = useState('for-you');
   const [liveStreams, setLiveStreams] = useState<any[]>([]);
   const [onlineCount, setOnlineCount] = useState(0);
@@ -65,6 +66,10 @@ export default function HomeScreen() {
   }, []);
 
   const { pointerEvents } = useTabFocus(resetOverlays);
+
+  useEffect(() => {
+    if (tabParam === 'gaming') setActiveTab('gaming');
+  }, [tabParam]);
 
   useEffect(() => {
     if (!token) {
@@ -316,20 +321,9 @@ export default function HomeScreen() {
       <HomeTabs activeTab={activeTab} onChangeTab={setActiveTab} />
 
       {activeTab === 'gaming' ? (
-        <GamingSection
-          token={token || ''}
-          currentUserId={user?.id}
-          onWatchBattle={(battleId) => router.push(`/pk/watch?battleId=${battleId}`)}
-          onJoinBattle={(battleId) => router.push(`/pk/battle?mode=join&battleId=${battleId}`)}
-          onResumeBattle={(battleId) => router.push(`/pk/battle?mode=host&battleId=${battleId}`)}
-          onCreateBattle={() => router.push('/pk/lobby' as any)}
-          onWatchStream={(id) => router.push(`/live/watch?sessionId=${id}&talk=1`)}
-          onStartBroadcast={openBroadcast}
-          liveStreams={[]}
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          pkOnly={true}
-        />
+        <View style={styles.pkPanel}>
+          <PKLobbyContent embedded />
+        </View>
       ) : (
         <LiveStreamGrid
           streams={[...liveStreams].sort((a: any, b: any) => (b.viewers_count || 0) - (a.viewers_count || 0))}
@@ -364,4 +358,5 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   gradient: { flex: 1 },
   container: { flex: 1, backgroundColor: 'transparent' },
+  pkPanel: { flex: 1, minHeight: 0 },
 });
