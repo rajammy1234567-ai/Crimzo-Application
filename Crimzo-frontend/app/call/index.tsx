@@ -556,9 +556,14 @@ export default function VideoCallScreen() {
     };
     const unsubAccepted = subscribe('video_call_accepted', handleAccepted);
     const unsubForceEnd = subscribe('video_call_force_end', handleForceEnd);
+    const unsubReject = subscribe('video_call_rejected', () => {
+      clearRingTimeout();
+      if (!callEndedRef.current) endCallRef.current('declined');
+    });
     return () => {
       unsubAccepted();
       unsubForceEnd();
+      unsubReject();
     };
   }, [channelName, clearRingTimeout]);
 

@@ -287,21 +287,23 @@ export default function BroadcastScreen() {
       engineRef.current = null;
       setAgoraReady(false);
     }
-    router.push({
-      pathname: '/call',
-      params: {
-        channel: data.channelName,
-        role: 'callee',
-        peerId: String(data.requesterId),
-        peerName: data.requesterName || 'Viewer',
-        peerAvatar: data.requesterAvatar || '',
-        ratePerMin: data.ratePerMin != null ? String(data.ratePerMin) : String(myRates.voiceRatePerMin),
-        beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : String(myRates.voiceBeansPerMin),
-        fromLive: '1',
-        accepted: '1',
-        sessionId: sessionId || '',
-      },
-    } as any);
+    setTimeout(() => {
+      router.push({
+        pathname: '/call',
+        params: {
+          channel: data.channelName,
+          role: 'callee',
+          peerId: String(data.requesterId),
+          peerName: data.requesterName || 'Viewer',
+          peerAvatar: data.requesterAvatar || '',
+          ratePerMin: data.ratePerMin != null ? String(data.ratePerMin) : String(myRates.voiceRatePerMin),
+          beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : String(myRates.voiceBeansPerMin),
+          fromLive: '1',
+          accepted: '1',
+          sessionId: sessionId || '',
+        },
+      } as any);
+    }, 400);
   }, [router, myRates, sessionId]);
 
   const handleCallRequestAction = useCallback(async (

@@ -152,6 +152,7 @@ export default function MessagesScreen() {
       if (chatOpen) {
         if (isIncoming && msg.message_type !== 'gift') playMessageReceivePop();
         setChatMessages((prev) => {
+          if (!isIncoming) return prev;
           if (prev.some((m) => String(m.id) === String(msg.id))) return prev;
           return [...prev, msg];
         });

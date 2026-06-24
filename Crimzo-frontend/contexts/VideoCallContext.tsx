@@ -113,6 +113,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
     socket.on('video_call_rejected', () => {
       clearRingTimeout();
       setIncomingCall(null);
+      publish('video_call_rejected', {});
     });
 
     socket.on('video_call_ended', (data?: { reason?: string; channelName?: string }) => {

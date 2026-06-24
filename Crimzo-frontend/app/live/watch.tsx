@@ -282,21 +282,23 @@ export default function WatchScreen() {
     setRemoteUid(null);
     setAgoraReady(false);
     setCallStatus('accepted');
-    router.push({
-      pathname: '/call',
-      params: {
-        channel: data.channelName,
-        role: 'caller',
-        peerId: String(data.hostId || streamData?.hostId || ''),
-        peerName: data.hostName || streamData?.hostUsername || 'Host',
-        peerAvatar: data.hostAvatar || streamData?.hostAvatar || '',
-        ratePerMin: String(data.ratePerMin ?? hostRates.voiceRatePerMin),
-        beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : '',
-        fromLive: '1',
-        accepted: '1',
-        sessionId: String(sessionId || ''),
-      },
-    } as any);
+    setTimeout(() => {
+      router.push({
+        pathname: '/call',
+        params: {
+          channel: data.channelName,
+          role: 'caller',
+          peerId: String(data.hostId || streamData?.hostId || ''),
+          peerName: data.hostName || streamData?.hostUsername || 'Host',
+          peerAvatar: data.hostAvatar || streamData?.hostAvatar || '',
+          ratePerMin: String(data.ratePerMin ?? hostRates.voiceRatePerMin),
+          beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : '',
+          fromLive: '1',
+          accepted: '1',
+          sessionId: String(sessionId || ''),
+        },
+      } as any);
+    }, 400);
   }, [router, streamData, hostRates.voiceRatePerMin, sessionId]);
 
   const sendCallRequest = useCallback(async () => {
