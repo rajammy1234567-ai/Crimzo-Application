@@ -68,6 +68,11 @@ async function recordBattleStats(battle) {
     { _id: battle._id },
     { $set: { stats_applied: true } },
   );
+
+  const io = getIo();
+  if (io) {
+    io.emit('pk_leaderboard_updated', { month, battleId: battle.battle_id });
+  }
 }
 
 /** One-time style backfill for battles ended before stats tracking shipped */
@@ -172,7 +177,7 @@ async function getRankingInfo(userId, requestedMonth) {
   let lastWinner = null;
 
   try {
-    leaderboard = await fetchLeaderboardRows(month, 20);
+    leaderboard = await fetchLeaderboardRows(month, PK_LEADERBOARD_LIMIT);
   } catch (err) {
     console.error('PK leaderboard rows error:', err.message);
   }

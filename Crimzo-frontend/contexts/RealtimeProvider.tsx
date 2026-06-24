@@ -14,6 +14,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const { user, token, updateUser, logout } = useAuth();
   const socketRef = useRef<Socket | null>(null);
   const appSettingsRef = useRef<AppSettings>({ notificationsEnabled: true, language: 'Automatic' });
+  const updateUserRef = useRef(updateUser);
+  const logoutRef = useRef(logout);
+  const userIdRef = useRef(user?.id);
+
+  updateUserRef.current = updateUser;
+  logoutRef.current = logout;
+  userIdRef.current = user?.id;
 
   useEffect(() => {
     loadAppSettings().then((s) => { appSettingsRef.current = s; });
@@ -45,20 +52,20 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       appAlert(
         'Account Suspended',
         data?.message || 'Your account has been suspended by an administrator.',
-        [{ text: 'OK', onPress: () => logout() }],
+        [{ text: 'OK', onPress: () => { void logoutRef.current(); } }],
         { cancelable: false },
       );
     });
 
     socket.on('diamond_update', (data: { diamonds?: number }) => {
       if (typeof data?.diamonds === 'number') {
-        updateUser({ diamonds: data.diamonds });
+        updateUserRef.current({ diamonds: data.diamonds });
       }
     });
 
     socket.on('bean_update', (data: { beans?: number }) => {
       if (typeof data?.beans === 'number') {
-        updateUser({ beans: data.beans });
+        updateUserRef.current({ beans: data.beans });
       }
     });
 
@@ -125,9 +132,17 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       stickerName?: string;
       senderUsername?: string;
     }) => {
-      if (String(data?.receiverId) !== String(user.id)) return;
+      if (String(data?.receiverId) !== String(userIdRef.current)) return;
       playGiftPop();
       publish('gift_received', data);
+    });
+
+    socket.on('pk_battles_updated', () => {
+      publish('pk_battles_updated');
+    });
+
+    socket.on('pk_leaderboard_updated', () => {
+      publish('pk_leaderboard_updated');
     });
 
     socket.on('pk_monthly_winner', (data: {
@@ -140,7 +155,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     }) => {
       publish('pk_monthly_winner', data);
       if (!appSettingsRef.current.notificationsEnabled) return;
-      const isWinner = data?.winnerId && String(data.winnerId) === String(user.id);
+      const isWinner = data?.winnerId && String(data.winnerId) === String(userIdRef.current);
       if (isWinner) {
         appAlert(
           'PK Champion!',
@@ -172,7 +187,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [token, user?.id, updateUser, logout]);
+  }, [token, user?.id]);
 
   return <>{children}</>;
 }

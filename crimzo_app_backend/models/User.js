@@ -53,6 +53,8 @@ const userSchema = new mongoose.Schema({
   voice_rate_per_min_inr: { type: Number, default: null, min: 0, max: 10000 },
   /** Creator-set live chat rate (₹/min). null = use app default. Host earns beans. */
   chat_rate_per_min_inr: { type: Number, default: null, min: 0, max: 10000 },
+  /** Current month key (YYYY-MM) when user paid to view full PK leaderboard */
+  pk_leaderboard_unlock_month: { type: String, default: null },
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
 
 // Virtual for frontend-friendly id

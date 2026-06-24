@@ -5,6 +5,7 @@ const pk = require('../controllers/pkController');
 router.post('/create', authenticateToken, pk.createBattle);
 router.get('/active', authenticateToken, pk.getActiveBattles);
 router.get('/leaderboard', authenticateToken, pk.getLeaderboard);
+router.post('/leaderboard/unlock', authenticateToken, pk.unlockLeaderboard);
 router.post('/join/:battleId', authenticateToken, pk.joinBattle);
 router.get('/resume/:battleId', authenticateToken, pk.resumeBattle);
 router.get('/watch/:battleId', authenticateToken, pk.watchBattle);

@@ -9,10 +9,10 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 const { width: SW } = Dimensions.get('window');
 const CARD_W = (SW - 22) / 2;
-import io from 'socket.io-client';
-import { API_URL, apiGet } from '../../lib/apiClient';
+import { subscribe } from '../../lib/realtimeSync';
+import { apiGet } from '../../lib/apiClient';
 import { sameUserId } from '../../lib/agoraUid';
-import { isPkBattleWinner } from '../../lib/pkBattleCard';
+import { getPkBattleDisplayStatus, getPkBattleWinnerLabel, isPkBattleWinner } from '../../lib/pkBattleCard';
 
 interface PKBattle {
     battle_id: string;
@@ -76,11 +76,13 @@ const PKBattleCard: React.FC<{
     onResume: () => void;
 }> = ({ battle, isOwnBattle, onWatch, onJoin, onResume }) => {
     const h1Initial = (battle.host1_username || 'H').charAt(0).toUpperCase();
-    const isWaiting = battle.status === 'waiting';
-    const isActive = battle.status === 'active';
-    const isEnded = battle.status === 'ended';
+    const displayStatus = getPkBattleDisplayStatus(battle);
+    const isWaiting = displayStatus === 'waiting';
+    const isActive = displayStatus === 'active';
+    const isEnded = displayStatus === 'ended';
     const host1Won = isPkBattleWinner(battle, 'host1');
     const host2Won = isPkBattleWinner(battle, 'host2');
+    const winnerLabel = getPkBattleWinnerLabel(battle);
 
     return (
         <View style={st.pkCard}>
@@ -104,6 +106,15 @@ const PKBattleCard: React.FC<{
                         </View>
                     )}
                 </View>
+
+                {isEnded && (
+                    <View style={st.pkWinnerBanner}>
+                        <MaterialCommunityIcons name="trophy" size={14} color="#FFD700" />
+                        <Text style={st.pkWinnerBannerText} numberOfLines={1}>
+                            {winnerLabel ? `${winnerLabel} is the WINNER` : 'Battle ended in a draw'}
+                        </Text>
+                    </View>
+                )}
 
                 {/* Avatars */}
                 <View style={st.pkAvatarRow}>
@@ -187,9 +198,7 @@ const PKBattleCard: React.FC<{
                     <View style={st.pkEndedRow}>
                         <Ionicons name="trophy" size={14} color="#FFD700" />
                         <Text style={st.pkEndedText}>
-                            {battle.winner_username
-                                ? `${battle.winner_username} won`
-                                : 'Draw'}
+                            {winnerLabel ? `${winnerLabel} won with most points` : 'Draw — equal points'}
                         </Text>
                     </View>
                 ) : (
@@ -252,18 +261,9 @@ const GamingSection: React.FC<Props> = ({
     useEffect(() => { fetchPKBattles(); }, []);
 
     useEffect(() => {
-        if (!token || !API_URL) return;
-        const sock = io(API_URL, { transports: ['websocket'], auth: { token } });
-        sock.on('pk_battles_updated', () => { void fetchPKBattles(); });
-        return () => { sock.disconnect(); };
+        const unsub = subscribe('pk_battles_updated', () => { void fetchPKBattles(); });
+        return unsub;
     }, [token]);
-
-    useEffect(() => {
-        const hasLive = pkBattles.some((b) => b.status === 'active');
-        if (!hasLive) return;
-        const interval = setInterval(() => { void fetchPKBattles(); }, 4000);
-        return () => clearInterval(interval);
-    }, [pkBattles]);
 
     const fetchPKBattles = async () => {
         try {
@@ -431,6 +431,12 @@ const st = StyleSheet.create({
         borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,215,0,0.45)',
     },
     pkWinnerTagText: { color: '#FFD700', fontSize: 8, fontWeight: '900', letterSpacing: 0.5 },
+    pkWinnerBanner: {
+        flexDirection: 'row', alignItems: 'center', gap: 6,
+        backgroundColor: 'rgba(255,215,0,0.12)', borderWidth: 1, borderColor: 'rgba(255,215,0,0.3)',
+        borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, marginBottom: 10,
+    },
+    pkWinnerBannerText: { color: '#FFD700', fontSize: 12, fontWeight: '800', flex: 1 },
     pkEndedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10 },
     pkEndedText: { color: '#FFD700', fontSize: 13, fontWeight: '700' },
     pkVsWrap: { marginHorizontal: 8 },

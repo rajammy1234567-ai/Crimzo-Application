@@ -15,16 +15,53 @@ import {
   Image,
   Modal,
   TextInput,
+  AppState,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import io from 'socket.io-client';
-import { API_URL, apiGet, resolveMediaUrl } from '../../lib/apiClient';
+import { apiGet, apiPost, resolveMediaUrl, ApiError } from '../../lib/apiClient';
+import { subscribe } from '../../lib/realtimeSync';
+import { appAlert } from '../../lib/appAlert';
 import { sameUserId } from '../../lib/agoraUid';
-import { isPkBattleWinner } from '../../lib/pkBattleCard';
-const { width: SW } = Dimensions.get('window');
+import {
+  getPkBattleDisplayStatus,
+  getPkBattleWinnerLabel,
+  isPkBattleWinner,
+} from '../../lib/pkBattleCard';
+const { width: SW, height: SH } = Dimensions.get('window');
+
+type LeaderboardEntry = {
+  rank: number;
+  user_id: string;
+  username: string;
+  avatar?: string | null;
+  wins: number;
+  total_score: number;
+};
+
+type RankingData = {
+  monthLabel?: string;
+  rewardDiamonds?: number;
+  nextAnnouncementLabel?: string;
+  rankingNote?: string;
+  lastWinner?: {
+    username?: string;
+    monthLabel?: string;
+    wins?: number;
+    total_score?: number;
+    diamonds?: number;
+  } | null;
+  myRank?: { rank: number | null; wins: number; total_score: number };
+  leaderboard?: LeaderboardEntry[];
+  leaderboardUnlocked?: boolean;
+  unlockCostDiamonds?: number;
+  unlockCostInr?: number;
+  hiddenCount?: number;
+  totalLeaderboardCount?: number;
+  previewCount?: number;
+};
 
 const DURATION_OPTIONS = [
   { label: '3 Minutes', value: 180, sub: 'Quick battle' },
@@ -75,6 +112,44 @@ const WinnerCrown = () => (
   </View>
 );
 
+function LeaderboardRankRow({ entry, isMe }: { entry: LeaderboardEntry; isMe: boolean }) {
+  const medal = entry.rank === 1 ? '#FFD700' : entry.rank === 2 ? '#C0C0C0' : entry.rank === 3 ? '#CD7F32' : '#666';
+  return (
+    <View style={[lobbyStyles.rankRow, isMe && lobbyStyles.rankRowMe]}>
+      <Text style={[lobbyStyles.rankNum, { color: medal }]}>#{entry.rank}</Text>
+      {entry.avatar ? (
+        <Image source={{ uri: resolveMediaUrl(entry.avatar) }} style={lobbyStyles.rankAvatar} />
+      ) : (
+        <LinearGradient colors={['#FF2D55', '#FF6B8A']} style={lobbyStyles.rankAvatar}>
+          <Text style={lobbyStyles.rankAvatarText}>{(entry.username || '?').charAt(0).toUpperCase()}</Text>
+        </LinearGradient>
+      )}
+      <View style={lobbyStyles.rankInfo}>
+        <Text style={lobbyStyles.rankName} numberOfLines={1}>{entry.username}</Text>
+        <Text style={lobbyStyles.rankStats}>{entry.wins} wins · {entry.total_score} score</Text>
+      </View>
+      {entry.rank === 1 ? (
+        <View style={lobbyStyles.rankTopBadge}>
+          <Text style={lobbyStyles.rankTopBadgeText}>TOP</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function BlurredLeaderboardRow({ rank }: { rank: number }) {
+  return (
+    <View style={[lobbyStyles.rankRow, lobbyStyles.rankRowBlurred]}>
+      <Text style={[lobbyStyles.rankNum, { color: '#444' }]}>#{rank}</Text>
+      <View style={lobbyStyles.rankAvatarBlur} />
+      <View style={lobbyStyles.rankInfo}>
+        <View style={lobbyStyles.rankNameBlur} />
+        <View style={lobbyStyles.rankStatsBlur} />
+      </View>
+    </View>
+  );
+}
+
 // ── Avatar Component ──
 const UserAvatar = ({ uri, name, size = 44, colors }: { uri?: string; name: string; size?: number; colors: string[] }) => {
   if (uri) {
@@ -103,11 +178,13 @@ const BattleCard = ({
   onWatch: (id: string) => void;
   index: number;
 }) => {
-  const isWaiting = battle.status === 'waiting';
-  const isActive = battle.status === 'active';
-  const isEnded = battle.status === 'ended';
+  const displayStatus = getPkBattleDisplayStatus(battle);
+  const isWaiting = displayStatus === 'waiting';
+  const isActive = displayStatus === 'active';
+  const isEnded = displayStatus === 'ended';
   const host1Won = isPkBattleWinner(battle, 'host1');
   const host2Won = isPkBattleWinner(battle, 'host2');
+  const winnerLabel = getPkBattleWinnerLabel(battle);
   const fadeIn = useRef(new Animated.Value(0)).current;
   const slideUp = useRef(new Animated.Value(30)).current;
 
@@ -141,27 +218,55 @@ const BattleCard = ({
           </View>
         )}
 
+        {isEnded && (
+          <LinearGradient
+            colors={winnerLabel ? ['rgba(255,215,0,0.28)', 'rgba(255,149,0,0.12)'] : ['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.04)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={lobbyStyles.winnerBanner}
+          >
+            <MaterialCommunityIcons name="trophy" size={16} color="#FFD700" />
+            <Text style={lobbyStyles.winnerBannerText} numberOfLines={1}>
+              {winnerLabel ? `${winnerLabel} is the WINNER` : 'Battle ended in a draw'}
+            </Text>
+          </LinearGradient>
+        )}
+
         {/* Hosts row */}
         <View style={lobbyStyles.hostsRow}>
           {/* Host 1 */}
-          <View style={lobbyStyles.hostCol}>
+          <View style={[lobbyStyles.hostCol, isEnded && !host1Won && host2Won && lobbyStyles.hostColLoser]}>
             <View style={{ position: 'relative' }}>
-              <UserAvatar
-                uri={battle.host1_avatar}
-                name={battle.host1_username || 'Host'}
-                size={52}
-                colors={['#FF2D55', '#FF6B8A']}
-              />
+              <View style={host1Won ? lobbyStyles.winnerAvatarRing : undefined}>
+                <UserAvatar
+                  uri={battle.host1_avatar}
+                  name={battle.host1_username || 'Host'}
+                  size={52}
+                  colors={['#FF2D55', '#FF6B8A']}
+                />
+              </View>
               {isEnded && host1Won && <WinnerCrown />}
+              {isEnded && host1Won && (
+                <View style={lobbyStyles.winnerTag}>
+                  <Text style={lobbyStyles.winnerTagText}>WINNER</Text>
+                </View>
+              )}
             </View>
             <View style={lobbyStyles.hostNameRow}>
               <Text style={[lobbyStyles.hostName, host1Won && lobbyStyles.hostNameWinner]} numberOfLines={1}>
                 {battle.host1_username || 'Host 1'}
               </Text>
+              {isEnded && host1Won && (
+                <View style={lobbyStyles.winnerNameTag}>
+                  <Text style={lobbyStyles.winnerNameTagText}>WINNER</Text>
+                </View>
+              )}
             </View>
-            <View style={lobbyStyles.hostScorePill}>
-              <Ionicons name="flame" size={10} color="#FF2D55" />
-              <Text style={lobbyStyles.hostScoreText}>{battle.host1_score || 0}</Text>
+            <View style={[lobbyStyles.hostScorePill, host1Won && lobbyStyles.hostScorePillWinner]}>
+              <Ionicons name="flame" size={10} color={host1Won ? '#FFD700' : '#FF2D55'} />
+              <Text style={[lobbyStyles.hostScoreText, host1Won && lobbyStyles.hostScoreTextWinner]}>
+                {battle.host1_score || 0}
+              </Text>
             </View>
           </View>
 
@@ -173,26 +278,40 @@ const BattleCard = ({
           </View>
 
           {/* Host 2 */}
-          <View style={lobbyStyles.hostCol}>
+          <View style={[lobbyStyles.hostCol, isEnded && !host2Won && host1Won && lobbyStyles.hostColLoser]}>
             {battle.host2_id ? (
               <>
                 <View style={{ position: 'relative' }}>
-                  <UserAvatar
-                    uri={battle.host2_avatar}
-                    name={battle.host2_username || 'Host'}
-                    size={52}
-                    colors={['#30D158', '#4ADE80']}
-                  />
+                  <View style={host2Won ? lobbyStyles.winnerAvatarRing : undefined}>
+                    <UserAvatar
+                      uri={battle.host2_avatar}
+                      name={battle.host2_username || 'Host'}
+                      size={52}
+                      colors={['#30D158', '#4ADE80']}
+                    />
+                  </View>
                   {isEnded && host2Won && <WinnerCrown />}
+                  {isEnded && host2Won && (
+                    <View style={lobbyStyles.winnerTag}>
+                      <Text style={lobbyStyles.winnerTagText}>WINNER</Text>
+                    </View>
+                  )}
                 </View>
                 <View style={lobbyStyles.hostNameRow}>
                   <Text style={[lobbyStyles.hostName, host2Won && lobbyStyles.hostNameWinner]} numberOfLines={1}>
                     {battle.host2_username || 'Host 2'}
                   </Text>
+                  {isEnded && host2Won && (
+                    <View style={lobbyStyles.winnerNameTag}>
+                      <Text style={lobbyStyles.winnerNameTagText}>WINNER</Text>
+                    </View>
+                  )}
                 </View>
-                <View style={[lobbyStyles.hostScorePill, { borderColor: 'rgba(48,209,88,0.3)' }]}>
-                  <Ionicons name="flame" size={10} color="#30D158" />
-                  <Text style={lobbyStyles.hostScoreText}>{battle.host2_score || 0}</Text>
+                <View style={[lobbyStyles.hostScorePill, { borderColor: 'rgba(48,209,88,0.3)' }, host2Won && lobbyStyles.hostScorePillWinner]}>
+                  <Ionicons name="flame" size={10} color={host2Won ? '#FFD700' : '#30D158'} />
+                  <Text style={[lobbyStyles.hostScoreText, host2Won && lobbyStyles.hostScoreTextWinner]}>
+                    {battle.host2_score || 0}
+                  </Text>
                 </View>
               </>
             ) : (
@@ -247,15 +366,12 @@ const BattleCard = ({
             </TouchableOpacity>
           )}
           {isEnded && (
-            <Text style={lobbyStyles.endedResult}>
-              {battle.winner_username
-                ? `${battle.winner_username} won`
-                : host1Won
-                  ? `${battle.host1_username || 'Host 1'} won`
-                  : host2Won
-                    ? `${battle.host2_username || 'Host 2'} won`
-                    : 'Draw'}
-            </Text>
+            <View style={lobbyStyles.endedResultRow}>
+              <MaterialCommunityIcons name="trophy" size={14} color="#FFD700" />
+              <Text style={lobbyStyles.endedResult}>
+                {winnerLabel ? `${winnerLabel} won with most points` : 'Draw — equal points'}
+              </Text>
+            </View>
           )}
         </View>
       </View>
@@ -269,29 +385,17 @@ const BattleCard = ({
 type PKLobbyProps = { embedded?: boolean };
 
 export function PKLobbyContent({ embedded = false }: PKLobbyProps) {
-  const { token, user } = useAuth();
+  const { token, user, updateUser } = useAuth();
   const router = useRouter();
   const [battles, setBattles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [durationModalVisible, setDurationModalVisible] = useState(false);
+  const [leaderboardModalVisible, setLeaderboardModalVisible] = useState(false);
+  const [unlockingLeaderboard, setUnlockingLeaderboard] = useState(false);
   const [customMinutes, setCustomMinutes] = useState('5');
-  const [ranking, setRanking] = useState<{
-    monthLabel?: string;
-    rewardDiamonds?: number;
-    nextAnnouncementLabel?: string;
-    rankingNote?: string;
-    lastWinner?: { username?: string; monthLabel?: string; wins?: number; total_score?: number; diamonds?: number } | null;
-    myRank?: { rank: number | null; wins: number; total_score: number };
-    leaderboard?: Array<{
-      rank: number;
-      user_id: string;
-      username: string;
-      avatar?: string | null;
-      wins: number;
-      total_score: number;
-    }>;
-  } | null>(null);
+  const [ranking, setRanking] = useState<RankingData | null>(null);
 
   // Entrance animations
   const headerFade = useRef(new Animated.Value(0)).current;
@@ -301,7 +405,7 @@ export function PKLobbyContent({ embedded = false }: PKLobbyProps) {
 
   const fetchRanking = async () => {
     try {
-      const data = await apiGet<typeof ranking & { success?: boolean }>('/api/pk/leaderboard', token);
+      const data = await apiGet<RankingData & { success?: boolean }>('/api/pk/leaderboard', token);
       setRanking(data);
     } catch {
       setRanking({
@@ -310,27 +414,117 @@ export function PKLobbyContent({ embedded = false }: PKLobbyProps) {
         nextAnnouncementLabel: '3rd of every month',
         myRank: { rank: null, wins: 0, total_score: 0 },
         leaderboard: [],
+        leaderboardUnlocked: false,
+        unlockCostDiamonds: 1979,
+        unlockCostInr: 39,
+        hiddenCount: 0,
+        totalLeaderboardCount: 0,
+        previewCount: 3,
       });
     }
   };
 
-  useEffect(() => {
-    fetchBattles();
-    fetchRanking();
-    if (token && API_URL) {
-      const sock = io(API_URL, { transports: ['websocket'], auth: { token } });
-      sock.on('pk_battles_updated', () => { void fetchBattles(); });
-      sock.on('pk_monthly_winner', () => { void fetchRanking(); });
-      return () => { sock.disconnect(); };
+  const openLeaderboard = () => {
+    setLeaderboardModalVisible(true);
+    void fetchRanking();
+  };
+
+  const handleUnlockLeaderboard = async () => {
+    if (unlockingLeaderboard) return;
+    const cost = ranking?.unlockCostDiamonds ?? 1979;
+    const inr = ranking?.unlockCostInr ?? 39;
+
+    if ((user?.diamonds ?? 0) < cost) {
+      appAlert(
+        'Not enough diamonds',
+        `Full leaderboard unlock costs ${cost.toLocaleString('en-IN')} diamonds (≈ ₹${inr}).`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Add Diamonds', onPress: () => router.push('/profile/wallet?tab=diamonds' as any) },
+        ],
+      );
+      return;
     }
+
+    setUnlockingLeaderboard(true);
+    try {
+      const data = await apiPost<RankingData & { success?: boolean; diamonds?: number }>(
+        '/api/pk/leaderboard/unlock',
+        {},
+        token,
+      );
+      setRanking(data);
+      if (typeof data.diamonds === 'number') updateUser({ diamonds: data.diamonds });
+    } catch (error) {
+      const status = error instanceof ApiError ? error.status : 0;
+      if (status === 402) {
+        appAlert(
+          'Not enough diamonds',
+          error instanceof ApiError ? error.message : `Need ${cost.toLocaleString('en-IN')} diamonds`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Add Diamonds', onPress: () => router.push('/profile/wallet?tab=diamonds' as any) },
+          ],
+        );
+      } else {
+        appAlert('Unlock failed', error instanceof ApiError ? error.message : 'Could not unlock leaderboard');
+      }
+    } finally {
+      setUnlockingLeaderboard(false);
+    }
+  };
+
+  const battlesRef = useRef(battles);
+  battlesRef.current = battles;
+
+  useEffect(() => {
+    void fetchBattles();
+    void fetchRanking();
   }, [token]);
 
   useEffect(() => {
-    const hasLive = battles.some((b) => b.status === 'active');
-    if (!hasLive) return;
-    const interval = setInterval(() => { void fetchBattles(); }, 4000);
-    return () => clearInterval(interval);
-  }, [battles]);
+    const unsubBattles = subscribe('pk_battles_updated', () => { void fetchBattles(); });
+    const unsubLb = subscribe('pk_leaderboard_updated', () => { void fetchRanking(); });
+    const unsubWinner = subscribe('pk_monthly_winner', () => { void fetchRanking(); });
+    return () => {
+      unsubBattles();
+      unsubLb();
+      unsubWinner();
+    };
+  }, [token]);
+
+  useEffect(() => {
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+    const syncPolling = () => {
+      const foreground = AppState.currentState === 'active';
+      const hasLive = battlesRef.current.some((b) => getPkBattleDisplayStatus(b) === 'active');
+
+      if (!foreground || !hasLive) {
+        if (pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
+        return;
+      }
+
+      if (!pollInterval) {
+        pollInterval = setInterval(() => {
+          if (AppState.currentState === 'active') void fetchBattles();
+        }, 15000);
+      }
+    };
+
+    syncPolling();
+    const appSub = AppState.addEventListener('change', syncPolling);
+    const watchdog = setInterval(syncPolling, 10000);
+
+    return () => {
+      appSub.remove();
+      clearInterval(watchdog);
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [token]);
 
   useEffect(() => {
     Animated.parallel([
@@ -345,8 +539,16 @@ export function PKLobbyContent({ embedded = false }: PKLobbyProps) {
     try {
       const response = await apiGet<{ battles?: any[] }>('/api/pk/active', token);
       setBattles(response.battles || []);
+      setFetchError(null);
     } catch (error) {
       console.error('Fetch battles error:', error);
+      const status = error instanceof ApiError ? error.status : 0;
+      if (status === 502 || status === 503 || status === 504) {
+        setFetchError('Server is waking up. Pull down to refresh in a few seconds.');
+      } else {
+        const message = error instanceof ApiError ? error.message : 'Could not load battles';
+        setFetchError(message);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -402,9 +604,14 @@ export function PKLobbyContent({ embedded = false }: PKLobbyProps) {
             <Text style={lobbyStyles.embeddedTitle}>PK Battle</Text>
             <Text style={lobbyStyles.embeddedSub}>Compete live · vote with gifts</Text>
           </View>
-          <TouchableOpacity style={lobbyStyles.refreshBtn} onPress={onRefresh}>
-            <Ionicons name="refresh" size={20} color="#FFF" />
-          </TouchableOpacity>
+          <View style={lobbyStyles.headerActions}>
+            <TouchableOpacity style={lobbyStyles.refreshBtn} onPress={openLeaderboard}>
+              <Ionicons name="trophy" size={20} color="#FFD700" />
+            </TouchableOpacity>
+            <TouchableOpacity style={lobbyStyles.refreshBtn} onPress={onRefresh}>
+              <Ionicons name="refresh" size={20} color="#FFF" />
+            </TouchableOpacity>
+          </View>
         </View>
       ) : (
         <Animated.View style={[lobbyStyles.header, { opacity: headerFade, transform: [{ translateY: headerSlide }] }]}>
@@ -415,9 +622,14 @@ export function PKLobbyContent({ embedded = false }: PKLobbyProps) {
             <Text style={lobbyStyles.headerTitle}>PK Battle</Text>
             <Text style={lobbyStyles.headerSub}>Compete live with others</Text>
           </View>
-          <TouchableOpacity style={lobbyStyles.refreshBtn} onPress={onRefresh}>
-            <Ionicons name="refresh" size={20} color="#FFF" />
-          </TouchableOpacity>
+          <View style={lobbyStyles.headerActions}>
+            <TouchableOpacity style={lobbyStyles.refreshBtn} onPress={openLeaderboard}>
+              <Ionicons name="trophy" size={20} color="#FFD700" />
+            </TouchableOpacity>
+            <TouchableOpacity style={lobbyStyles.refreshBtn} onPress={onRefresh}>
+              <Ionicons name="refresh" size={20} color="#FFF" />
+            </TouchableOpacity>
+          </View>
         </Animated.View>
       )}
 
@@ -462,72 +674,6 @@ export function PKLobbyContent({ embedded = false }: PKLobbyProps) {
         </TouchableOpacity>
       </Animated.View>
 
-      {/* ── Monthly Ranking ── */}
-      <View style={lobbyStyles.rankCard}>
-        <View style={lobbyStyles.rankHeader}>
-          <View style={lobbyStyles.rankHeaderLeft}>
-            <Ionicons name="trophy" size={18} color="#FFD700" />
-            <Text style={lobbyStyles.rankTitle}>PK Ranking — {ranking?.monthLabel || 'This Month'}</Text>
-          </View>
-          {ranking?.myRank?.rank ? (
-            <View style={lobbyStyles.myRankPill}>
-              <Text style={lobbyStyles.myRankText}>#{ranking.myRank.rank}</Text>
-            </View>
-          ) : null}
-        </View>
-        <Text style={lobbyStyles.rankSub}>
-          Top player announced on 3rd of every month · {(ranking?.rewardDiamonds || 10000).toLocaleString('en-IN')} diamonds reward
-        </Text>
-        {ranking?.nextAnnouncementLabel ? (
-          <Text style={lobbyStyles.rankMeta}>Next announcement: {ranking.nextAnnouncementLabel}</Text>
-        ) : null}
-        {ranking?.lastWinner?.username ? (
-          <View style={lobbyStyles.lastWinnerRow}>
-            <Ionicons name="ribbon" size={14} color="#FFD700" />
-            <Text style={lobbyStyles.lastWinnerText}>
-              Last winner: {ranking.lastWinner.username} ({ranking.lastWinner.monthLabel})
-            </Text>
-          </View>
-        ) : null}
-        {(ranking?.leaderboard?.length || 0) > 0 ? (
-          <View style={lobbyStyles.rankList}>
-            {ranking!.leaderboard!.slice(0, 5).map((entry) => {
-              const isMe = sameUserId(entry.user_id, user?.id);
-              const medal = entry.rank === 1 ? '#FFD700' : entry.rank === 2 ? '#C0C0C0' : entry.rank === 3 ? '#CD7F32' : '#666';
-              return (
-                <View key={entry.user_id} style={[lobbyStyles.rankRow, isMe && lobbyStyles.rankRowMe]}>
-                  <Text style={[lobbyStyles.rankNum, { color: medal }]}>#{entry.rank}</Text>
-                  {entry.avatar ? (
-                    <Image source={{ uri: resolveMediaUrl(entry.avatar) }} style={lobbyStyles.rankAvatar} />
-                  ) : (
-                    <LinearGradient colors={['#FF2D55', '#FF6B8A']} style={lobbyStyles.rankAvatar}>
-                      <Text style={lobbyStyles.rankAvatarText}>{(entry.username || '?').charAt(0).toUpperCase()}</Text>
-                    </LinearGradient>
-                  )}
-                  <View style={lobbyStyles.rankInfo}>
-                    <Text style={lobbyStyles.rankName} numberOfLines={1}>{entry.username}</Text>
-                    <Text style={lobbyStyles.rankStats}>{entry.wins} wins · {entry.total_score} score</Text>
-                  </View>
-                  {entry.rank === 1 ? (
-                    <View style={lobbyStyles.rankTopBadge}>
-                      <Text style={lobbyStyles.rankTopBadgeText}>TOP</Text>
-                    </View>
-                  ) : null}
-                </View>
-              );
-            })}
-          </View>
-        ) : (
-          <Text style={lobbyStyles.rankEmpty}>Win PK battles to climb the leaderboard</Text>
-        )}
-        {ranking?.myRank && (ranking.myRank.wins > 0 || ranking.myRank.total_score > 0) ? (
-          <Text style={lobbyStyles.rankYou}>
-            You: {ranking.myRank.wins} wins · {ranking.myRank.total_score} score
-            {ranking.myRank.rank ? ` · Rank #${ranking.myRank.rank}` : ''}
-          </Text>
-        ) : null}
-      </View>
-
       {/* ── Section Header ── */}
       <View style={lobbyStyles.sectionHeader}>
         <View style={lobbyStyles.sectionLeft}>
@@ -537,11 +683,32 @@ export function PKLobbyContent({ embedded = false }: PKLobbyProps) {
         <Text style={lobbyStyles.sectionCount}>{battles.length}</Text>
       </View>
 
+      {fetchError && battles.length > 0 ? (
+        <View style={lobbyStyles.fetchErrorBanner}>
+          <Ionicons name="cloud-offline-outline" size={16} color="#FF9F0A" />
+          <Text style={lobbyStyles.fetchErrorBannerText}>{fetchError}</Text>
+        </View>
+      ) : null}
+
       {/* ── Battle List ── */}
       {loading ? (
         <View style={lobbyStyles.loaderInline}>
           <ActivityIndicator size="large" color="#FF2D55" />
           <Text style={lobbyStyles.loaderText}>Loading battles...</Text>
+        </View>
+      ) : fetchError && battles.length === 0 ? (
+        <View style={lobbyStyles.emptyState}>
+          <View style={lobbyStyles.emptyIconWrap}>
+            <Ionicons name="cloud-offline-outline" size={48} color="#FF9F0A" />
+          </View>
+          <Text style={lobbyStyles.emptyTitle}>Could Not Load Battles</Text>
+          <Text style={lobbyStyles.emptySub}>{fetchError}</Text>
+          <TouchableOpacity style={lobbyStyles.emptyBtn} onPress={() => { setLoading(true); fetchBattles(); }}>
+            <LinearGradient colors={['#FF2D55', '#FF6B8A']} style={lobbyStyles.emptyBtnGrad}>
+              <Ionicons name="refresh" size={18} color="#FFF" />
+              <Text style={lobbyStyles.emptyBtnText}>Try Again</Text>
+            </LinearGradient>
+          </TouchableOpacity>
         </View>
       ) : battles.length > 0 ? (
         battles.map((battle, index) => (
@@ -571,6 +738,107 @@ export function PKLobbyContent({ embedded = false }: PKLobbyProps) {
         </View>
       )}
       </ScrollView>
+
+      <Modal
+        visible={leaderboardModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setLeaderboardModalVisible(false)}
+      >
+        <View style={lobbyStyles.lbModalOverlay}>
+          <View style={lobbyStyles.lbModalCard}>
+            <View style={lobbyStyles.lbModalHeader}>
+              <View style={lobbyStyles.lbModalHeaderLeft}>
+                <Ionicons name="trophy" size={22} color="#FFD700" />
+                <View>
+                  <Text style={lobbyStyles.lbModalTitle}>PK Leaderboard</Text>
+                  <Text style={lobbyStyles.lbModalSub}>{ranking?.monthLabel || 'This Month'} · Live rankings</Text>
+                </View>
+              </View>
+              <TouchableOpacity style={lobbyStyles.lbCloseBtn} onPress={() => setLeaderboardModalVisible(false)}>
+                <Ionicons name="close" size={22} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={lobbyStyles.lbRewardNote}>
+              Top player on 3rd of every month wins {(ranking?.rewardDiamonds || 10000).toLocaleString('en-IN')} diamonds
+            </Text>
+
+            {ranking?.myRank?.rank ? (
+              <View style={lobbyStyles.lbMyRankBanner}>
+                <Text style={lobbyStyles.lbMyRankText}>
+                  Your rank: #{ranking.myRank.rank} · {ranking.myRank.wins} wins · {ranking.myRank.total_score} score
+                </Text>
+              </View>
+            ) : null}
+
+            <ScrollView style={lobbyStyles.lbScroll} showsVerticalScrollIndicator={false}>
+              {(ranking?.leaderboard?.length || 0) > 0 ? (
+                ranking!.leaderboard!.map((entry) => (
+                  <LeaderboardRankRow
+                    key={`${entry.user_id}-${entry.rank}`}
+                    entry={entry}
+                    isMe={sameUserId(entry.user_id, user?.id)}
+                  />
+                ))
+              ) : (
+                <Text style={lobbyStyles.rankEmpty}>Win PK battles to appear on the leaderboard</Text>
+              )}
+
+              {!ranking?.leaderboardUnlocked && (ranking?.hiddenCount || 0) > 0 ? (
+                <View style={lobbyStyles.lbLockedSection}>
+                  {Array.from({ length: Math.min(ranking?.hiddenCount || 0, 5) }).map((_, i) => {
+                    const rank = (ranking?.previewCount || 3) + i + 1;
+                    return <BlurredLeaderboardRow key={`blur-${rank}`} rank={rank} />;
+                  })}
+                  <View style={lobbyStyles.lbBlurOverlay}>
+                    <MaterialCommunityIcons name="lock" size={28} color="#FFD700" />
+                    <Text style={lobbyStyles.lbLockTitle}>See Complete Leaderboard</Text>
+                    <Text style={lobbyStyles.lbLockSub}>
+                      Unlock with {(ranking?.unlockCostDiamonds || 1979).toLocaleString('en-IN')} diamonds
+                      {' '}(≈ ₹{ranking?.unlockCostInr || 39})
+                    </Text>
+                    <Text style={lobbyStyles.lbLockHint}>
+                      +{(ranking?.hiddenCount || 0)} more players hidden
+                    </Text>
+                    <TouchableOpacity
+                      style={lobbyStyles.lbUnlockBtn}
+                      onPress={handleUnlockLeaderboard}
+                      disabled={unlockingLeaderboard}
+                      activeOpacity={0.85}
+                    >
+                      <LinearGradient colors={['#FFD700', '#FF9500']} style={lobbyStyles.lbUnlockBtnGrad}>
+                        {unlockingLeaderboard ? (
+                          <ActivityIndicator color="#000" />
+                        ) : (
+                          <>
+                            <Ionicons name="diamond" size={16} color="#000" />
+                            <Text style={lobbyStyles.lbUnlockBtnText}>Unlock Full Board</Text>
+                          </>
+                        )}
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
+
+              {ranking?.leaderboardUnlocked && (ranking?.lastWinner?.username || ranking?.nextAnnouncementLabel) ? (
+                <View style={lobbyStyles.lbFooterMeta}>
+                  {ranking?.lastWinner?.username ? (
+                    <Text style={lobbyStyles.lbFooterText}>
+                      Last crown: {ranking.lastWinner.username} ({ranking.lastWinner.monthLabel})
+                    </Text>
+                  ) : null}
+                  {ranking?.nextAnnouncementLabel ? (
+                    <Text style={lobbyStyles.lbFooterText}>Next announcement: {ranking.nextAnnouncementLabel}</Text>
+                  ) : null}
+                </View>
+              ) : null}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       <Modal
         visible={durationModalVisible}
         transparent
@@ -650,6 +918,7 @@ const lobbyStyles = StyleSheet.create({
   headerCenter: { alignItems: 'center' },
   headerTitle: { color: '#FFF', fontSize: 20, fontWeight: '800' },
   headerSub: { color: '#888', fontSize: 12, marginTop: 2 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   refreshBtn: {
     width: 38, height: 38, borderRadius: 19,
     backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center',
@@ -693,7 +962,7 @@ const lobbyStyles = StyleSheet.create({
   rankList: { marginTop: 12, gap: 8 },
   rankRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: 10,
+    backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: 10, marginBottom: 8,
   },
   rankRowMe: { borderWidth: 1, borderColor: 'rgba(255,45,85,0.35)' },
   rankNum: { width: 28, fontSize: 13, fontWeight: '900', textAlign: 'center' },
@@ -709,6 +978,59 @@ const lobbyStyles = StyleSheet.create({
   rankTopBadgeText: { color: '#FFD700', fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
   rankEmpty: { color: '#666', fontSize: 12, marginTop: 12, textAlign: 'center' },
   rankYou: { color: '#CCC', fontSize: 11, marginTop: 10, textAlign: 'center', fontWeight: '600' },
+  rankRowBlurred: { opacity: 0.35 },
+  rankAvatarBlur: {
+    width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  rankNameBlur: {
+    height: 12, width: '70%', borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.1)', marginBottom: 6,
+  },
+  rankStatsBlur: {
+    height: 9, width: '50%', borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+
+  lbModalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end',
+  },
+  lbModalCard: {
+    backgroundColor: '#141414', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    maxHeight: SH * 0.82, paddingTop: 20, paddingHorizontal: 20, paddingBottom: 28,
+  },
+  lbModalHeader: {
+    flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10,
+  },
+  lbModalHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  lbModalTitle: { color: '#FFF', fontSize: 20, fontWeight: '800' },
+  lbModalSub: { color: '#888', fontSize: 12, marginTop: 2 },
+  lbCloseBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center',
+  },
+  lbRewardNote: { color: '#AAA', fontSize: 12, lineHeight: 17, marginBottom: 10 },
+  lbMyRankBanner: {
+    backgroundColor: 'rgba(255,45,85,0.15)', borderRadius: 12, padding: 10, marginBottom: 12,
+    borderWidth: 1, borderColor: 'rgba(255,45,85,0.3)',
+  },
+  lbMyRankText: { color: '#FF6B8A', fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  lbScroll: { maxHeight: SH * 0.58 },
+  lbLockedSection: { position: 'relative', marginTop: 4, minHeight: 180 },
+  lbBlurOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, borderRadius: 16,
+    overflow: 'hidden', gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+  },
+  lbLockTitle: { color: '#FFF', fontSize: 17, fontWeight: '800', marginTop: 4 },
+  lbLockSub: { color: '#FFD700', fontSize: 13, fontWeight: '600', textAlign: 'center' },
+  lbLockHint: { color: '#888', fontSize: 11, marginBottom: 8 },
+  lbUnlockBtn: { marginTop: 4, width: '100%' },
+  lbUnlockBtnGrad: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 14, borderRadius: 14,
+  },
+  lbUnlockBtnText: { color: '#000', fontSize: 15, fontWeight: '800' },
+  lbFooterMeta: { marginTop: 16, gap: 4, paddingBottom: 8 },
+  lbFooterText: { color: '#888', fontSize: 11, textAlign: 'center' },
 
   // Section
   sectionHeader: {
@@ -721,6 +1043,20 @@ const lobbyStyles = StyleSheet.create({
   sectionCount: { color: '#888', fontSize: 14, fontWeight: '600' },
 
   loaderInline: { paddingVertical: 48, alignItems: 'center', gap: 12 },
+  fetchErrorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,159,10,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,159,10,0.25)',
+  },
+  fetchErrorBannerText: { color: '#FFCC80', fontSize: 13, flex: 1, lineHeight: 18 },
 
   // Card
   cardWrap: { marginBottom: 12, marginHorizontal: 16 },
@@ -738,6 +1074,18 @@ const lobbyStyles = StyleSheet.create({
   livePulseDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#30D158' },
   statusBadgeEnded: { backgroundColor: 'rgba(255,215,0,0.12)', borderWidth: 1, borderColor: 'rgba(255,215,0,0.35)' },
   statusTextEnded: { color: '#FFD700' },
+  winnerBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,215,0,0.35)',
+  },
+  winnerBannerText: { color: '#FFD700', fontSize: 13, fontWeight: '800', flex: 1 },
   crownBadge: {
     position: 'absolute', top: -8, alignSelf: 'center',
     width: 28, height: 28, borderRadius: 14,
@@ -749,6 +1097,18 @@ const lobbyStyles = StyleSheet.create({
     shadowOpacity: 0.45, shadowRadius: 4, elevation: 6,
   },
   hostNameWinner: { color: '#FFD700', fontWeight: '800' },
+  hostColLoser: { opacity: 0.55 },
+  winnerAvatarRing: {
+    borderWidth: 2.5,
+    borderColor: '#FFD700',
+    borderRadius: 30,
+    padding: 2,
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    elevation: 4,
+  },
 
   hostsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   hostCol: { flex: 1, alignItems: 'center', gap: 6 },
@@ -765,6 +1125,8 @@ const lobbyStyles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10,
   },
   hostScoreText: { color: '#CCC', fontSize: 11, fontWeight: '600' },
+  hostScorePillWinner: { borderColor: 'rgba(255,215,0,0.55)', backgroundColor: 'rgba(255,215,0,0.1)' },
+  hostScoreTextWinner: { color: '#FFD700', fontWeight: '800' },
 
   vsCol: { paddingHorizontal: 12 },
   vsSmall: {
@@ -799,7 +1161,8 @@ const lobbyStyles = StyleSheet.create({
     borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,215,0,0.45)',
   },
   winnerTagText: { color: '#FFD700', fontSize: 8, fontWeight: '900', letterSpacing: 0.5 },
-  endedResult: { color: '#FFD700', fontSize: 12, fontWeight: '700', textAlign: 'center', flex: 1 },
+  endedResultRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6, flex: 1 },
+  endedResult: { color: '#FFD700', fontSize: 12, fontWeight: '700', textAlign: 'right', flexShrink: 1 },
 
   activeBadge: {
     backgroundColor: 'rgba(48,209,88,0.15)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10,

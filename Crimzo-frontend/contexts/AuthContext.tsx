@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef, useCallback } from 'react';
 import { appAlert } from '../lib/appAlert';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
@@ -231,7 +231,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     await AsyncStorage.multiRemove([
       'auth_token',
       'is_guest',
@@ -242,7 +242,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(null);
     setUser(null);
     setIsGuest(false);
-  };
+  }, []);
 
   const signInWithGoogle = async (profile: {
     email: string;
@@ -341,14 +341,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const updateUser = (userData: Partial<User>) => {
+  const updateUser = useCallback((userData: Partial<User>) => {
     setUser((prev) => {
       if (!prev) return prev;
       const updated = { ...prev, ...userData, ...mergeBeanBalance({ ...prev, ...userData }, userData) };
       AsyncStorage.setItem('cached_user', JSON.stringify(updated)).catch(() => { });
       return updated;
     });
-  };
+  }, []);
 
   // ── Email OTP: Send ──
   const sendEmailOtp = async (email: string) => {

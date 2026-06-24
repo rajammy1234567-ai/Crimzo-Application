@@ -16,7 +16,14 @@ function safeAgoraUid(userId) {
   if (parsed > 0) return parsed;
   return (Date.now() % 1000000) + 10000;
 }
-const { getIo } = require('../utils/socketEmitter');
+const { getIo, emitDiamondUpdate } = require('../utils/socketEmitter');
+const { monthKey } = require('../utils/dateKeys');
+const {
+  PK_LEADERBOARD_PREVIEW_COUNT,
+  PK_LEADERBOARD_UNLOCK_DIAMONDS,
+  PK_LEADERBOARD_UNLOCK_INR,
+} = require('../config/walletConfig');
+const { recordTaskAction } = require('../utils/taskProgress');
 
 require('../models/PkMonthlyStats');
 require('../models/PkMonthlyReward');
@@ -51,6 +58,45 @@ function battleTimerPayload(battle) {
     started_at: battle.started_at || null,
     remainingSeconds: getRemainingSeconds(battle),
   };
+}
+
+function effectiveBattleStatus(battle) {
+  if (!battle) return 'waiting';
+  if (battle.status === 'ended' || battle.ended_at) return 'ended';
+  if (battle.status === 'active' && battle.started_at && getRemainingSeconds(battle) <= 0) {
+    return 'ended';
+  }
+  return battle.status || 'waiting';
+}
+
+function resolveWinnerInfo(battle) {
+  if (battle.winner_id) {
+    const winner = battle.winner_id;
+    return {
+      winner_id: winner._id || winner,
+      winner_username: winner.username || null,
+    };
+  }
+
+  if (effectiveBattleStatus(battle) !== 'ended') {
+    return { winner_id: null, winner_username: null };
+  }
+
+  const h1 = battle.host1_score || 0;
+  const h2 = battle.host2_score || 0;
+  if (h1 > h2) {
+    return {
+      winner_id: battle.host1_id?._id || battle.host1_id,
+      winner_username: battle.host1_id?.username || null,
+    };
+  }
+  if (h2 > h1) {
+    return {
+      winner_id: battle.host2_id?._id || battle.host2_id,
+      winner_username: battle.host2_id?.username || null,
+    };
+  }
+  return { winner_id: null, winner_username: null };
 }
 
 function emitPkBattlesUpdated() {
@@ -161,6 +207,14 @@ exports.createBattle = async (req, res) => {
 // Get active PK battles
 exports.getActiveBattles = async (req, res) => {
   try {
+    const { mongoose } = require('../config/db');
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        error: 'Database not ready',
+        details: 'Server is starting up — please retry in a few seconds.',
+      });
+    }
+
     // Auto-end stale waiting battles older than 15 min
     const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000);
     await PKBattle.updateMany(
@@ -168,7 +222,9 @@ exports.getActiveBattles = async (req, res) => {
       { status: 'ended', ended_at: new Date() }
     );
 
-    await autoEndExpiredBattles();
+    void autoEndExpiredBattles().catch((err) => {
+      console.error('autoEndExpiredBattles background error:', err?.message || err);
+    });
 
     const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
     const battles = await PKBattle.find({
@@ -184,18 +240,25 @@ exports.getActiveBattles = async (req, res) => {
       .populate('winner_id', 'username avatar')
       .lean();
 
-    const formatted = battles.map((b) => ({
-      ...b,
-      host1_username: b.host1_id?.username,
-      host1_avatar: b.host1_id?.avatar,
-      host2_username: b.host2_id?.username,
-      host2_avatar: b.host2_id?.avatar,
-      host1_id: b.host1_id?._id || b.host1_id,
-      host2_id: b.host2_id?._id || b.host2_id,
-      winner_id: b.winner_id?._id || b.winner_id || null,
-      winner_username: b.winner_id?.username || null,
-      remainingSeconds: getRemainingSeconds(b),
-    }));
+    const formatted = battles.map((b) => {
+      const status = effectiveBattleStatus(b);
+      const remainingSeconds = status === 'ended' ? 0 : getRemainingSeconds(b);
+      const winner = resolveWinnerInfo(b);
+
+      return {
+        ...b,
+        status,
+        host1_username: b.host1_id?.username,
+        host1_avatar: b.host1_id?.avatar,
+        host2_username: b.host2_id?.username,
+        host2_avatar: b.host2_id?.avatar,
+        host1_id: b.host1_id?._id || b.host1_id,
+        host2_id: b.host2_id?._id || b.host2_id,
+        winner_id: winner.winner_id,
+        winner_username: winner.winner_username,
+        remainingSeconds,
+      };
+    });
 
     res.json({ success: true, battles: formatted });
   } catch (error) {
@@ -419,15 +482,36 @@ exports.endBattleInternal = async (battle) => {
   return result;
 };
 
+function buildLeaderboardPayload(info, unlocked) {
+  const full = info.leaderboard || [];
+  const previewCount = PK_LEADERBOARD_PREVIEW_COUNT;
+  const hiddenCount = unlocked ? 0 : Math.max(0, full.length - previewCount);
+
+  return {
+    ...info,
+    leaderboardUnlocked: unlocked,
+    unlockCostDiamonds: PK_LEADERBOARD_UNLOCK_DIAMONDS,
+    unlockCostInr: PK_LEADERBOARD_UNLOCK_INR,
+    previewCount,
+    totalLeaderboardCount: full.length,
+    hiddenCount,
+    leaderboard: unlocked ? full : full.slice(0, previewCount),
+  };
+}
+
 exports.getLeaderboard = async (req, res) => {
   try {
-    const month = typeof req.query?.month === 'string' ? req.query.month : undefined;
+    const month = typeof req.query?.month === 'string' ? req.query.month : monthKey();
+    const viewer = await User.findById(req.user?.id)
+      .select('pk_leaderboard_unlock_month')
+      .lean();
+    const unlocked = viewer?.pk_leaderboard_unlock_month === month;
     const { getRankingInfo } = getPkRanking();
     const info = await getRankingInfo(req.user?.id, month);
-    res.json({ success: true, ...info });
+    res.json({ success: true, ...buildLeaderboardPayload(info, unlocked) });
   } catch (error) {
     console.error('PK leaderboard error:', error);
-    const { monthKey, formatMonthLabel } = require('../utils/dateKeys');
+    const { formatMonthLabel } = require('../utils/dateKeys');
     const month = monthKey();
     res.json({
       success: true,
@@ -441,7 +525,77 @@ exports.getLeaderboard = async (req, res) => {
       lastWinner: null,
       myRank: { rank: null, wins: 0, total_score: 0, battles_played: 0 },
       leaderboard: [],
+      leaderboardUnlocked: false,
+      unlockCostDiamonds: PK_LEADERBOARD_UNLOCK_DIAMONDS,
+      unlockCostInr: PK_LEADERBOARD_UNLOCK_INR,
+      previewCount: PK_LEADERBOARD_PREVIEW_COUNT,
+      totalLeaderboardCount: 0,
+      hiddenCount: 0,
       degraded: true,
+    });
+  }
+};
+
+exports.unlockLeaderboard = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
+    const month = monthKey();
+    const existing = await User.findById(userId)
+      .select('diamonds pk_leaderboard_unlock_month')
+      .lean();
+
+    if (existing?.pk_leaderboard_unlock_month === month) {
+      const { getRankingInfo } = getPkRanking();
+      const info = await getRankingInfo(userId, month);
+      return res.json({
+        success: true,
+        alreadyUnlocked: true,
+        diamonds: existing.diamonds ?? 0,
+        ...buildLeaderboardPayload(info, true),
+      });
+    }
+
+    const cost = PK_LEADERBOARD_UNLOCK_DIAMONDS;
+    const updated = await User.findOneAndUpdate(
+      { _id: userId, diamonds: { $gte: cost } },
+      {
+        $inc: { diamonds: -cost },
+        $set: { pk_leaderboard_unlock_month: month },
+      },
+      { new: true },
+    ).select('diamonds pk_leaderboard_unlock_month');
+
+    if (!updated) {
+      const balance = existing?.diamonds ?? 0;
+      return res.status(402).json({
+        error: 'Not enough diamonds',
+        details: `Need ${cost.toLocaleString('en-IN')} diamonds (≈ ₹${PK_LEADERBOARD_UNLOCK_INR}) to view the full leaderboard`,
+        unlockCostDiamonds: cost,
+        unlockCostInr: PK_LEADERBOARD_UNLOCK_INR,
+        diamonds: balance,
+        shortfall: Math.max(0, cost - balance),
+      });
+    }
+
+    void recordTaskAction(userId, 'spend_diamonds', cost).catch(() => {});
+    emitDiamondUpdate(userId, updated.diamonds);
+
+    const { getRankingInfo } = getPkRanking();
+    const info = await getRankingInfo(userId, month);
+    res.json({
+      success: true,
+      diamonds: updated.diamonds,
+      ...buildLeaderboardPayload(info, true),
+    });
+  } catch (error) {
+    console.error('PK leaderboard unlock error:', error);
+    res.status(500).json({
+      error: 'Failed to unlock leaderboard',
+      details: error.message,
     });
   }
 };

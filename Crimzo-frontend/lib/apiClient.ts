@@ -4,6 +4,9 @@ export { API_URL };
 
 const DEFAULT_TIMEOUT_MS = 20000;
 const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000; // 10 min for photos/videos over WiFi
+const RETRYABLE_STATUSES = new Set([502, 503, 504]);
+const MAX_TRANSIENT_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 800;
 
 /** Rewrites localhost media URLs so videos/images load on phone/emulator */
 export function resolveMediaUrl(url?: string | null): string {
@@ -60,6 +63,15 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError';
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isIdempotentMethod(method?: string): boolean {
+  const m = (method || 'GET').toUpperCase();
+  return m === 'GET' || m === 'HEAD' || m === 'OPTIONS';
+}
+
 function networkErrorMessage(tried: string[]): string {
   const list = tried.join(', ');
   return (
@@ -112,46 +124,59 @@ export async function apiFetch<T = unknown>(
   const tried: string[] = [];
   let sawTimeout = false;
   let lastNetworkError: unknown = null;
+  const allowTransientRetry = isIdempotentMethod(rest.method);
 
   for (const base of bases) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), effectiveTimeout);
     tried.push(base);
 
-    try {
-      const requestHeaders: Record<string, string> = {
-        ...authHeaders(token),
-        ...(headers as Record<string, string> | undefined),
-      };
-      if (isFormData) {
-        delete requestHeaders['Content-Type'];
-        delete requestHeaders['content-type'];
-      }
+    for (let attempt = 0; attempt < (allowTransientRetry ? MAX_TRANSIENT_RETRIES : 1); attempt++) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), effectiveTimeout);
 
-      const response = await fetch(`${base}${path}`, {
-        ...rest,
-        signal: controller.signal,
-        headers: requestHeaders,
-      });
+      try {
+        const requestHeaders: Record<string, string> = {
+          ...authHeaders(token),
+          ...(headers as Record<string, string> | undefined),
+        };
+        if (isFormData) {
+          delete requestHeaders['Content-Type'];
+          delete requestHeaders['content-type'];
+        }
 
-      if (base !== API_URL) {
-        setActiveApiUrl(base);
-      }
+        const response = await fetch(`${base}${path}`, {
+          ...rest,
+          signal: controller.signal,
+          headers: requestHeaders,
+        });
 
-      return await parseResponse<T>(response);
-    } catch (error: unknown) {
-      if (error instanceof ApiError) throw error;
-      if (isAbortError(error)) {
-        sawTimeout = true;
-        continue;
+        if (
+          allowTransientRetry &&
+          RETRYABLE_STATUSES.has(response.status) &&
+          attempt < MAX_TRANSIENT_RETRIES - 1
+        ) {
+          await sleep(RETRY_BASE_DELAY_MS * (attempt + 1));
+          continue;
+        }
+
+        if (base !== API_URL) {
+          setActiveApiUrl(base);
+        }
+
+        return await parseResponse<T>(response);
+      } catch (error: unknown) {
+        if (error instanceof ApiError) throw error;
+        if (isAbortError(error)) {
+          sawTimeout = true;
+          break;
+        }
+        if (isNetworkError(error)) {
+          lastNetworkError = error;
+          break;
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeout);
       }
-      if (isNetworkError(error)) {
-        lastNetworkError = error;
-        continue;
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeout);
     }
   }
 
