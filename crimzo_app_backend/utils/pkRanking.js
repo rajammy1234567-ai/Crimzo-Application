@@ -165,23 +165,39 @@ function nextAnnouncementDate(from = new Date()) {
 
 async function getRankingInfo(userId, requestedMonth) {
   const month = requestedMonth || monthKey();
-  const [leaderboard, myRank, lastReward] = await Promise.all([
-    fetchLeaderboardRows(month, 20),
-    getUserMonthlyRank(userId, month),
-    PkMonthlyReward.findOne().sort({ announced_at: -1 }).lean(),
-  ]);
+  const emptyRank = { rank: null, wins: 0, total_score: 0, battles_played: 0 };
 
+  let leaderboard = [];
+  let myRank = emptyRank;
   let lastWinner = null;
-  if (lastReward?.winner_user_id) {
-    lastWinner = {
-      month: lastReward.month,
-      monthLabel: formatMonthLabel(lastReward.month),
-      username: lastReward.winner_username,
-      wins: lastReward.wins,
-      total_score: lastReward.total_score,
-      diamonds: lastReward.diamonds_awarded,
-      announced_at: lastReward.announced_at,
-    };
+
+  try {
+    leaderboard = await fetchLeaderboardRows(month, 20);
+  } catch (err) {
+    console.error('PK leaderboard rows error:', err.message);
+  }
+
+  try {
+    myRank = (await getUserMonthlyRank(userId, month)) || emptyRank;
+  } catch (err) {
+    console.error('PK user rank error:', err.message);
+  }
+
+  try {
+    const lastReward = await PkMonthlyReward.findOne().sort({ announced_at: -1 }).lean();
+    if (lastReward?.winner_user_id) {
+      lastWinner = {
+        month: lastReward.month,
+        monthLabel: formatMonthLabel(lastReward.month),
+        username: lastReward.winner_username,
+        wins: lastReward.wins,
+        total_score: lastReward.total_score,
+        diamonds: lastReward.diamonds_awarded,
+        announced_at: lastReward.announced_at,
+      };
+    }
+  } catch (err) {
+    console.error('PK last winner error:', err.message);
   }
 
   const nextDate = nextAnnouncementDate();

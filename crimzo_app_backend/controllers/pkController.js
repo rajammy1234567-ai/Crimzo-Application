@@ -2,9 +2,28 @@ const { v4: uuidv4 } = require('uuid');
 const PKBattle = require('../models/PKBattle');
 const User = require('../models/User');
 const LiveSession = require('../models/LiveSession');
-const { toAgoraUid } = require('../utils/agoraUid');
+const agoraUidUtil = require('../utils/agoraUid');
+
+function safeAgoraUid(userId) {
+  const fn = agoraUidUtil.toAgoraUid || agoraUidUtil.deriveAgoraUid;
+  if (typeof fn === 'function') {
+    try {
+      return fn(userId);
+    } catch (_) { /* fall through */ }
+  }
+  const uidStr = String(userId || '').replace(/[^0-9]/g, '');
+  const parsed = parseInt(uidStr.slice(-9) || '0', 10);
+  if (parsed > 0) return parsed;
+  return (Date.now() % 1000000) + 10000;
+}
 const { getIo } = require('../utils/socketEmitter');
-const { recordBattleStats, getRankingInfo } = require('../utils/pkRanking');
+
+require('../models/PkMonthlyStats');
+require('../models/PkMonthlyReward');
+
+function getPkRanking() {
+  return require('../utils/pkRanking');
+}
 
 const MIN_BATTLE_DURATION = 60;
 const MAX_BATTLE_DURATION = 3600;
@@ -55,7 +74,7 @@ function buildAgoraToken(channelName, uid, role = 'publisher') {
     const appId = process.env.AGORA_APP_ID;
     const appCertificate = process.env.AGORA_APP_CERTIFICATE;
     if (!appId || !appCertificate) return null;
-    const numericUid = toAgoraUid(uid);
+    const numericUid = safeAgoraUid(uid);
     const privilegeExpiredTs = Math.floor(Date.now() / 1000) + 3600;
     const rtcRole = role === 'subscriber' ? RtcRole.SUBSCRIBER : RtcRole.PUBLISHER;
     return RtcTokenBuilder.buildTokenWithUid(appId, appCertificate, channelName, numericUid, rtcRole, privilegeExpiredTs);
@@ -87,16 +106,22 @@ exports.createBattle = async (req, res) => {
     const battleId = uuidv4();
     const channelName = `pk_${battleId}`;
 
-    const uid = toAgoraUid(userId);
+    const uid = safeAgoraUid(userId);
     const token = buildAgoraToken(channelName, uid);
 
-    const battle = await PKBattle.create({
-      battle_id: battleId,
-      host1_id: userId,
-      channel_name: channelName,
-      status: 'waiting',
-      duration,
-    });
+    let battle;
+    try {
+      battle = await PKBattle.create({
+        battle_id: battleId,
+        host1_id: userId,
+        channel_name: channelName,
+        status: 'waiting',
+        duration,
+      });
+    } catch (dbErr) {
+      console.error('PKBattle.create failed:', dbErr);
+      throw new Error(dbErr?.message || 'Database error creating battle');
+    }
 
     try {
       await User.findByIdAndUpdate(userId, { status: 'pk_waiting' });
@@ -122,7 +147,14 @@ exports.createBattle = async (req, res) => {
     emitPkBattlesUpdated();
   } catch (error) {
     console.error('Create PK error:', error);
-    res.status(500).json({ error: 'Failed to create PK battle', details: error.message });
+    const details = error?.message || String(error);
+    res.status(500).json({
+      error: 'Failed to create PK battle',
+      details,
+      hint: details.includes('toAgoraUid')
+        ? 'Backend needs latest agoraUid.js — redeploy the server'
+        : undefined,
+    });
   }
 };
 
@@ -201,8 +233,8 @@ exports.joinBattle = async (req, res) => {
       return res.status(404).json({ error: 'Battle not found or already started' });
     }
 
-    const uid = toAgoraUid(userId);
-    const host1AgoraUid = toAgoraUid(battle.host1_id);
+    const uid = safeAgoraUid(userId);
+    const host1AgoraUid = safeAgoraUid(battle.host1_id);
     const token = buildAgoraToken(battle.channel_name, uid);
 
     await User.updateMany(
@@ -261,9 +293,9 @@ exports.resumeBattle = async (req, res) => {
       return res.status(403).json({ error: 'You are not a participant in this battle' });
     }
 
-    const uid = toAgoraUid(userId);
-    const host1AgoraUid = toAgoraUid(battle.host1_id);
-    const host2AgoraUid = battle.host2_id ? toAgoraUid(battle.host2_id) : null;
+    const uid = safeAgoraUid(userId);
+    const host1AgoraUid = safeAgoraUid(battle.host1_id);
+    const host2AgoraUid = battle.host2_id ? safeAgoraUid(battle.host2_id) : null;
     const token = buildAgoraToken(battle.channel_name, uid);
 
     const host1 = await User.findById(battle.host1_id).select('username avatar').lean();
@@ -305,9 +337,9 @@ exports.watchBattle = async (req, res) => {
       return res.status(404).json({ error: 'Battle not found or already ended' });
     }
 
-    const uid = toAgoraUid(userId);
-    const host1AgoraUid = toAgoraUid(battle.host1_id);
-    const host2AgoraUid = battle.host2_id ? toAgoraUid(battle.host2_id) : null;
+    const uid = safeAgoraUid(userId);
+    const host1AgoraUid = safeAgoraUid(battle.host1_id);
+    const host2AgoraUid = battle.host2_id ? safeAgoraUid(battle.host2_id) : null;
     const token = buildAgoraToken(battle.channel_name, uid, 'subscriber');
 
     // Get host info
@@ -354,6 +386,7 @@ exports.endBattleInternal = async (battle) => {
   await battle.save();
 
   try {
+    const { recordBattleStats } = getPkRanking();
     await recordBattleStats(battle);
   } catch (statsErr) {
     console.error('PK stats update error:', statsErr.message);
@@ -389,11 +422,27 @@ exports.endBattleInternal = async (battle) => {
 exports.getLeaderboard = async (req, res) => {
   try {
     const month = typeof req.query?.month === 'string' ? req.query.month : undefined;
+    const { getRankingInfo } = getPkRanking();
     const info = await getRankingInfo(req.user?.id, month);
     res.json({ success: true, ...info });
   } catch (error) {
     console.error('PK leaderboard error:', error);
-    res.status(500).json({ error: 'Failed to load PK leaderboard', details: error.message });
+    const { monthKey, formatMonthLabel } = require('../utils/dateKeys');
+    const month = monthKey();
+    res.json({
+      success: true,
+      month,
+      monthLabel: formatMonthLabel(month),
+      rewardDiamonds: 10000,
+      rewardDay: 3,
+      nextAnnouncement: null,
+      nextAnnouncementLabel: '3rd of every month',
+      rankingNote: 'Ranked by wins, then total PK score',
+      lastWinner: null,
+      myRank: { rank: null, wins: 0, total_score: 0, battles_played: 0 },
+      leaderboard: [],
+      degraded: true,
+    });
   }
 };
 

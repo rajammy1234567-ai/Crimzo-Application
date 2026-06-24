@@ -6,4 +6,8 @@ function deriveAgoraUid(userId) {
   return (Date.now() % 1000000) + 10000;
 }
 
-module.exports = { deriveAgoraUid };
+function toAgoraUid(userId) {
+  return deriveAgoraUid(userId);
+}
+
+module.exports = { deriveAgoraUid, toAgoraUid };
