@@ -131,25 +131,25 @@ module.exports = (io) => {
     if (!removedUserIds.length) return;
     emitOnlineCountUpdate(count);
     try {
-      const activeLiveHostIds = await LiveSession.find({
+      const activeLiveSessions = await LiveSession.find({
         status: 'active',
         user_id: { $in: removedUserIds },
-      }).distinct('user_id');
-      const liveHostSet = new Set(activeLiveHostIds.map((id) => String(id)));
-      const offlineIds = removedUserIds.filter((id) => !liveHostSet.has(String(id)));
+      });
+      
+      for (const session of activeLiveSessions) {
+        try {
+          await finalizeLiveSessionEnd(session._id.toString(), io, {
+            message: 'The host disconnected.',
+          });
+        } catch (e) {
+          console.error('Failed to end stale live session:', e.message);
+        }
+      }
 
-      if (offlineIds.length) {
-        await User.updateMany(
-          { _id: { $in: offlineIds }, status: { $nin: ['live'] } },
-          { $set: { is_online: false, status: 'offline' } },
-        );
-      }
-      if (liveHostSet.size) {
-        await User.updateMany(
-          { _id: { $in: [...liveHostSet] } },
-          { $set: { status: 'live', is_online: true } },
-        );
-      }
+      await User.updateMany(
+        { _id: { $in: removedUserIds } },
+        { $set: { is_online: false, status: 'offline' } },
+      );
     } catch (err) {
       console.error('presence prune db sync error:', err.message);
     }
