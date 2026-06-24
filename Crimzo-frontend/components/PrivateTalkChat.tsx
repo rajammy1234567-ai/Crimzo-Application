@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import type { Socket } from 'socket.io-client';
 
 import { playMessageReceivePop, playMessageSendPop } from '../lib/uiSounds';
+import { subscribe } from '../lib/realtimeSync';
 import { KEYBOARD_BEHAVIOR } from './KeyboardAware';
 
 const { width: SW } = Dimensions.get('window');
@@ -25,14 +26,17 @@ const { width: SW } = Dimensions.get('window');
 interface ChatMessage {
   id: string;
   type: 'text' | 'sticker' | 'system';
+  talkSessionId?: string;
   userId?: string | number;
   username?: string;
   message?: string;
   emoji?: string;
   stickerName?: string;
+  stickerId?: string | number;
   icon_name?: string;
   icon_color?: string;
   bg_color?: string;
+  gift_diamonds?: number;
   timestamp: number;
 }
 
@@ -66,6 +70,19 @@ function appendMessage(prev: ChatMessage[], data: ChatMessage): ChatMessage[] {
       return next;
     }
   }
+  if (data.type === 'sticker') {
+    const dupIdx = prev.findIndex((m) =>
+      (m.id.startsWith('local_stk_') || m.id.startsWith('pstk_') || m.id.startsWith('stk_'))
+      && String(m.userId) === String(data.userId)
+      && String(m.stickerId ?? m.stickerName) === String(data.stickerId ?? data.stickerName)
+      && Math.abs(m.timestamp - (data.timestamp || Date.now())) < 8000,
+    );
+    if (dupIdx >= 0) {
+      const next = [...prev];
+      next[dupIdx] = data;
+      return next;
+    }
+  }
   return [...prev.slice(-200), data];
 }
 
@@ -89,6 +106,8 @@ export default function PrivateTalkChat({
   const [socket, setSocket] = useState<Socket | null>(null);
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
   const joinedRef = useRef(false);
+  const sendInFlightRef = useRef(false);
+  const [roomJoined, setRoomJoined] = useState(false);
 
   const scrollToEnd = useCallback(() => {
     requestAnimationFrame(() => {
@@ -97,25 +116,36 @@ export default function PrivateTalkChat({
   }, []);
 
   const joinPrivateRoom = useCallback((s: Socket) => {
-    if (!talkSessionId || joinedRef.current) return;
+    if (!talkSessionId) return;
     s.emit('join_talk_private', { talkSessionId, sessionId });
     joinedRef.current = true;
   }, [talkSessionId, sessionId]);
 
+  const belongsToThisTalk = useCallback((data?: { talkSessionId?: string }, allowMissing = false) => {
+    if (!data?.talkSessionId) return allowMissing;
+    return String(data.talkSessionId) === String(talkSessionId);
+  }, [talkSessionId]);
+
   useEffect(() => {
     if (!sharedSocket || !talkSessionId) return;
 
-    const onJoined = () => {
-      setMessages((prev) => appendMessage(prev, {
-        id: `sys_join_${talkSessionId}`,
-        type: 'system',
-        message: `Private room opened — only you and @${peerUsername} can see this chat.`,
-        timestamp: Date.now(),
-      }));
+    const onJoined = (data?: { talkSessionId?: string }) => {
+      if (!belongsToThisTalk(data, true)) return;
+      setRoomJoined(true);
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === `sys_join_${talkSessionId}`)) return prev;
+        return appendMessage(prev, {
+          id: `sys_join_${talkSessionId}`,
+          type: 'system',
+          message: `Private room opened — only you and @${peerUsername} can see this chat.`,
+          timestamp: Date.now(),
+        });
+      });
       scrollToEnd();
     };
 
     const onMessage = (data: ChatMessage) => {
+      if (!belongsToThisTalk(data)) return;
       setMessages((prev) => appendMessage(prev, data));
       if (String(data.userId) !== String(userId) && data.type === 'text') {
         playMessageReceivePop();
@@ -123,7 +153,12 @@ export default function PrivateTalkChat({
       scrollToEnd();
     };
 
-    const onError = (data?: { message?: string }) => {
+    const onError = (data?: { message?: string; talkSessionId?: string; code?: string }) => {
+      if (!belongsToThisTalk(data, true)) return;
+      if (data?.code === 'JOIN_FAILED' || data?.code === 'ACCESS_DENIED') {
+        joinedRef.current = false;
+        setRoomJoined(false);
+      }
       if (data?.message) {
         setMessages((prev) => appendMessage(prev, {
           id: `err_${Date.now()}`,
@@ -134,9 +169,12 @@ export default function PrivateTalkChat({
       }
     };
 
-    const onEnded = () => {
+    const onEnded = (data?: { talkSessionId?: string }) => {
+      if (!belongsToThisTalk(data)) return;
+      setRoomJoined(false);
+      joinedRef.current = false;
       setMessages((prev) => appendMessage(prev, {
-        id: `end_${Date.now()}`,
+        id: `end_${talkSessionId}`,
         type: 'system',
         message: 'Private chat ended.',
         timestamp: Date.now(),
@@ -164,20 +202,66 @@ export default function PrivateTalkChat({
         sharedSocket.emit('leave_talk_private', { talkSessionId });
       } catch { /* ignore */ }
       joinedRef.current = false;
+      setRoomJoined(false);
     };
-  }, [sharedSocket, talkSessionId, sessionId, peerUsername, joinPrivateRoom, onEnd, scrollToEnd]);
+  }, [sharedSocket, talkSessionId, sessionId, peerUsername, joinPrivateRoom, onEnd, scrollToEnd, belongsToThisTalk, userId]);
 
   useEffect(() => {
     if (visible) scrollToEnd();
   }, [visible, scrollToEnd]);
 
+  useEffect(() => {
+    return subscribe('private_talk_sticker_sent', (raw: {
+      talkSessionId?: string;
+      userId?: string;
+      username?: string;
+      sticker?: {
+        id?: string | number;
+        name?: string;
+        emoji?: string;
+        icon_name?: string;
+        icon_color?: string;
+        bg_color?: string;
+        price?: number;
+      };
+    }) => {
+      if (!belongsToThisTalk(raw)) return;
+      const sticker = raw.sticker;
+      if (!sticker) return;
+      const optimistic: ChatMessage = {
+        id: `local_stk_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        type: 'sticker',
+        talkSessionId: String(talkSessionId),
+        userId: raw.userId,
+        username: raw.username,
+        stickerId: sticker.id,
+        emoji: sticker.emoji,
+        stickerName: sticker.name,
+        icon_name: sticker.icon_name,
+        icon_color: sticker.icon_color,
+        bg_color: sticker.bg_color,
+        gift_diamonds: sticker.price,
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => appendMessage(prev, optimistic));
+      scrollToEnd();
+    });
+  }, [talkSessionId, belongsToThisTalk, scrollToEnd]);
+
   const sendMessage = useCallback(() => {
     const text = inputText.trim();
-    if (!text || !socket) return;
+    if (!text || !socket || sendInFlightRef.current) return;
+
+    if (!joinedRef.current || !roomJoined) {
+      joinPrivateRoom(socket);
+    }
+
+    sendInFlightRef.current = true;
     const optimisticId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const optimistic: ChatMessage = {
       id: optimisticId,
       type: 'text',
+      talkSessionId: String(talkSessionId),
       userId,
       username,
       message: text,
@@ -188,13 +272,14 @@ export default function PrivateTalkChat({
     socket.emit('private_talk_message', {
       talkSessionId,
       sessionId,
-      userId,
+      userId: String(userId),
       username,
       message: text,
     });
     setInputText('');
     scrollToEnd();
-  }, [inputText, socket, talkSessionId, sessionId, userId, username, scrollToEnd]);
+    sendInFlightRef.current = false;
+  }, [inputText, socket, talkSessionId, sessionId, userId, username, scrollToEnd, roomJoined, joinPrivateRoom]);
 
   const renderMessage = useCallback(({ item }: { item: ChatMessage }) => {
     if (item.type === 'system') {

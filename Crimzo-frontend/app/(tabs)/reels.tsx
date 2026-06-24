@@ -62,6 +62,22 @@ type Comment = {
   created_at: string;
 };
 
+function normalizeComment(raw: any): Comment {
+  const author = raw?.user_id;
+  const userId = author && typeof author === 'object' && author._id != null
+    ? String(author._id)
+    : String(raw?.user_id ?? '');
+  const avatarRaw = raw?.avatar ?? (author && typeof author === 'object' ? author.avatar : null);
+  return {
+    id: String(raw?.id ?? raw?._id ?? `c_${Date.now()}`),
+    user_id: userId,
+    text: String(raw?.text ?? '').trim(),
+    username: raw?.username ?? (author && typeof author === 'object' ? author.username : null) ?? 'User',
+    avatar: avatarRaw ? resolveMediaUrl(avatarRaw) : null,
+    created_at: raw?.created_at ?? new Date().toISOString(),
+  };
+}
+
 // ── Single Reel Item Component ──
 function ReelItem({
   item,
@@ -359,29 +375,24 @@ function CommentsSheet({
   token,
   onClose,
   onOpenProfile,
+  onCommentAdded,
 }: {
   visible: boolean;
   reelId: string | null;
   token: string | null;
   onClose: () => void;
   onOpenProfile: (userId: string) => void;
+  onCommentAdded?: (reelId: string, commentsCount?: number) => void;
 }) {
+  const insets = useSafeAreaInsets();
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(false);
   const [posting, setPosting] = useState(false);
-  const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+  const listRef = useRef<FlatList<Comment>>(null);
+  const inputRef = useRef<TextInput>(null);
 
-  useEffect(() => {
-    if (visible && reelId) {
-      Animated.spring(slideAnim, { toValue: 0, damping: 20, stiffness: 150, useNativeDriver: true }).start();
-      fetchComments();
-    } else {
-      Animated.timing(slideAnim, { toValue: SCREEN_HEIGHT, duration: 250, useNativeDriver: true }).start();
-    }
-  }, [visible, reelId]);
-
-  const fetchComments = async () => {
+  const fetchComments = useCallback(async () => {
     if (!reelId || !token) return;
     setLoading(true);
     try {
@@ -390,35 +401,51 @@ function CommentsSheet({
         token,
       );
       if (data.success) {
-        setComments(
-          (data.comments || []).map((c: Comment) => ({
-            ...c,
-            avatar: c.avatar ? resolveMediaUrl(c.avatar) : c.avatar,
-          })),
-        );
+        const list = (data.comments || []).map(normalizeComment);
+        setComments(list);
+        setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 80);
       }
     } catch (e) {
       console.error('Fetch comments error:', e);
+      appAlert('Error', 'Could not load comments. Try again.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [reelId, token]);
+
+  useEffect(() => {
+    if (visible && reelId) {
+      setNewComment('');
+      void fetchComments();
+      const focusTimer = setTimeout(() => inputRef.current?.focus(), 350);
+      return () => clearTimeout(focusTimer);
+    }
+    setComments([]);
+    return undefined;
+  }, [visible, reelId, fetchComments]);
 
   const postComment = async () => {
-    if (!newComment.trim() || !reelId || !token || posting) return;
+    const text = newComment.trim();
+    if (!text || !reelId || !token || posting) return;
     setPosting(true);
     try {
-      const data = await apiPost<{ success?: boolean; comment?: any }>(
+      const data = await apiPost<{ success?: boolean; comment?: any; comments_count?: number }>(
         `/api/reels/${reelId}/comment`,
-        { text: newComment.trim() },
+        { text },
         token,
       );
-      if (data.success) {
-        setComments(prev => [data.comment, ...prev]);
+      if (data.success && data.comment) {
+        const comment = normalizeComment(data.comment);
+        setComments((prev) => [...prev, comment]);
         setNewComment('');
+        onCommentAdded?.(reelId, data.comments_count);
+        setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 60);
       }
-    } catch (e) {
-      console.error('Post comment error:', e);
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'message' in e
+        ? String((e as { message?: string }).message)
+        : 'Could not post comment';
+      appAlert('Comment Failed', msg);
     } finally {
       setPosting(false);
     }
@@ -436,110 +463,125 @@ function CommentsSheet({
     return `${Math.floor(days / 7)}w`;
   };
 
-  if (!visible) return null;
+  const renderComment = ({ item: c }: { item: Comment }) => (
+    <View style={styles.commentItem}>
+      <TouchableOpacity
+        onPress={() => {
+          if (c.user_id) {
+            onClose();
+            onOpenProfile(c.user_id);
+          }
+        }}
+        activeOpacity={0.7}
+      >
+        {c.avatar ? (
+          <Image source={{ uri: c.avatar }} style={styles.commentAvatar} />
+        ) : (
+          <View style={[styles.commentAvatar, styles.commentAvatarPlaceholder]}>
+            <Ionicons name="person" size={14} color="#999" />
+          </View>
+        )}
+      </TouchableOpacity>
+      <View style={styles.commentBody}>
+        <View style={styles.commentNameRow}>
+          <TouchableOpacity
+            onPress={() => {
+              if (c.user_id) {
+                onClose();
+                onOpenProfile(c.user_id);
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.commentUsername}>{c.username}</Text>
+          </TouchableOpacity>
+          <Text style={styles.commentTime}>{timeAgo(c.created_at)}</Text>
+        </View>
+        <Text style={styles.commentText}>{c.text}</Text>
+      </View>
+    </View>
+  );
 
   return (
-    <Animated.View style={[styles.commentsOverlay, { transform: [{ translateY: slideAnim }] }]}>
-      <TouchableOpacity style={styles.commentsBackdrop} onPress={onClose} activeOpacity={1} />
-      <KeyboardAvoidingView
-        behavior={KEYBOARD_BEHAVIOR}
-        style={styles.commentsSheetWrap}
-      >
-        <View style={styles.commentsSheet}>
-        {/* Handle */}
-        <View style={styles.sheetHandle}>
-          <View style={styles.sheetHandleBar} />
-        </View>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.commentsOverlay}>
+        <TouchableOpacity style={styles.commentsBackdrop} onPress={onClose} activeOpacity={1} />
+        <KeyboardAvoidingView
+          behavior={KEYBOARD_BEHAVIOR}
+          style={styles.commentsSheetWrap}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+        >
+          <View style={[styles.commentsSheet, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+            <View style={styles.sheetHandle}>
+              <View style={styles.sheetHandleBar} />
+            </View>
 
-        <View style={styles.commentsHeader}>
-          <Text style={styles.commentsTitle}>Comments</Text>
-          <TouchableOpacity onPress={onClose}>
-            <Ionicons name="close" size={24} color="#FFF" />
-          </TouchableOpacity>
-        </View>
+            <View style={styles.commentsHeader}>
+              <Text style={styles.commentsTitle}>
+                Comments{comments.length > 0 ? ` · ${comments.length}` : ''}
+              </Text>
+              <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={24} color="#FFF" />
+              </TouchableOpacity>
+            </View>
 
-        {loading ? (
-          <View style={styles.commentsLoading}>
-            <ActivityIndicator size="small" color="#FF2D55" />
-          </View>
-        ) : comments.length === 0 ? (
-          <View style={styles.noComments}>
-            <Ionicons name="chatbubble-outline" size={40} color="#555" />
-            <Text style={styles.noCommentsText}>No comments yet</Text>
-            <Text style={styles.noCommentsSubtext}>Be the first to comment!</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={comments}
-            keyExtractor={(c) => (c?.id ?? 'comment').toString()}
-            style={styles.commentsList}
-            renderItem={({ item: c }) => (
-              <View style={styles.commentItem}>
-                <TouchableOpacity
-                  onPress={() => {
-                    if (c.user_id) {
-                      onClose();
-                      onOpenProfile(c.user_id);
-                    }
-                  }}
-                  activeOpacity={0.7}
-                >
-                  {c.avatar ? (
-                    <Image source={{ uri: c.avatar }} style={styles.commentAvatar} />
-                  ) : (
-                    <View style={[styles.commentAvatar, styles.commentAvatarPlaceholder]}>
-                      <Ionicons name="person" size={14} color="#999" />
+            <View style={styles.commentsBody}>
+              {loading ? (
+                <View style={styles.commentsLoading}>
+                  <ActivityIndicator size="small" color="#FF2D55" />
+                </View>
+              ) : (
+                <FlatList
+                  ref={listRef}
+                  data={comments}
+                  keyExtractor={(c) => c.id}
+                  style={styles.commentsList}
+                  contentContainerStyle={comments.length === 0 ? styles.commentsListEmpty : styles.commentsListContent}
+                  keyboardShouldPersistTaps="handled"
+                  onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+                  ListEmptyComponent={(
+                    <View style={styles.noComments}>
+                      <Ionicons name="chatbubble-outline" size={40} color="#555" />
+                      <Text style={styles.noCommentsText}>No comments yet</Text>
+                      <Text style={styles.noCommentsSubtext}>Be the first to comment!</Text>
                     </View>
                   )}
-                </TouchableOpacity>
-                <View style={styles.commentBody}>
-                  <View style={styles.commentNameRow}>
-                    <TouchableOpacity
-                      onPress={() => {
-                        if (c.user_id) {
-                          onClose();
-                          onOpenProfile(c.user_id);
-                        }
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.commentUsername}>{c.username}</Text>
-                    </TouchableOpacity>
-                    <Text style={styles.commentTime}>{timeAgo(c.created_at)}</Text>
-                  </View>
-                  <Text style={styles.commentText}>{c.text}</Text>
-                </View>
-              </View>
-            )}
-          />
-        )}
+                  renderItem={renderComment}
+                />
+              )}
+            </View>
 
-        {/* Input */}
-        <View style={styles.commentInputRow}>
-          <TextInput
-            style={styles.commentInput}
-            placeholder="Add a comment..."
-            placeholderTextColor="#666"
-            value={newComment}
-            onChangeText={setNewComment}
-            multiline
-            maxLength={500}
-          />
-          <TouchableOpacity
-            style={[styles.sendBtn, !newComment.trim() && styles.sendBtnDisabled]}
-            onPress={postComment}
-            disabled={!newComment.trim() || posting}
-          >
-            {posting ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <Ionicons name="send" size={20} color={newComment.trim() ? '#FFF' : '#666'} />
-            )}
-          </TouchableOpacity>
-        </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Animated.View>
+            <View style={styles.commentInputRow}>
+              <TextInput
+                ref={inputRef}
+                style={styles.commentInput}
+                placeholder={token ? 'Write a comment...' : 'Log in to comment'}
+                placeholderTextColor="#666"
+                value={newComment}
+                onChangeText={setNewComment}
+                editable={!!token && !posting}
+                multiline
+                maxLength={500}
+                returnKeyType="send"
+                blurOnSubmit={false}
+                onSubmitEditing={() => void postComment()}
+              />
+              <TouchableOpacity
+                style={[styles.sendBtn, (!newComment.trim() || !token) && styles.sendBtnDisabled]}
+                onPress={() => void postComment()}
+                disabled={!newComment.trim() || posting || !token}
+              >
+                {posting ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <Ionicons name="send" size={20} color={newComment.trim() && token ? '#FFF' : '#666'} />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
   );
 }
 
@@ -702,9 +744,23 @@ export default function ReelsScreen() {
   };
 
   const onOpenComments = (reelId: string) => {
+    if (!token) {
+      appAlert('Login Required', 'Please log in to view and post comments.');
+      return;
+    }
     setCommentReelId(reelId);
     setCommentsVisible(true);
   };
+
+  const handleCommentAdded = useCallback((reelId: string, commentsCount?: number) => {
+    setReels((prev) =>
+      prev.map((r) =>
+        r.id === reelId
+          ? { ...r, comments_count: commentsCount ?? r.comments_count + 1 }
+          : r,
+      ),
+    );
+  }, []);
 
   const handleOpenProfile = useCallback((userId: string) => {
     if (!userId) return;
@@ -1011,6 +1067,7 @@ export default function ReelsScreen() {
         reelId={commentReelId}
         token={token}
         onOpenProfile={handleOpenProfile}
+        onCommentAdded={handleCommentAdded}
         onClose={() => {
           setCommentsVisible(false);
           setCommentReelId(null);
@@ -1361,12 +1418,17 @@ const styles = StyleSheet.create({
   },
   commentsSheetWrap: {
     width: '100%',
+    justifyContent: 'flex-end',
   },
   commentsSheet: {
-    height: SCREEN_HEIGHT * 0.55,
+    height: SCREEN_HEIGHT * 0.62,
     backgroundColor: '#1C1C1E',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
+    overflow: 'hidden',
+  },
+  commentsBody: {
+    flex: 1,
   },
   sheetHandle: {
     alignItems: 'center',
@@ -1396,12 +1458,21 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 120,
+  },
+  commentsListContent: {
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+  commentsListEmpty: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingBottom: 24,
   },
   noComments: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingBottom: 60,
+    paddingVertical: 32,
   },
   noCommentsText: {
     color: '#FFF',
@@ -1469,12 +1540,13 @@ const styles = StyleSheet.create({
   commentInput: {
     flex: 1,
     backgroundColor: '#2C2C2E',
-    borderRadius: 20,
+    borderRadius: 22,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 10,
     color: '#FFF',
-    fontSize: 14,
-    maxHeight: 80,
+    fontSize: 15,
+    minHeight: 44,
+    maxHeight: 100,
   },
   sendBtn: {
     width: 38,

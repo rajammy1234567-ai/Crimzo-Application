@@ -25,12 +25,14 @@ import { API_URL, apiGet, apiPost, ApiError } from '../../lib/apiClient';
 import {
   respondLiveTalk,
   getLiveTalkStatus,
+  endLiveTalkBilling,
 } from '../../lib/liveTalkBilling';
 import {
   respondLiveCall,
   getLiveCallStatus,
 } from '../../lib/liveCallRequest';
 import { resolveRates } from '../../lib/userRates';
+import { subscribe } from '../../lib/realtimeSync';
 
 const LIVE_START_TIMEOUT_MS = 10000;
 const LOADING_SAFETY_MS = 15000;
@@ -199,6 +201,12 @@ export default function BroadcastScreen() {
   const promptedTalkRequestIds = useRef<Set<string>>(new Set());
   const handledCallRequestIds = useRef<Set<string>>(new Set());
   const promptedCallRequestIds = useRef<Set<string>>(new Set());
+  const liveBroadcastMediaRef = useRef<{
+    channelName: string;
+    agoraToken: string;
+    appId: string;
+    hostUid: number;
+  } | null>(null);
 
   // Entrance animation
   const fadeIn = useRef(new Animated.Value(0)).current;
@@ -273,6 +281,12 @@ export default function BroadcastScreen() {
     beansPerMin?: number;
   }) => {
     if (!data?.channelName || !data?.requesterId) return;
+    if (engineRef.current) {
+      engineRef.current.leaveChannel();
+      engineRef.current.release();
+      engineRef.current = null;
+      setAgoraReady(false);
+    }
     router.push({
       pathname: '/call',
       params: {
@@ -400,6 +414,23 @@ export default function BroadcastScreen() {
       ],
     );
   }, [handleTalkRequestAction, myRates]);
+
+  const exitHostPrivateChat = useCallback(async (talkSessionId: string) => {
+    setSelectedPrivateTalkId(null);
+    if (!token || !sessionId) {
+      setPrivateChats((prev) => prev.filter((p) => p.talkSessionId !== talkSessionId));
+      return;
+    }
+    try {
+      await endLiveTalkBilling(token, {
+        sessionId: String(sessionId),
+        talkSessionId,
+      });
+    } catch {
+      // non-fatal — socket event will still sync if server ended session
+    }
+    setPrivateChats((prev) => prev.filter((p) => p.talkSessionId !== talkSessionId));
+  }, [token, sessionId]);
 
   useEffect(() => {
     if (!isLive || !sessionId || !token) return;
@@ -539,7 +570,6 @@ export default function BroadcastScreen() {
           talkerName: data.talkerName || 'Viewer',
         }];
       });
-      setSelectedPrivateTalkId(data.talkSessionId);
       setActiveChatCount((c) => c + 1);
     });
     s.on('talk_private_ended', (data: { talkSessionId?: string }) => {
@@ -703,6 +733,19 @@ export default function BroadcastScreen() {
     setAgoraReady(false);
   }, [user?.id, cameraPermission, micPermission, requestCameraPermission, requestMicPermission, micEnabled, cameraEnabled]);
 
+  useEffect(() => {
+    return subscribe('live_call_screen_ended', () => {
+      const media = liveBroadcastMediaRef.current;
+      if (!isLive || !media || engineRef.current) return;
+      void initBroadcastMedia(
+        media.channelName,
+        media.agoraToken,
+        media.appId,
+        media.hostUid,
+      ).catch((err) => console.error('[Broadcast] restore live media failed:', err));
+    });
+  }, [isLive, initBroadcastMedia]);
+
   const startBroadcast = useCallback(async () => {
     if (Platform.OS === 'web') {
       appAlert('Web Limitation', 'Live broadcast with camera is not fully supported on web. Please use the mobile app (Android/iOS) for full camera and streaming features.');
@@ -748,6 +791,12 @@ export default function BroadcastScreen() {
 
       const { sessionId: sid, channelName, token: agoraToken, appId, uid: hostUid } = r;
 
+      liveBroadcastMediaRef.current = {
+        channelName,
+        agoraToken,
+        appId,
+        hostUid,
+      };
       setSessionId(sid);
       setIsLive(true);
       setLiveStartTime(Date.now());
@@ -1020,29 +1069,25 @@ export default function BroadcastScreen() {
           </View>
         )}
 
-        {isLive && selectedPrivateTalkId && sessionId && user && token && (() => {
-          const pc = privateChats.find((p) => p.talkSessionId === selectedPrivateTalkId);
-          if (!pc) return null;
-          return (
-            <PrivateTalkChat
-              key={pc.talkSessionId}
-              visible
-              talkSessionId={pc.talkSessionId}
-              sessionId={String(sessionId)}
-              userId={user.id}
-              username={user.username}
-              peerUserId={pc.talkerId || 'viewer'}
-              peerUsername={pc.talkerName}
-              isHost
-              sharedSocket={liveSocket}
-              onClose={() => setSelectedPrivateTalkId(null)}
-              onEnd={() => {
-                setPrivateChats((prev) => prev.filter((p) => p.talkSessionId !== pc.talkSessionId));
-                setSelectedPrivateTalkId(null);
-              }}
-            />
-          );
-        })()}
+        {isLive && sessionId && user && token && privateChats.map((pc) => (
+          <PrivateTalkChat
+            key={pc.talkSessionId}
+            visible={selectedPrivateTalkId === pc.talkSessionId}
+            talkSessionId={pc.talkSessionId}
+            sessionId={String(sessionId)}
+            userId={user.id}
+            username={user.username}
+            peerUserId={pc.talkerId || 'viewer'}
+            peerUsername={pc.talkerName}
+            isHost
+            sharedSocket={liveSocket}
+            onClose={() => void exitHostPrivateChat(pc.talkSessionId)}
+            onEnd={() => {
+              setPrivateChats((prev) => prev.filter((p) => p.talkSessionId !== pc.talkSessionId));
+              setSelectedPrivateTalkId((cur) => (cur === pc.talkSessionId ? null : cur));
+            }}
+          />
+        ))}
 
         {isLive && privateChats.length > 0 && !selectedPrivateTalkId && (
           <TouchableOpacity

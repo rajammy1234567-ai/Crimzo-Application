@@ -94,6 +94,7 @@ export default function WatchScreen() {
   const engineRef = useRef<IRtcEngine | null>(null);
   const billingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const talkSessionIdRef = useRef<string | null>(null);
+  const exitingTalkRef = useRef(false);
   const talkPromptShownRef = useRef(false);
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
   const [agoraReady, setAgoraReady] = useState(false);
@@ -140,21 +141,33 @@ export default function WatchScreen() {
   }, []);
 
   const finalizeTalkBilling = useCallback(async () => {
-    if (!token || !sessionId || !talkSessionIdRef.current) return;
+    if (!token || !sessionId || !talkSessionIdRef.current || exitingTalkRef.current) return;
+    exitingTalkRef.current = true;
+    const endingSessionId = talkSessionIdRef.current;
+    clearTalkBilling();
     try {
       await endLiveTalkBilling(token, {
         sessionId: String(sessionId),
-        talkSessionId: talkSessionIdRef.current,
+        talkSessionId: endingSessionId,
       });
     } catch {
       // non-fatal
+    } finally {
+      exitingTalkRef.current = false;
     }
     talkSessionIdRef.current = null;
     setActiveTalkSessionId(null);
     setPrivateChatOpen(false);
     setCanChat(false);
     setTalkStatus('idle');
-  }, [token, sessionId]);
+    setTalkMinutes(0);
+    setTalkCharged(0);
+  }, [token, sessionId, clearTalkBilling]);
+
+  const exitPrivateChat = useCallback(() => {
+    setPrivateChatOpen(false);
+    void finalizeTalkBilling();
+  }, [finalizeTalkBilling]);
 
   const startTalkBillingLoop = useCallback(() => {
     if (!token || !sessionId || billingTimerRef.current) return;
@@ -234,7 +247,6 @@ export default function WatchScreen() {
         if (status.activeTalk?.id) {
           talkSessionIdRef.current = status.activeTalk.id;
           setActiveTalkSessionId(status.activeTalk.id);
-          setPrivateChatOpen(true);
           setTalkMinutes(status.activeTalk.minutesCharged);
           setTalkCharged(status.activeTalk.totalCharged);
           startTalkBillingLoop();
@@ -258,6 +270,17 @@ export default function WatchScreen() {
     beansPerMin?: number;
   }) => {
     if (!data?.channelName) return;
+    if (engineRef.current) {
+      engineRef.current.leaveChannel();
+      engineRef.current.release();
+      engineRef.current = null;
+    }
+    if (socketRef.current) {
+      try { socketRef.current.emit('leave_live', { sessionId }); } catch { /* ignore */ }
+    }
+    remoteUidRef.current = null;
+    setRemoteUid(null);
+    setAgoraReady(false);
     setCallStatus('accepted');
     router.push({
       pathname: '/call',
@@ -466,6 +489,8 @@ export default function WatchScreen() {
       setPrivateChatOpen(false);
       setCanChat(false);
       setTalkStatus('idle');
+      setTalkMinutes(0);
+      setTalkCharged(0);
       clearTalkBilling();
     });
     socketRef.current = s;
@@ -932,13 +957,16 @@ export default function WatchScreen() {
           isHost={false}
           sharedSocket={viewerSocket}
           onGiftPress={() => setShowStickers(true)}
-          onClose={() => setPrivateChatOpen(false)}
+          onClose={exitPrivateChat}
           onEnd={() => {
+            clearTalkBilling();
             setCanChat(false);
             setTalkStatus('idle');
             setActiveTalkSessionId(null);
             setPrivateChatOpen(false);
             talkSessionIdRef.current = null;
+            setTalkMinutes(0);
+            setTalkCharged(0);
           }}
         />
       )}
@@ -976,7 +1004,7 @@ export default function WatchScreen() {
           visible={showStickers}
           onClose={() => setShowStickers(false)}
           token={token}
-          receiverId={streamData?.hostId}
+          receiverId={streamData?.hostId != null ? String(streamData.hostId) : undefined}
           sessionId={sessionId as string}
           talkSessionId={canChat && activeTalkSessionId ? activeTalkSessionId : undefined}
         />

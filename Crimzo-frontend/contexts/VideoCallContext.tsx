@@ -11,6 +11,7 @@ import {
   VIDEO_CALL_RATE_PER_MIN,
 } from '../lib/videoCallBilling';
 import { CALL_RING_TIMEOUT_MS } from '../lib/videoCallUi';
+import { publish } from '../lib/realtimeSync';
 
 export type IncomingCall = {
   callerId: string;
@@ -92,6 +93,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
                   role: 'callee',
                   peerId: data.callerId,
                   peerName: data.callerName,
+                  peerAvatar: data.callerAvatar || '',
                   ratePerMin: data.ratePerMin != null ? String(data.ratePerMin) : '',
                   beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : '',
                 },
@@ -103,21 +105,20 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
       );
     });
 
-    socket.on('video_call_accepted', () => {
+    socket.on('video_call_accepted', (data?: { channelName?: string }) => {
       clearRingTimeout();
+      publish('video_call_accepted', data);
     });
 
     socket.on('video_call_rejected', () => {
       clearRingTimeout();
-      appAlert('Call Declined', 'The other person declined your call.');
+      setIncomingCall(null);
     });
 
-    socket.on('video_call_ended', (data?: { reason?: string }) => {
+    socket.on('video_call_ended', (data?: { reason?: string; channelName?: string }) => {
       clearRingTimeout();
-      const msg = data?.reason === 'balance_exhausted'
-        ? 'Call ended — wallet balance exhausted.'
-        : 'The other person left the call.';
-      appAlert('Call Ended', msg);
+      setIncomingCall(null);
+      publish('video_call_force_end', data);
     });
 
     socket.on('video_call_error', (data?: { code?: string; message?: string; wallet_balance?: number; ratePerMin?: number; beansPerMin?: number }) => {
@@ -245,6 +246,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
         role: 'callee',
         peerId: incomingCall.callerId,
         peerName: incomingCall.callerName,
+        peerAvatar: incomingCall.callerAvatar || '',
         ratePerMin: incomingCall.ratePerMin != null ? String(incomingCall.ratePerMin) : '',
         beansPerMin: incomingCall.beansPerMin != null ? String(incomingCall.beansPerMin) : '',
       },

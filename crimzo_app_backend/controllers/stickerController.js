@@ -5,7 +5,7 @@ const UserSticker = require('../models/UserSticker');
 const GiftHistory = require('../models/GiftHistory');
 const { transferGift } = require('../utils/diamondTransfer');
 const { getIo } = require('../utils/socketEmitter');
-const { privateTalkRoom, verifyPrivateTalkAccess } = require('./liveTalkController');
+const { verifyPrivateTalkAccess, emitPrivateTalkMessage } = require('./liveTalkController');
 const { userRoom } = require('../utils/socketEmitter');
 
 function stickerPublicId(doc) {
@@ -196,11 +196,10 @@ async function broadcastStickerGift({
 
   if (talkSessionId) {
     const talk = await verifyPrivateTalkAccess(talkSessionId, senderId);
-    if (!talk) return;
-    io.to(privateTalkRoom(talkSessionId)).emit('private_talk_message', {
-      ...base,
-      talkSessionId: String(talkSessionId),
-    });
+    if (!talk) {
+      throw new Error('Private chat session is not active');
+    }
+    emitPrivateTalkMessage(io, talkSessionId, talk, base);
     return;
   }
 
@@ -234,6 +233,16 @@ exports.sendSticker = async (req, res) => {
     const sticker = await Sticker.findById(stickerId);
     if (!sticker) {
       return res.status(404).json({ error: 'Sticker not found' });
+    }
+
+    if (talkSessionId) {
+      const talk = await verifyPrivateTalkAccess(talkSessionId, senderId);
+      if (!talk) {
+        return res.status(403).json({
+          error: 'Private chat is not active. Reopen private chat and try again.',
+          code: 'TALK_NOT_ACTIVE',
+        });
+      }
     }
 
     const transfer = await transferGift(senderId, receiverId, sticker.price);

@@ -7,7 +7,7 @@ import axios from 'axios';
 
 import { useRouter } from 'expo-router';
 import { API_URL } from '../lib/apiClient';
-import { subscribe } from '../lib/realtimeSync';
+import { subscribe, publish } from '../lib/realtimeSync';
 import { useAuth } from '../contexts/AuthContext';
 
 const { width: SW } = Dimensions.get('window');
@@ -109,7 +109,7 @@ export default function StickerPanel({
     channelName,
 }: StickerPanelProps) {
     const router = useRouter();
-    const { updateUser } = useAuth();
+    const { updateUser, user } = useAuth();
 
     const [stickers, setStickers] = useState<Sticker[]>([]);
     const [diamonds, setDiamonds] = useState(0);
@@ -149,8 +149,10 @@ export default function StickerPanel({
 
     const handleStickerPress = (sticker: Sticker) => setConfirmSticker(sticker);
 
+    const sendInFlightRef = useRef(false);
+
     const confirmSend = async () => {
-        if (!confirmSticker) return;
+        if (!confirmSticker || sendInFlightRef.current) return;
         const sticker = confirmSticker;
         setConfirmSticker(null);
         if (diamonds < sticker.price) {
@@ -169,6 +171,7 @@ export default function StickerPanel({
             return;
         }
         try {
+            sendInFlightRef.current = true;
             setSending(sticker.id);
             const stickerId = sticker.id != null ? String(sticker.id) : '';
             if (!stickerId) {
@@ -179,8 +182,8 @@ export default function StickerPanel({
                 `${API_URL}/api/stickers/send`,
                 {
                     stickerId,
-                    receiverId,
-                    sessionId,
+                    receiverId: String(receiverId),
+                    sessionId: sessionId != null ? String(sessionId) : undefined,
                     talkSessionId: talkSessionId || undefined,
                     channelName: channelName || undefined,
                 },
@@ -190,12 +193,21 @@ export default function StickerPanel({
                 setDiamonds(r.data.remainingDiamonds);
                 updateUser({ diamonds: r.data.remainingDiamonds });
             }
+            if (talkSessionId && user?.id) {
+                publish('private_talk_sticker_sent', {
+                    talkSessionId,
+                    userId: String(user.id),
+                    username: user.username || 'User',
+                    sticker,
+                });
+            }
             onSendSticker?.(sticker);
             onClose();
         } catch (e: unknown) {
             const err = e as { response?: { data?: { error?: string } } };
             appAlert('Gift Failed', err.response?.data?.error || 'Failed to send gift');
         } finally {
+            sendInFlightRef.current = false;
             setSending(null);
         }
     };

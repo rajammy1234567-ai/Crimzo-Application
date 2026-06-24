@@ -11,37 +11,32 @@ async function transferGift(senderId, receiverId, amount) {
     throw new Error('Cannot gift yourself');
   }
 
-  const receiver = await User.findById(receiverId).select('_id username');
-  if (!receiver) throw new Error('Receiver not found');
+  const receiverExists = await User.findById(receiverId).select('_id');
+  if (!receiverExists) throw new Error('Receiver not found');
 
-  const session = await mongoose.startSession();
+  const sender = await User.findOneAndUpdate(
+    { _id: senderId, diamonds: { $gte: value } },
+    { $inc: { diamonds: -value } },
+    { new: true },
+  ).select('diamonds username');
+  if (!sender) throw new Error('Insufficient diamonds');
+
   try {
-    let senderAfter;
-    await session.withTransaction(async () => {
-      const sender = await User.findOneAndUpdate(
-        { _id: senderId, diamonds: { $gte: value } },
-        { $inc: { diamonds: -value } },
-        { new: true, session },
-      ).select('diamonds username');
-      if (!sender) throw new Error('Insufficient diamonds');
-
-      await User.findByIdAndUpdate(
-        receiverId,
-        { $inc: { beans: value } },
-        { session },
-      );
-
-      senderAfter = sender;
-    });
-
-    const receiverAfter = await User.findById(receiverId).select('beans diamonds');
+    const receiver = await User.findByIdAndUpdate(
+      receiverId,
+      { $inc: { beans: value } },
+      { new: true },
+    ).select('beans');
+    if (!receiver) {
+      throw new Error('Receiver not found');
+    }
 
     const { recordTaskAction } = require('./taskProgress');
     void recordTaskAction(senderId, 'spend_diamonds', value).catch(() => {});
     void recordTaskAction(senderId, 'send_gift', 1).catch(() => {});
 
-    const senderDiamonds = senderAfter.diamonds;
-    const receiverBeans = receiverAfter?.beans || 0;
+    const senderDiamonds = sender.diamonds;
+    const receiverBeans = receiver.beans || 0;
 
     emitBalanceUpdate(senderId, { diamonds: senderDiamonds });
     emitBalanceUpdate(receiverId, { beans: receiverBeans });
@@ -58,9 +53,36 @@ async function transferGift(senderId, receiverId, amount) {
       beansEarned: value,
       transferred: value,
     };
-  } finally {
-    session.endSession();
+  } catch (err) {
+    await User.findByIdAndUpdate(senderId, { $inc: { diamonds: value } }).catch(() => {});
+    throw err;
   }
+}
+
+/** Undo a completed gift transfer (e.g. if message save fails after debit). */
+async function rollbackGiftTransfer(senderId, receiverId, amount) {
+  const value = Math.floor(Number(amount));
+  if (!Number.isFinite(value) || value < 1) return;
+
+  const receiver = await User.findOneAndUpdate(
+    { _id: receiverId, beans: { $gte: value } },
+    { $inc: { beans: -value } },
+    { new: true },
+  ).select('beans');
+  if (!receiver) {
+    throw new Error('Could not rollback gift — receiver balance changed');
+  }
+
+  const sender = await User.findByIdAndUpdate(
+    senderId,
+    { $inc: { diamonds: value } },
+    { new: true },
+  ).select('diamonds');
+
+  if (sender) {
+    emitBalanceUpdate(senderId, { diamonds: sender.diamonds });
+  }
+  emitBalanceUpdate(receiverId, { beans: receiver.beans });
 }
 
 /** @deprecated Use transferGift — credits beans to receiver for withdrawable earnings */
@@ -68,4 +90,4 @@ async function transferDiamonds(senderId, receiverId, amount) {
   return transferGift(senderId, receiverId, amount);
 }
 
-module.exports = { transferGift, transferDiamonds };
+module.exports = { transferGift, transferDiamonds, rollbackGiftTransfer };

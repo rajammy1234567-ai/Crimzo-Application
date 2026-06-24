@@ -2,7 +2,7 @@ const Message = require('../models/Message');
 const User = require('../models/User');
 const GiftHistory = require('../models/GiftHistory');
 const mongoose = require('mongoose');
-const { transferDiamonds } = require('../utils/diamondTransfer');
+const { transferDiamonds, rollbackGiftTransfer } = require('../utils/diamondTransfer');
 const { assertCanInteract } = require('../utils/followPermissions');
 const { emitNewMessage } = require('../utils/socketEmitter');
 
@@ -24,8 +24,9 @@ function formatMessagePayload(populated) {
   };
 }
 
-function broadcastMessage(_senderId, receiverId, payload) {
+function broadcastMessage(senderId, receiverId, payload) {
   emitNewMessage(receiverId, payload);
+  emitNewMessage(senderId, payload);
 }
 const { CHAT_GIFT_PRESETS } = require('../config/walletConfig');
 
@@ -182,12 +183,18 @@ exports.getGiftPresets = (_req, res) => {
 
 /** Send diamonds as gift in chat — sender loses, receiver gains */
 exports.sendDiamondGift = async (req, res) => {
-  try {
-    const senderId = req.user.id;
-    const { receiverId, diamonds } = req.body;
-    const amount = Math.floor(Number(diamonds));
+  let transfer = null;
+  let amount = 0;
+  const senderId = req.user.id;
 
-    if (!receiverId || !Number.isFinite(amount) || amount < 1) {
+  try {
+    const { receiverId, diamonds } = req.body;
+    amount = Math.floor(Number(diamonds));
+
+    if (!receiverId || !mongoose.Types.ObjectId.isValid(String(receiverId))) {
+      return res.status(400).json({ error: 'Valid receiver required' });
+    }
+    if (!Number.isFinite(amount) || amount < 1) {
       return res.status(400).json({ error: 'Receiver and valid diamond amount required' });
     }
     if (!CHAT_GIFT_PRESETS.includes(amount)) {
@@ -203,40 +210,45 @@ exports.sendDiamondGift = async (req, res) => {
       });
     }
 
-    const transfer = await transferDiamonds(senderId, receiverId, amount);
+    transfer = await transferDiamonds(senderId, receiverId, amount);
 
-    const sender = await User.findById(senderId).select('username');
     const content = `🎁 Sent ${amount.toLocaleString()} diamonds`;
 
-    const msg = await Message.create({
-      sender_id: senderId,
-      receiver_id: receiverId,
-      content,
-      message_type: 'gift',
-      gift_diamonds: amount,
-    });
+    let msg;
+    try {
+      msg = await Message.create({
+        sender_id: senderId,
+        receiver_id: receiverId,
+        content,
+        message_type: 'gift',
+        gift_diamonds: amount,
+      });
 
-    await GiftHistory.create({
-      sender_id: senderId,
-      receiver_id: receiverId,
-      diamonds_spent: amount,
-      beans_earned: transfer.beansEarned || amount,
-      session_id: `chat_${msg._id}`,
-    });
+      await GiftHistory.create({
+        sender_id: senderId,
+        receiver_id: receiverId,
+        diamonds_spent: amount,
+        beans_earned: transfer.beansEarned || amount,
+        session_id: `chat_${msg._id}`,
+      });
+    } catch (persistErr) {
+      await rollbackGiftTransfer(senderId, receiverId, amount);
+      throw persistErr;
+    }
 
     const populated = await Message.findById(msg._id)
       .populate('sender_id', 'username avatar')
       .lean();
 
-    const giftMsg = {
+    const giftMsg = formatMessagePayload({
       ...populated,
       sender_username: populated.sender_id?.username,
       sender_avatar: populated.sender_id?.avatar,
       message_type: 'gift',
       gift_diamonds: amount,
-    };
+    });
 
-    broadcastMessage(senderId, receiverId, formatMessagePayload(giftMsg));
+    broadcastMessage(senderId, receiverId, giftMsg);
 
     res.json({
       success: true,
@@ -249,8 +261,16 @@ exports.sendDiamondGift = async (req, res) => {
   } catch (error) {
     console.error('Send diamond gift error:', error);
     const msg = error.message || 'Gift failed';
-    const status = msg.includes('Insufficient') ? 400 : 500;
-    res.status(status).json({ error: msg });
+    let status = 500;
+    let code;
+    if (msg.includes('Insufficient')) {
+      status = 400;
+      code = 'INSUFFICIENT_DIAMONDS';
+    } else if (msg.includes('Follow') || msg.includes('interact')) {
+      status = 403;
+      code = 'FOLLOW_REQUIRED';
+    }
+    res.status(status).json({ error: msg, code });
   }
 };
 

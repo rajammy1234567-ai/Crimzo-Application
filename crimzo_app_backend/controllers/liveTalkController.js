@@ -9,6 +9,19 @@ const {
 const { inrToBeans } = require('../utils/beanConversion');
 const { chargeLiveTalkMinute, InsufficientWalletError } = require('../utils/liveTalkCharge');
 const { getIo, userRoom } = require('../utils/socketEmitter');
+
+function emitPrivateTalkMessage(io, talkSessionId, talk, payload) {
+  if (!io || !talkSessionId || !payload) return;
+  const enriched = {
+    ...payload,
+    talkSessionId: String(talkSessionId),
+  };
+  io.to(privateTalkRoom(talkSessionId)).emit('private_talk_message', enriched);
+  if (talk) {
+    io.to(userRoom(talk.host_id)).emit('private_talk_message', enriched);
+    io.to(userRoom(talk.talker_id)).emit('private_talk_message', enriched);
+  }
+}
 const { resolveUserRates } = require('../utils/userRates');
 
 function privateTalkRoom(talkSessionId) {
@@ -40,6 +53,7 @@ async function emitTalkPrivateReady(io, talkSession) {
 }
 
 exports.privateTalkRoom = privateTalkRoom;
+exports.emitPrivateTalkMessage = emitPrivateTalkMessage;
 
 exports.verifyPrivateTalkAccess = async (talkSessionId, userId) => {
   if (!talkSessionId || !userId) return null;
@@ -535,7 +549,11 @@ exports.tickTalkBilling = async (req, res) => {
 exports.endTalkBilling = async (req, res) => {
   try {
     const { sessionId, talkSessionId } = req.body;
-    const query = { talker_id: req.user.id, status: 'active' };
+    const userId = String(req.user.id);
+    const query = {
+      status: 'active',
+      $or: [{ talker_id: userId }, { host_id: userId }],
+    };
     if (talkSessionId) query._id = talkSessionId;
     if (sessionId) query.session_id = sessionId;
 

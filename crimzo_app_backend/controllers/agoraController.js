@@ -3,13 +3,7 @@ const User = require('../models/User');
 const { getBillingSettings } = require('../utils/billingSettings');
 const { resolveUserRates } = require('../utils/userRates');
 const { assertCanInteract } = require('../utils/followPermissions');
-
-function buildAgoraUid(userId) {
-  const uidStr = String(userId).replace(/[^0-9]/g, '');
-  const parsed = parseInt(uidStr.slice(-9) || '0', 10);
-  if (parsed > 0) return parsed;
-  return (Date.now() % 1000000) + 10000;
-}
+const { deriveAgoraUid } = require('../utils/agoraUid');
 
 function requireAgoraCreds(res) {
   const appId = process.env.AGORA_APP_ID;
@@ -68,7 +62,7 @@ exports.generateCallToken = async (req, res) => {
     const creds = requireAgoraCreds(res);
     if (!creds) return;
 
-    const uid = buildAgoraUid(req.user.id);
+    const uid = deriveAgoraUid(req.user.id);
     const expirationTimeInSeconds = 3600;
     const currentTimestamp = Math.floor(Date.now() / 1000);
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;

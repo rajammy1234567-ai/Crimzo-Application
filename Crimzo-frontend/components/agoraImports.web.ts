@@ -25,7 +25,11 @@ export const createAgoraRtcEngine = () => ({
     enableLocalAudio: () => { },
 });
 
-export const ChannelProfileType = { ChannelProfileLiveBroadcasting: 1 };
+export const ChannelProfileType = { ChannelProfileLiveBroadcasting: 1, ChannelProfileCommunication: 0 };
 export const ClientRoleType = { ClientRoleAudience: 2, ClientRoleBroadcaster: 1 };
+export const ConnectionStateType = { ConnectionStateConnected: 3 };
+export const AudioProfileType = { AudioProfileSpeechStandard: 1 };
+export const AudioScenarioType = { AudioScenarioChatroom: 5 };
+export const RemoteAudioState = { RemoteAudioStateStarting: 1, RemoteAudioStateDecoding: 2 };
 export const RtcSurfaceView = () => null;
 export type IRtcEngine = any;

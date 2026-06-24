@@ -7,6 +7,7 @@ const {
   userCanChatOnLive,
   verifyPrivateTalkAccess,
   privateTalkRoom,
+  emitPrivateTalkMessage,
 } = require('../controllers/liveTalkController');
 const { finalizeLiveSessionEnd } = require('../controllers/liveController');
 const PKBattle = require('../models/PKBattle');
@@ -457,7 +458,11 @@ module.exports = (io) => {
         });
       } catch (err) {
         console.error('join_talk_private error:', err.message);
-        socket.emit('private_talk_error', { code: 'JOIN_FAILED', message: 'Could not join private chat' });
+        socket.emit('private_talk_error', {
+          code: 'JOIN_FAILED',
+          talkSessionId: String(talkSessionId),
+          message: 'Could not join private chat',
+        });
       }
     });
 
@@ -483,11 +488,9 @@ module.exports = (io) => {
           });
           return;
         }
-        const room = privateTalkRoom(talkSessionId);
-        io.to(room).emit('private_talk_message', {
+        emitPrivateTalkMessage(io, talkSessionId, talk, {
           id: `pmsg_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
           type: 'text',
-          talkSessionId: String(talkSessionId),
           userId: String(userId),
           username: username || socket.authenticatedUsername || 'User',
           message: message.trim(),
@@ -534,11 +537,9 @@ module.exports = (io) => {
           sessionId: sessionId || talk.session_id,
         });
 
-        const room = privateTalkRoom(talkSessionId);
-        io.to(room).emit('private_talk_message', {
+        emitPrivateTalkMessage(io, talkSessionId, talk, {
           id: `pstk_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
           type: 'sticker',
-          talkSessionId: String(talkSessionId),
           userId: String(userId),
           username: username || 'User',
           stickerId,
@@ -754,9 +755,9 @@ module.exports = (io) => {
     });
 
     socket.on('video_call_end', (data) => {
-      const { otherUserId, channelName } = data || {};
+      const { otherUserId, channelName, reason } = data || {};
       if (!otherUserId) return;
-      io.to(userRoom(otherUserId)).emit('video_call_ended', { channelName });
+      io.to(userRoom(otherUserId)).emit('video_call_ended', { channelName, reason });
     });
 
     socket.on('disconnect', async () => {

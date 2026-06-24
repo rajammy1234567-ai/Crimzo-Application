@@ -22,6 +22,21 @@ export const ClientRoleType = {
   ClientRoleAudience: 2,
 } as const;
 
+export const ConnectionStateType = {
+  ConnectionStateDisconnected: 1,
+  ConnectionStateConnecting: 2,
+  ConnectionStateConnected: 3,
+  ConnectionStateReconnecting: 4,
+  ConnectionStateFailed: 5,
+} as const;
+
+export const AudioProfileType = { AudioProfileSpeechStandard: 1 } as const;
+export const AudioScenarioType = { AudioScenarioChatroom: 5 } as const;
+export const RemoteAudioState = {
+  RemoteAudioStateStarting: 1,
+  RemoteAudioStateDecoding: 2,
+} as const;
+
 /* ── Engine stub ── */
 const engineStub = {
   initialize: (_opts: any) => {},

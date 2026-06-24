@@ -318,21 +318,41 @@ exports.addComment = async (req, res) => {
     const { reelId } = req.params;
     const { text } = req.body;
 
+    if (!mongoose.Types.ObjectId.isValid(reelId)) {
+      return res.status(400).json({ error: 'Invalid reel id' });
+    }
+
     if (!text || !text.trim()) {
       return res.status(400).json({ error: 'Comment text required' });
     }
 
-    const comment = await ReelComment.create({ reel_id: reelId, user_id: userId, text: text.trim() });
+    const reel = await Reel.findById(reelId).select('_id');
+    if (!reel) {
+      return res.status(404).json({ error: 'Reel not found' });
+    }
+
+    const comment = await ReelComment.create({
+      reel_id: reelId,
+      user_id: userId,
+      text: text.trim().slice(0, 500),
+    });
     await Reel.findByIdAndUpdate(reelId, { $inc: { comments_count: 1 } });
 
     const populated = await ReelComment.findById(comment._id).populate('user_id', 'username avatar').lean();
-    const c = populated;
-    res.json({ success: true, comment: { 
-      ...c, 
-      id: populated._id ? populated._id.toString() : undefined,
-      username: c.user_id?.username, 
-      avatar: c.user_id?.avatar 
-    } });
+    const author = populated?.user_id && typeof populated.user_id === 'object' ? populated.user_id : null;
+    const comments_count = await ReelComment.countDocuments({ reel_id: reelId });
+    res.json({
+      success: true,
+      comments_count,
+      comment: {
+        id: populated._id ? populated._id.toString() : undefined,
+        user_id: author?._id ? author._id.toString() : String(userId),
+        text: populated.text,
+        username: author?.username || 'User',
+        avatar: author?.avatar ? normalizeMediaUrl(author.avatar) : null,
+        created_at: populated.created_at,
+      },
+    });
   } catch (error) {
     console.error('Add comment error:', error);
     res.status(500).json({ error: 'Failed to add comment' });
@@ -345,8 +365,12 @@ exports.getComments = async (req, res) => {
     const { reelId } = req.params;
     const { limit = 50, offset = 0 } = req.query;
 
+    if (!mongoose.Types.ObjectId.isValid(reelId)) {
+      return res.status(400).json({ error: 'Invalid reel id' });
+    }
+
     const comments = await ReelComment.find({ reel_id: reelId })
-      .sort({ created_at: -1 })
+      .sort({ created_at: 1 })
       .skip(parseInt(offset))
       .limit(parseInt(limit))
       .populate('user_id', 'username avatar')
@@ -364,7 +388,7 @@ exports.getComments = async (req, res) => {
         user_id: authorId,
         text: c.text,
         username: author?.username || 'User',
-        avatar: author?.avatar || null,
+        avatar: author?.avatar ? normalizeMediaUrl(author.avatar) : null,
         created_at: c.created_at,
       };
     });
