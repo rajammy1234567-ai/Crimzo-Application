@@ -3,8 +3,8 @@ const { BEAN_PACKAGES } = require('../config/diamondPackages');
 /** Base rate from tier-1 package: 5000 beans = ₹100 */
 const BEANS_PER_INR = BEAN_PACKAGES[0].beans / BEAN_PACKAGES[0].price;
 
-/** 1 diamond converts to 1 bean on withdrawal */
-const DIAMONDS_PER_BEAN = 1;
+/** 100 diamonds convert to 1 bean on withdrawal */
+const DIAMONDS_PER_BEAN = 0.01;
 
 function diamondsToBeans(diamonds) {
   return Math.floor(Math.max(0, Number(diamonds) || 0) * DIAMONDS_PER_BEAN);
@@ -42,8 +42,9 @@ function deductBeansForWithdraw(diamonds, beans, beansNeeded) {
   if (b >= need) {
     return { diamonds: d, beans: b - need };
   }
-  const fromDiamonds = need - b;
-  return { diamonds: d - fromDiamonds, beans: 0 };
+  const beansFromDiamonds = need - b;
+  const diamondsCost = beansFromDiamonds / DIAMONDS_PER_BEAN;
+  return { diamonds: Math.max(0, d - diamondsCost), beans: 0 };
 }
 
 module.exports = {

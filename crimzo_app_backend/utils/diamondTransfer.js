@@ -24,9 +24,9 @@ async function transferGift(senderId, receiverId, amount) {
   try {
     const receiver = await User.findByIdAndUpdate(
       receiverId,
-      { $inc: { beans: value } },
+      { $inc: { diamonds: value } },
       { new: true },
-    ).select('beans');
+    ).select('diamonds');
     if (!receiver) {
       throw new Error('Receiver not found');
     }
@@ -36,21 +36,21 @@ async function transferGift(senderId, receiverId, amount) {
     void recordTaskAction(senderId, 'send_gift', 1).catch(() => {});
 
     const senderDiamonds = sender.diamonds;
-    const receiverBeans = receiver.beans || 0;
+    const receiverDiamonds = receiver.diamonds || 0;
 
     emitBalanceUpdate(senderId, { diamonds: senderDiamonds });
-    emitBalanceUpdate(receiverId, { beans: receiverBeans });
+    emitBalanceUpdate(receiverId, { diamonds: receiverDiamonds });
     emitGiftReceived(receiverId, {
       senderId: String(senderId),
       amount: value,
       diamondsSpent: value,
-      beansEarned: value,
+      diamondsEarned: value,
     });
 
     return {
       senderDiamonds,
-      receiverBeans,
-      beansEarned: value,
+      receiverBeans: receiverDiamonds, // Kept as receiverBeans to not break socket clients expecting this key
+      beansEarned: value, // Kept as beansEarned for GiftHistory
       transferred: value,
     };
   } catch (err) {
@@ -65,10 +65,10 @@ async function rollbackGiftTransfer(senderId, receiverId, amount) {
   if (!Number.isFinite(value) || value < 1) return;
 
   const receiver = await User.findOneAndUpdate(
-    { _id: receiverId, beans: { $gte: value } },
-    { $inc: { beans: -value } },
+    { _id: receiverId, diamonds: { $gte: value } },
+    { $inc: { diamonds: -value } },
     { new: true },
-  ).select('beans');
+  ).select('diamonds');
   if (!receiver) {
     throw new Error('Could not rollback gift — receiver balance changed');
   }
@@ -82,7 +82,7 @@ async function rollbackGiftTransfer(senderId, receiverId, amount) {
   if (sender) {
     emitBalanceUpdate(senderId, { diamonds: sender.diamonds });
   }
-  emitBalanceUpdate(receiverId, { beans: receiver.beans });
+  emitBalanceUpdate(receiverId, { diamonds: receiver.diamonds });
 }
 
 /** @deprecated Use transferGift — credits beans to receiver for withdrawable earnings */
