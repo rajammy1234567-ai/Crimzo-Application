@@ -231,9 +231,12 @@ export default function VideoCallScreen() {
     publish('video_call_force_end', { channelName, reason, local: reason !== 'remote_ended' });
 
     if (engineRef.current) {
-      engineRef.current.leaveChannel();
-      engineRef.current.release();
+      const eng = engineRef.current;
       engineRef.current = null;
+      eng.leaveChannel();
+      setTimeout(() => {
+        try { eng.release(); } catch {}
+      }, 300);
     }
     if (socketRef.current) {
       socketRef.current.removeAllListeners();

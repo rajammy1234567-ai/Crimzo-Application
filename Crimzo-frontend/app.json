@@ -24,7 +24,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.livestreamhub",
-      "versionCode": 24,
+      "versionCode": 25,
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",

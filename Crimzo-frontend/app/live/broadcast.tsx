@@ -247,9 +247,10 @@ export default function BroadcastScreen() {
   useEffect(() => {
     return () => {
       if (engineRef.current) {
-        engineRef.current.leaveChannel();
-        engineRef.current.release();
+        const eng = engineRef.current;
         engineRef.current = null;
+        eng.leaveChannel();
+        setTimeout(() => { try { eng.release(); } catch {} }, 300);
       }
     };
   }, []);
@@ -282,9 +283,10 @@ export default function BroadcastScreen() {
   }) => {
     if (!data?.channelName || !data?.requesterId) return;
     if (engineRef.current) {
-      engineRef.current.leaveChannel();
-      engineRef.current.release();
+      const eng = engineRef.current;
       engineRef.current = null;
+      eng.leaveChannel();
+      setTimeout(() => { try { eng.release(); } catch {} }, 300);
       setAgoraReady(false);
     }
     setTimeout(() => {
@@ -600,9 +602,10 @@ export default function BroadcastScreen() {
     s.on('stream_ended', async (data: { message?: string }) => {
       setIsLive(false);
       if (engineRef.current) {
-        engineRef.current.leaveChannel();
-        engineRef.current.release();
+        const eng = engineRef.current;
         engineRef.current = null;
+        eng.leaveChannel();
+        setTimeout(() => { try { eng.release(); } catch {} }, 300);
       }
       if (sessionId) {
         try { await apiPost(`/api/live/end/${sessionId}`, {}, token); } catch { }
@@ -810,9 +813,10 @@ export default function BroadcastScreen() {
       });
     } catch (e: unknown) {
       if (engineRef.current) {
-        engineRef.current.leaveChannel();
-        engineRef.current.release();
+        const eng = engineRef.current;
         engineRef.current = null;
+        eng.leaveChannel();
+        setTimeout(() => { try { eng.release(); } catch {} }, 300);
       }
       setAgoraReady(false);
       const msg = e instanceof ApiError
@@ -832,7 +836,7 @@ export default function BroadcastScreen() {
       {
         text: 'End Stream', style: 'destructive', onPress: async () => {
           try { await apiPost(`/api/live/end/${sessionId}`, {}, token); } catch { }
-          if (engineRef.current) { engineRef.current.leaveChannel(); engineRef.current.release(); engineRef.current = null; }
+          if (engineRef.current) { const eng = engineRef.current; engineRef.current = null; eng.leaveChannel(); setTimeout(() => { try { eng.release(); } catch {} }, 300); }
           setAgoraReady(false); setIsLive(false); router.replace('/(tabs)/home');
         }
       },

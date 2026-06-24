@@ -271,9 +271,12 @@ export default function WatchScreen() {
   }) => {
     if (!data?.channelName) return;
     if (engineRef.current) {
-      engineRef.current.leaveChannel();
-      engineRef.current.release();
+      const eng = engineRef.current;
       engineRef.current = null;
+      eng.leaveChannel();
+      setTimeout(() => {
+        try { eng.release(); } catch {}
+      }, 300);
     }
     if (socketRef.current) {
       try { socketRef.current.emit('leave_live', { sessionId }); } catch { /* ignore */ }
