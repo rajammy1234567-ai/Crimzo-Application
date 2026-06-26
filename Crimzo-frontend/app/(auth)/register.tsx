@@ -10,6 +10,11 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { PRIVACY_URL, TERMS_URL } from '../../lib/apiClient';
 import GoogleSignInButton from '../../components/auth/GoogleSignInButton';
+import {
+  formatReferralInviteCode,
+  getPendingReferralCode,
+  savePendingReferralCode,
+} from '../../lib/referral';
 
 export default function RegisterScreen() {
   const [email, setEmail] = useState('');
@@ -22,6 +27,7 @@ export default function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [referralId, setReferralId] = useState('');
   const { register } = useAuth();
   const router = useRouter();
 
@@ -32,6 +38,20 @@ export default function RegisterScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
   const glowAnim = useRef(new Animated.Value(0.4)).current;
+
+  useEffect(() => {
+    getPendingReferralCode()
+      .then((code) => {
+        if (code) setReferralId(formatReferralInviteCode(code));
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const trimmed = referralId.trim();
+    if (!trimmed) return;
+    savePendingReferralCode(trimmed).catch(() => {});
+  }, [referralId]);
 
   useEffect(() => {
     Animated.parallel([
@@ -103,6 +123,9 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
+      if (referralId.trim()) {
+        await savePendingReferralCode(referralId.trim());
+      }
       await register(trimmedEmail, password, trimmedUsername, avatarUri || undefined);
       router.replace('/(tabs)/home');
     } catch (err: any) {
@@ -230,6 +253,22 @@ export default function RegisterScreen() {
                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={s.eyeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                   <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="rgba(255,255,255,0.4)" />
                 </TouchableOpacity>
+              </View>
+
+              {/* Referral ID */}
+              <View style={s.inputWrap}>
+                <Ionicons name="gift-outline" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
+                <TextInput
+                  style={s.input}
+                  placeholder="Referral ID (e.g. CRIMZO-ABC123)"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  value={referralId}
+                  onChangeText={(t) => setReferralId(t.toUpperCase())}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  returnKeyType="next"
+                  selectionColor="#FF2D55"
+                />
               </View>
 
               {/* Confirm Password */}

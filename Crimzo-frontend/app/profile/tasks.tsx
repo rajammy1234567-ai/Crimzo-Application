@@ -8,7 +8,6 @@ import {
   ScrollView,
   StatusBar,
   ActivityIndicator,
-  Share,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +15,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiGet, apiPost, ApiError } from '../../lib/apiClient';
 import { BeanIcon, DiamondIcon, BeanAmount, DiamondAmount } from '../../lib/currencyIcons';
-import { buildReferralLink, buildReferralShareMessage } from '../../lib/referral';
+import { buildReferralShareMessage, getReferralSharePayload, shareReferralInvite } from '../../lib/referral';
 
 interface Task {
   key: string;
@@ -261,27 +260,18 @@ export default function TasksScreen() {
   };
 
   const handleInviteShare = async () => {
-    const code = user?.crimzo_id || String(user?.id || '');
-    if (!code) {
-      appAlert('Invite', 'Your referral ID is loading. Try again in a moment.');
-      return;
-    }
     try {
-      let link = buildReferralLink(code);
-      if (token) {
-        try {
-          const data = await apiGet<{ referralLink?: string }>('/api/referral/me', token);
-          if (data.referralLink) link = data.referralLink;
-        } catch {
-          // fallback to local link builder
-        }
+      const shared = await shareReferralInvite(token, user?.crimzo_id);
+      if (!shared) {
+        appAlert('Invite', 'Your referral ID is loading. Try again in a moment.');
       }
-      await Share.share({
-        message: buildReferralShareMessage(code, link),
-        url: link,
-      });
     } catch {
-      appAlert('Invitation', buildReferralShareMessage(code, buildReferralLink(code)));
+      const payload = await getReferralSharePayload(token, user?.crimzo_id);
+      if (payload) {
+        appAlert('Invitation', buildReferralShareMessage(payload.code, payload.link));
+      } else {
+        appAlert('Invite', 'Your referral ID is loading. Try again in a moment.');
+      }
     }
   };
 

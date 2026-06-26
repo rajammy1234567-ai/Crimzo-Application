@@ -55,6 +55,11 @@
               "scheme": "https",
               "host": "www.crimzo.live",
               "pathPrefix": "/invite"
+            },
+            {
+              "scheme": "https",
+              "host": "crimzo.live",
+              "pathPrefix": "/invite"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]

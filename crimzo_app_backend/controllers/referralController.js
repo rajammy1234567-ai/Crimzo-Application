@@ -99,9 +99,9 @@ exports.renderInviteLandingPage = async (req, res) => {
     ${valid ? `<img class="avatar" src="${avatar}" alt="${displayName}" onerror="this.style.display='none'" />` : ''}
     <h1>${valid ? `${displayName} invited you!` : 'Join Crimzo'}</h1>
     ${valid
-      ? `<p>Download Crimzo from <strong>www.crimzo.live</strong> and sign up with this referral ID.</p>
-         <p class="reward">You get ${REFERRED_USER_REWARD_DIAMONDS.toLocaleString('en-IN')} diamonds · ${displayName} gets ${REFERRAL_REWARD_DIAMONDS.toLocaleString('en-IN')} diamonds</p>
-         <div class="code">CRIMZO-${code}</div>`
+      ? `<p>Download Crimzo from <strong>www.crimzo.live</strong> and register with this Referral ID:</p>
+         <div class="code">CRIMZO-${code}</div>
+         <p class="reward">Signup par ${REFERRED_USER_REWARD_DIAMONDS.toLocaleString('en-IN')} diamonds milenge</p>`
       : `<p class="invalid">This invite link is invalid or expired. You can still download Crimzo from www.crimzo.live.</p>`}
     <a class="btn btn-primary" href="${APP_DOWNLOAD_URL}" id="downloadApp">Download from crimzo.live</a>
     <a class="btn btn-secondary" href="${appDeepLink}" id="openApp">Open in Crimzo App</a>

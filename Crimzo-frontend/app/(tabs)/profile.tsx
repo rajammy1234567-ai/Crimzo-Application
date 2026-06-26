@@ -18,7 +18,7 @@ import { subscribe } from '../../lib/realtimeSync';
 import { getDisplayBeans } from '../../lib/beanBalance';
 import { formatCount } from '../../lib/diamondPackages';
 import { BeanIcon, DiamondIcon } from '../../lib/currencyIcons';
-import { buildReferralLink, buildReferralShareMessage } from '../../lib/referral';
+import { shareReferralInvite } from '../../lib/referral';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const REEL_THUMB_W = (SW - 6) / 3;
@@ -281,25 +281,11 @@ export default function ProfileScreen() {
   };
 
   const shareInvite = async () => {
-    const code = user?.crimzo_id || String(user?.id || '');
-    if (!code) {
-      appAlert('Invite', 'Your referral ID is loading. Try again in a moment.');
-      return;
-    }
     try {
-      let link = buildReferralLink(code);
-      if (token) {
-        try {
-          const data = await apiGet<{ referralLink?: string }>('/api/referral/me', token);
-          if (data.referralLink) link = data.referralLink;
-        } catch {
-          // fallback to local link builder
-        }
+      const shared = await shareReferralInvite(token, user?.crimzo_id);
+      if (!shared) {
+        appAlert('Invite', 'Your referral ID is loading. Try again in a moment.');
       }
-      await Share.share({
-        message: buildReferralShareMessage(code, link),
-        url: link,
-      });
     } catch (e) {
       console.error('Share invite error:', e);
     }

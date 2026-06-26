@@ -9,7 +9,6 @@ import {
   formatReferralDiamonds,
   normalizeReferralCode,
   REFERRED_USER_REWARD_DIAMONDS,
-  REFERRER_REWARD_DIAMONDS,
   savePendingReferralCode,
 } from '../../lib/referral';
 
@@ -78,7 +77,7 @@ export default function InviteScreen() {
         <Text style={styles.title}>{valid ? `${referrerName} invited you!` : 'Join Crimzo'}</Text>
         <Text style={styles.subtitle}>
           {valid
-            ? `Sign up with the referral ID below. You get ${formatReferralDiamonds(preview?.referredUserRewardDiamonds ?? REFERRED_USER_REWARD_DIAMONDS)} diamonds and ${referrerName} gets ${formatReferralDiamonds(preview?.rewardPerReferralDiamonds ?? REFERRER_REWARD_DIAMONDS)} diamonds.`
+            ? `Register with referral ID below — ${formatReferralDiamonds(preview?.referredUserRewardDiamonds ?? REFERRED_USER_REWARD_DIAMONDS)} diamonds milenge.`
             : 'This invite link looks invalid, but you can still join Crimzo at www.crimzo.live.'}
         </Text>
         {code ? (

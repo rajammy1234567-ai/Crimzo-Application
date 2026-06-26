@@ -1,6 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Share } from 'react-native';
+import { apiGet } from './apiClient';
 
 const STORAGE_KEY = 'pending_referral_code';
+
+/** Fixed referral domain — do not change per environment. */
 export const REFERRAL_WEB_BASE = 'https://www.crimzo.live';
 
 /** Tier-1 package rate — must match backend referralConfig */
@@ -24,20 +28,69 @@ export function normalizeReferralCode(raw?: string | null): string | null {
   return code || null;
 }
 
+/** Always the same link format: https://www.crimzo.live/invite/{code} */
 export function buildReferralLink(code: string): string {
   const normalized = normalizeReferralCode(code);
-  return normalized ? `${REFERRAL_WEB_BASE}/invite/${normalized}` : REFERRAL_WEB_BASE;
+  if (!normalized) return REFERRAL_WEB_BASE;
+  return `${REFERRAL_WEB_BASE}/invite/${encodeURIComponent(normalized)}`;
+}
+
+export function formatReferralInviteCode(code: string): string {
+  const normalized = normalizeReferralCode(code);
+  return normalized ? `CRIMZO-${normalized}` : '';
 }
 
 export function buildReferralShareMessage(code: string, link?: string): string {
   const normalized = normalizeReferralCode(code) || code;
+  const inviteId = formatReferralInviteCode(normalized) || `CRIMZO-${normalized}`;
   const url = link || buildReferralLink(normalized);
   return [
     'Join me on Crimzo!',
-    `Sign up with my referral ID and get ${formatReferralDiamonds(REFERRED_USER_REWARD_DIAMONDS)} diamonds!`,
-    `Code: CRIMZO-${normalized}`,
+    '',
+    `Referral ID: ${inviteId}`,
+    'Register karte waqt yeh ID use karo.',
+    `Signup par ${formatReferralDiamonds(REFERRED_USER_REWARD_DIAMONDS)} diamonds milenge.`,
+    '',
     url,
   ].join('\n');
+}
+
+export async function getReferralSharePayload(
+  token: string | null,
+  fallbackCode?: string | null,
+): Promise<{ code: string; link: string } | null> {
+  let code = normalizeReferralCode(fallbackCode);
+
+  if (token) {
+    try {
+      const data = await apiGet<{
+        referralCode?: string;
+        inviteCode?: string;
+      }>('/api/referral/me', token);
+      code = normalizeReferralCode(data.referralCode || data.inviteCode) || code;
+    } catch {
+      // use fallback code
+    }
+  }
+
+  if (!code) return null;
+  return {
+    code,
+    link: buildReferralLink(code),
+  };
+}
+
+export async function shareReferralInvite(
+  token: string | null,
+  fallbackCode?: string | null,
+): Promise<boolean> {
+  const payload = await getReferralSharePayload(token, fallbackCode);
+  if (!payload) return false;
+
+  await Share.share({
+    message: buildReferralShareMessage(payload.code, payload.link),
+  });
+  return true;
 }
 
 export function extractReferralCodeFromUrl(url: string): string | null {

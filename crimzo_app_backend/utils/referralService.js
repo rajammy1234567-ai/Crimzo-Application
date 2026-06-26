@@ -24,7 +24,8 @@ function normalizeReferralCode(raw) {
 function buildReferralLink(crimzoId) {
   const code = normalizeReferralCode(crimzoId);
   if (!code) return null;
-  return `${REFERRAL_WEB_BASE_URL}/invite/${code}`;
+  const base = String(REFERRAL_WEB_BASE_URL || 'https://www.crimzo.live').replace(/\/+$/, '');
+  return `${base}/invite/${encodeURIComponent(code)}`;
 }
 
 async function findReferrerByCode(referralCode) {
