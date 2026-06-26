@@ -8,6 +8,7 @@ const User = require('../models/User');
 const { getBillingSettings } = require('../utils/billingSettings');
 const { resolveUserRates } = require('../utils/userRates');
 const { emitLiveStreamsUpdated } = require('../utils/socketEmitter');
+const { getHostBusyState } = require('../utils/liveHostBusy');
 const { deriveAgoraUid } = require('../utils/agoraUid');
 
 const STALE_LIVE_MS = 6 * 60 * 60 * 1000; // 6 hours max live session
@@ -335,6 +336,7 @@ exports.joinLive = async (req, res) => {
     const hostIdStr = String(host._id || hostId || '');
     const billingSettings = await getBillingSettings();
     const hostRates = resolveUserRates(host, billingSettings);
+    const hostBusyState = await getHostBusyState(sessionId, hostIdStr);
     res.json({
       success: true, channelName, token, appId, uid, hostUid,
       sessionId: session.id, hostId: hostIdStr, hostUsername: host.username,
@@ -345,6 +347,8 @@ exports.joinLive = async (req, res) => {
       hostChatBeansPerMin: hostRates.chatBeansPerMin,
       talkBillingEnabled: billingSettings.liveTalkBillingEnabled,
       voiceBillingEnabled: billingSettings.videoCallBillingEnabled,
+      hostBusy: hostBusyState.busy,
+      hostBusyType: hostBusyState.type,
     });
   } catch (error) {
     console.error('Join live error:', error);

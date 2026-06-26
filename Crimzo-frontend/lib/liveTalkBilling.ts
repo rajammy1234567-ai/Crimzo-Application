@@ -25,6 +25,8 @@ export type LiveTalkStatus = {
     requesterName?: string;
     requesterAvatar?: string | null;
   }>;
+  hostBusy?: boolean;
+  hostBusyType?: 'talk' | 'call' | null;
   hostChatEarnings?: {
     beansPerMinute: number;
     sessionBeansEarned: number;

@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import { API_URL, apiFetch, apiGet, apiPost, ApiError } from '../lib/apiClient';
 import { mergeBeanBalance } from '../lib/beanBalance';
 import { getApiUrlCandidates, setActiveApiUrl } from '../lib/apiConfig';
+import { clearPendingReferralCode, getReferralSignupPayload } from '../lib/referral';
 if (typeof window !== 'undefined' || (typeof navigator !== 'undefined' && navigator.product === 'ReactNative')) {
   console.log('%c🔗 Crimzo using backend:', 'color:#0f0', API_URL);
 }
@@ -215,6 +216,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
+      const referralPayload = await getReferralSignupPayload();
+      Object.entries(referralPayload).forEach(([key, value]) => {
+        formData.append(key, String(value));
+      });
+
       // Use fetch instead of axios for FormData (better React Native support)
       const data = await apiFetch<{ token: string; user: User }>('/api/auth/register', {
         method: 'POST',
@@ -223,6 +229,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       console.log('Registration response:', data);
+      await clearPendingReferralCode();
       persistAuth(data.token, data.user);
     } catch (error: unknown) {
       const message = error instanceof ApiError ? error.message : (error instanceof Error ? error.message : 'Registration failed');
@@ -252,6 +259,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     idToken?: string;
   }) => {
     try {
+      const referralPayload = await getReferralSignupPayload();
       const data = await apiPost<{ token: string; user: User }>(
         '/api/auth/google',
         {
@@ -260,10 +268,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           googleId: profile.googleId,
           avatar: profile.avatar,
           idToken: profile.idToken,
+          ...referralPayload,
         },
         null,
         15000,
       );
+      await clearPendingReferralCode();
       persistAuth(data.token, data.user);
     } catch (error: unknown) {
       throw new Error(error instanceof ApiError ? error.message : 'Google sign-in failed.');
@@ -328,12 +338,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const verifyPhoneOtp = async (phone: string, otp: string) => {
     try {
       console.log('Verifying OTP for:', phone);
+      const referralPayload = await getReferralSignupPayload();
       const data = await apiPost<{ token: string; user: User }>(
         '/api/auth/phone/verify-otp',
-        { phone, otp },
+        { phone, otp, ...referralPayload },
         null,
         15000,
       );
+      await clearPendingReferralCode();
       persistAuth(data.token, data.user);
     } catch (error: unknown) {
       console.error('Verify OTP error:', error instanceof Error ? error.message : error);
@@ -385,12 +397,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ── Email OTP: Complete Registration ──
   const completeEmailRegistration = async (email: string, username: string, password: string) => {
     try {
+      const referralPayload = await getReferralSignupPayload();
       const data = await apiPost<{ token: string; user: User }>(
         '/api/auth/email/complete-registration',
-        { email: email.trim().toLowerCase(), username: username.trim(), password },
+        {
+          email: email.trim().toLowerCase(),
+          username: username.trim(),
+          password,
+          ...referralPayload,
+        },
         null,
         15000,
       );
+      await clearPendingReferralCode();
       persistAuth(data.token, data.user);
     } catch (error: unknown) {
       throw new Error(error instanceof ApiError ? error.message : 'Registration failed.');

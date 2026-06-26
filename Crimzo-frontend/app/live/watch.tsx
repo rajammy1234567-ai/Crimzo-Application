@@ -27,6 +27,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import io from 'socket.io-client';
 import LiveChat from '../../components/LiveChat';
 import PrivateTalkChat from '../../components/PrivateTalkChat';
+import HostBusyOverlay from '../../components/HostBusyOverlay';
 import StickerPanel from '../../components/StickerPanel';
 import {
   createAgoraRtcEngine,
@@ -94,6 +95,7 @@ export default function WatchScreen() {
   const engineRef = useRef<IRtcEngine | null>(null);
   const billingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const talkSessionIdRef = useRef<string | null>(null);
+  const canChatRef = useRef(false);
   const exitingTalkRef = useRef(false);
   const talkPromptShownRef = useRef(false);
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
@@ -112,11 +114,17 @@ export default function WatchScreen() {
   const [requestingCall, setRequestingCall] = useState(false);
   const [activeTalkSessionId, setActiveTalkSessionId] = useState<string | null>(null);
   const [privateChatOpen, setPrivateChatOpen] = useState(false);
+  const [hostBusy, setHostBusy] = useState(false);
+  const [hostBusyType, setHostBusyType] = useState<'talk' | 'call' | null>(null);
 
   const hostRates = useMemo(
     () => resolveRates(streamData?.hostVoiceRatePerMin, streamData?.hostChatRatePerMin),
     [streamData?.hostVoiceRatePerMin, streamData?.hostChatRatePerMin],
   );
+
+  useEffect(() => {
+    canChatRef.current = canChat;
+  }, [canChat]);
 
   useEffect(() => {
     return subscribe('follow_status_changed', (payload) => {
@@ -217,6 +225,8 @@ export default function WatchScreen() {
         setPrivateChatOpen(true);
         setCanChat(true);
         setTalkStatus('active');
+        setHostBusy(false);
+        setHostBusyType(null);
         if (billing.wallet_balance != null) {
           setWalletBalance(billing.wallet_balance);
           updateUser({ wallet_balance: billing.wallet_balance });
@@ -244,6 +254,8 @@ export default function WatchScreen() {
       if (status.canChat) {
         setCanChat(true);
         setTalkStatus('active');
+        setHostBusy(false);
+        setHostBusyType(null);
         if (status.activeTalk?.id) {
           talkSessionIdRef.current = status.activeTalk.id;
           setActiveTalkSessionId(status.activeTalk.id);
@@ -251,9 +263,13 @@ export default function WatchScreen() {
           setTalkCharged(status.activeTalk.totalCharged);
           startTalkBillingLoop();
         }
-      } else if (status.pendingRequest?.id) {
-        setTalkRequestId(status.pendingRequest.id);
-        setTalkStatus('pending');
+      } else {
+        setHostBusy(!!status.hostBusy);
+        setHostBusyType(status.hostBusy ? (status.hostBusyType ?? 'talk') : null);
+        if (status.pendingRequest?.id) {
+          setTalkRequestId(status.pendingRequest.id);
+          setTalkStatus('pending');
+        }
       }
     } catch {
       // non-fatal
@@ -486,6 +502,8 @@ export default function WatchScreen() {
       if (data?.talkSessionId) {
         talkSessionIdRef.current = data.talkSessionId;
         setActiveTalkSessionId(data.talkSessionId);
+        setHostBusy(false);
+        setHostBusyType(null);
       }
     });
     s.on('talk_private_ended', () => {
@@ -497,6 +515,11 @@ export default function WatchScreen() {
       setTalkMinutes(0);
       setTalkCharged(0);
       clearTalkBilling();
+    });
+    s.on('live_host_busy', (data: { busy?: boolean; type?: 'talk' | 'call' | null }) => {
+      if (canChatRef.current) return;
+      setHostBusy(!!data?.busy);
+      setHostBusyType(data?.busy ? (data?.type ?? 'talk') : null);
     });
     socketRef.current = s;
     setViewerSocket(s);
@@ -548,6 +571,8 @@ export default function WatchScreen() {
         hostUid?: number;
         hostFollowers?: number;
         hostId?: string;
+        hostBusy?: boolean;
+        hostBusyType?: 'talk' | 'call' | null;
       }>(`/api/live/join/${sessionId}`, {}, token);
       const hostId = r.hostId != null ? String(r.hostId) : r.hostId;
       const hostAgoraUid = typeof r.hostUid === 'number'
@@ -560,6 +585,8 @@ export default function WatchScreen() {
       });
       setViewerCount(1);
       setHostFollowers(r.hostFollowers || 0);
+      setHostBusy(!!r.hostBusy);
+      setHostBusyType(r.hostBusy ? (r.hostBusyType ?? 'talk') : null);
 
       if (!isAgoraNativeLinked) {
         console.warn('[Watch] Agora native module not linked — video requires production/dev build');
@@ -722,9 +749,14 @@ export default function WatchScreen() {
   const isViewer = streamData?.hostId !== user?.id;
   const hostAgoraUid = streamData?.hostUid ?? toAgoraUid(streamData?.hostId);
   const showHostVideo = isAgoraNativeLinked && agoraReady && !!hostAgoraUid;
+  const showBusyOverlay = isViewer && hostBusy && !canChat;
 
   const handleVoiceCall = () => {
     if (!streamData?.hostId) return;
+    if (hostBusy) {
+      appAlert('Host Busy', 'The host is busy with someone right now. Please try again later.');
+      return;
+    }
     if (callStatus === 'pending') return;
     if (callStatus === 'accepted') {
       appAlert('Call Ready', 'Your call request was accepted. Joining the private call...');
@@ -745,6 +777,10 @@ export default function WatchScreen() {
       setPrivateChatOpen(true);
       return;
     }
+    if (hostBusy) {
+      appAlert('Host Busy', 'The host is busy with someone right now. Please try again later.');
+      return;
+    }
     if (talkStatus === 'pending') return;
     void sendTalkRequest();
   };
@@ -755,7 +791,13 @@ export default function WatchScreen() {
 
       {/* ═══ STREAM VIDEO ═══ */}
       <View style={StyleSheet.absoluteFill}>
-        {showHostVideo ? (
+        {showBusyOverlay ? (
+          <HostBusyOverlay
+            username={streamData?.hostUsername || 'Host'}
+            avatar={hostAvatar}
+            message="Busy with someone"
+          />
+        ) : showHostVideo ? (
           <>
             <RtcSurfaceView
               style={{ flex: 1 }}
@@ -867,7 +909,7 @@ export default function WatchScreen() {
               shadowColor: callStatus === 'pending' ? '#64748B' : '#10B981',
             }]}
             onPress={handleVoiceCall}
-            disabled={requestingCall || callStatus === 'pending'}
+            disabled={hostBusy || requestingCall || callStatus === 'pending'}
             activeOpacity={0.88}
           >
             <LinearGradient
@@ -901,7 +943,7 @@ export default function WatchScreen() {
               shadowColor: talkStatus === 'active' ? '#F59E0B' : talkStatus === 'pending' ? '#64748B' : '#3B82F6',
             }]}
             onPress={handleChatRequest}
-            disabled={requestingTalk || talkStatus === 'pending'}
+            disabled={hostBusy || requestingTalk || talkStatus === 'pending'}
             activeOpacity={0.88}
           >
             <LinearGradient
@@ -935,6 +977,12 @@ export default function WatchScreen() {
       )}
 
       {/* Talk billing status */}
+      {isViewer && hostBusy && !canChat && talkStatus === 'idle' && callStatus === 'idle' && (
+        <View style={s.talkBanner}>
+          <Text style={s.talkBannerText}>Host is busy in a private session</Text>
+        </View>
+      )}
+
       {isViewer && (talkStatus === 'active' || talkStatus === 'pending' || callStatus === 'pending') && (
         <View style={s.talkBanner}>
           <Text style={s.talkBannerText}>

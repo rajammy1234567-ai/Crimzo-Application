@@ -34,7 +34,22 @@ function rejectIfBanned(user, res) {
   return false;
 }
 
-function formatAuthUser(user, extra = {}) {
+async function applyReferralIfPresent(newUser, req) {
+  const { extractReferralCodeFromBody, processReferralSignup } = require('../utils/referralService');
+  const code = extractReferralCodeFromBody(req.body);
+  if (!code) return null;
+  try {
+    return await processReferralSignup(newUser, code);
+  } catch (err) {
+    console.error('Referral on signup error:', err.message);
+    return null;
+  }
+}
+
+function formatAuthUser(user, extra = {}, referralResult = null) {
+  const diamonds = referralResult?.applied && referralResult.referredUserDiamonds != null
+    ? referralResult.referredUserDiamonds
+    : (user.diamonds ?? 0);
   return {
     id: user.id,
     crimzo_id: user.crimzo_id,
@@ -43,7 +58,7 @@ function formatAuthUser(user, extra = {}) {
     avatar: user.avatar,
     bio: user.bio,
     country: user.country,
-    diamonds: user.diamonds ?? 0,
+    diamonds,
     beans: user.beans ?? 0,
     wallet_balance: user.wallet_balance ?? 0,
     followers_count: user.followers_count ?? 0,
@@ -156,6 +171,7 @@ exports.verifyOtp = async (req, res) => {
 
     const phoneEmail = `${phone}@phone.crimzo.local`;
     let user = await User.findOne({ email: phoneEmail });
+    let referralResult = null;
 
     if (!user) {
       const username = `User_${phone.slice(-4)}`;
@@ -169,6 +185,7 @@ exports.verifyOtp = async (req, res) => {
         beans: 0,
         country: 'India',
       });
+      referralResult = await applyReferralIfPresent(user, req);
       console.log('New phone user created, ID:', user.id);
     } else {
       console.log('Existing phone user found, ID:', user.id);
@@ -188,7 +205,7 @@ exports.verifyOtp = async (req, res) => {
     res.json({
       success: true,
       token,
-      user: formatAuthUser(user),
+      user: formatAuthUser(user, {}, referralResult),
     });
   } catch (error) {
     console.error('Verify OTP error:', error);
@@ -270,6 +287,7 @@ exports.googleLogin = async (req, res) => {
     }
 
     let user = await User.findOne({ email: normalizedEmail });
+    let referralResult = null;
 
     if (!user) {
       const username = resolvedName || `User_${uuidv4().substring(0, 6)}`;
@@ -284,6 +302,7 @@ exports.googleLogin = async (req, res) => {
         beans: 0,
         country: 'India',
       });
+      referralResult = await applyReferralIfPresent(user, req);
       console.log('New Google user created, ID:', user.id);
     } else {
       if (resolvedAvatar && !user.avatar) {
@@ -306,7 +325,7 @@ exports.googleLogin = async (req, res) => {
     res.json({
       success: true,
       token,
-      user: formatAuthUser(user),
+      user: formatAuthUser(user, {}, referralResult),
     });
   } catch (error) {
     console.error('Google login error:', error);
@@ -372,7 +391,8 @@ exports.register = async (req, res) => {
       country: 'India',
     });
 
-    console.log('User registered successfully, ID:', user.id);
+    const referralResult = await applyReferralIfPresent(user, req);
+    console.log('User registered successfully, ID:', user.id, referralResult?.applied ? '(referral applied)' : '');
 
     const token = jwt.sign(
       { id: user.id, email: normalizedEmail, username: username.trim() },
@@ -390,7 +410,7 @@ exports.register = async (req, res) => {
         avatar: avatarUrl,
         bio: null,
         country: 'India',
-      }),
+      }, referralResult),
     });
   } catch (error) {
     console.error('Register error:', error);
@@ -621,6 +641,7 @@ exports.completeEmailRegistration = async (req, res) => {
       beans: 0,
       country: 'India',
     });
+    const referralResult = await applyReferralIfPresent(user, req);
     const token = jwt.sign(
       { id: user.id, email: normalizedEmail, username: username.trim() },
       process.env.JWT_SECRET,
@@ -639,7 +660,7 @@ exports.completeEmailRegistration = async (req, res) => {
         avatar: null,
         bio: null,
         country: 'India',
-      }),
+      }, referralResult),
     });
   } catch (error) {
     console.error('Complete email registration error:', error);

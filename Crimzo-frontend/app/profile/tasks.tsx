@@ -16,6 +16,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiGet, apiPost, ApiError } from '../../lib/apiClient';
 import { BeanIcon, DiamondIcon, BeanAmount, DiamondAmount } from '../../lib/currencyIcons';
+import { buildReferralLink, buildReferralShareMessage } from '../../lib/referral';
 
 interface Task {
   key: string;
@@ -260,13 +261,27 @@ export default function TasksScreen() {
   };
 
   const handleInviteShare = async () => {
-    const code = user?.crimzo_id || user?.id || 'USER';
+    const code = user?.crimzo_id || String(user?.id || '');
+    if (!code) {
+      appAlert('Invite', 'Your referral ID is loading. Try again in a moment.');
+      return;
+    }
     try {
+      let link = buildReferralLink(code);
+      if (token) {
+        try {
+          const data = await apiGet<{ referralLink?: string }>('/api/referral/me', token);
+          if (data.referralLink) link = data.referralLink;
+        } catch {
+          // fallback to local link builder
+        }
+      }
       await Share.share({
-        message: `Join me on Crimzo! Use my invite code: CRIMZO-${code}\nhttps://crimzo.app/invite/${code}`,
+        message: buildReferralShareMessage(code, link),
+        url: link,
       });
     } catch {
-      appAlert('Invitation', `Share code: CRIMZO-${code}`);
+      appAlert('Invitation', buildReferralShareMessage(code, buildReferralLink(code)));
     }
   };
 

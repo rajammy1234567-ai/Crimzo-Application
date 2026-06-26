@@ -7,6 +7,7 @@ const {
 const { resolveUserRates } = require('../utils/userRates');
 const { chargeCallMinute, InsufficientWalletError } = require('../utils/liveTalkCharge');
 const { getIo, userRoom } = require('../utils/socketEmitter');
+const { syncHostBusyFromCallChannel } = require('../utils/liveHostBusy');
 
 async function getPeerVoiceRate(peerId, settings) {
   if (!peerId) return settings.videoCallRatePerMin;
@@ -214,6 +215,7 @@ exports.tickBilling = async (req, res) => {
         session.status = 'ended_insufficient';
         session.endedAt = new Date();
         await session.save();
+        await syncHostBusyFromCallChannel(session.channelName);
         return res.status(400).json({
           error: 'Wallet balance exhausted — ending the call.',
           code: 'BALANCE_EXHAUSTED',
@@ -261,15 +263,22 @@ exports.tickBilling = async (req, res) => {
 exports.endSession = async (req, res) => {
   try {
     const { channelName, sessionId } = req.body;
-    const query = { payerId: req.user.id, status: 'active' };
+    const query = { status: 'active' };
     if (sessionId) query._id = sessionId;
     if (channelName) query.channelName = channelName;
+    if (!sessionId && !channelName) {
+      query.$or = [{ payerId: req.user.id }, { peerId: String(req.user.id) }];
+    }
 
     const session = await VideoCallSession.findOneAndUpdate(
       query,
       { status: 'ended', endedAt: new Date() },
       { new: true },
     );
+
+    if (session?.channelName) {
+      await syncHostBusyFromCallChannel(session.channelName);
+    }
 
     res.json({
       success: true,

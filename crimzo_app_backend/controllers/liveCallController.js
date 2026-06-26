@@ -7,6 +7,7 @@ const {
 } = require('../utils/billingSettings');
 const { resolveUserRates } = require('../utils/userRates');
 const { getIo, userRoom } = require('../utils/socketEmitter');
+const { syncHostBusyToLiveRoom } = require('../utils/liveHostBusy');
 
 async function getHostVoiceRate(hostId, settings) {
   const host = await User.findById(hostId).select('voice_rate_per_min_inr chat_rate_per_min_inr');
@@ -160,6 +161,7 @@ exports.respondCall = async (req, res) => {
           ...payload,
           role: 'callee',
         });
+        await syncHostBusyToLiveRoom(request.session_id, hostId);
       } else {
         io.to(userRoom(request.requester_id)).emit('live_call_rejected', payload);
       }

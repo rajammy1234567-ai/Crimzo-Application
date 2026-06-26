@@ -9,6 +9,7 @@ const {
 const { inrToBeans } = require('../utils/beanConversion');
 const { chargeLiveTalkMinute, InsufficientWalletError } = require('../utils/liveTalkCharge');
 const { getIo, userRoom } = require('../utils/socketEmitter');
+const { getHostBusyState, syncHostBusyToLiveRoom } = require('../utils/liveHostBusy');
 
 function emitPrivateTalkMessage(io, talkSessionId, talk, payload) {
   if (!io || !talkSessionId || !payload) return;
@@ -50,6 +51,7 @@ async function emitTalkPrivateReady(io, talkSession) {
   };
   io.to(userRoom(talkSession.talker_id)).emit('talk_private_ready', payload);
   io.to(userRoom(talkSession.host_id)).emit('talk_private_ready', payload);
+  await syncHostBusyToLiveRoom(talkSession.session_id, talkSession.host_id);
 }
 
 exports.privateTalkRoom = privateTalkRoom;
@@ -273,6 +275,14 @@ exports.getTalkStatus = async (req, res) => {
         .lean()
       : [];
 
+    let hostBusy = false;
+    let hostBusyType = null;
+    if (!isHost && !active) {
+      const busyState = await getHostBusyState(sessionId);
+      hostBusy = busyState.busy;
+      hostBusyType = busyState.type;
+    }
+
     let hostChatEarnings = null;
     if (isHost) {
       const activeTalks = await LiveTalkSession.find({
@@ -316,6 +326,8 @@ exports.getTalkStatus = async (req, res) => {
         canChat: true,
       } : null,
       canChat: isHost || !!active,
+      hostBusy,
+      hostBusyType,
       hostChatEarnings,
       pendingRequests: pendingForHost.map((r) => ({
         id: r._id.toString(),
@@ -501,6 +513,7 @@ exports.tickTalkBilling = async (req, res) => {
         talkSession.status = 'ended_insufficient';
         talkSession.ended_at = new Date();
         await talkSession.save();
+        await syncHostBusyToLiveRoom(talkSession.session_id, talkSession.host_id);
         return res.status(400).json({
           error: 'Wallet balance exhausted — ending the chat.',
           code: 'BALANCE_EXHAUSTED',
@@ -574,6 +587,7 @@ exports.endTalkBilling = async (req, res) => {
         io.to(userRoom(talkSession.host_id)).emit('talk_private_ended', payload);
         io.to(privateTalkRoom(talkSession._id)).emit('talk_private_ended', payload);
       }
+      await syncHostBusyToLiveRoom(talkSession.session_id, talkSession.host_id);
     }
 
     res.json({

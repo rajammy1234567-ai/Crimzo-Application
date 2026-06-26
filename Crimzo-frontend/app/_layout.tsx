@@ -5,6 +5,7 @@ import { RealtimeProvider } from '../contexts/RealtimeProvider';
 import { VideoCallProvider } from '../contexts/VideoCallContext';
 import { DialogProvider } from '../contexts/DialogProvider';
 import ScreenPrivacy from '../components/ScreenPrivacy';
+import ReferralLinkHandler from '../components/ReferralLinkHandler';
 import { StatusBar } from 'expo-status-bar';
 
 export default function RootLayout() {
@@ -14,11 +15,13 @@ export default function RootLayout() {
       <RealtimeProvider>
       <VideoCallProvider>
       <ScreenPrivacy />
+      <ReferralLinkHandler />
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="(auth)/login" />
         <Stack.Screen name="(auth)/register" />
+        <Stack.Screen name="invite/[code]" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen 
           name="live/broadcast" 

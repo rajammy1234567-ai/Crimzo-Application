@@ -167,6 +167,7 @@ export default function BroadcastScreen() {
   // Controls state
   const [micEnabled, setMicEnabled] = useState(true);
   const [cameraEnabled, setCameraEnabled] = useState(true);
+  const [beautyEnabled, setBeautyEnabled] = useState(true);
   const [facing, setFacing] = useState<'front' | 'back'>('front');
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
@@ -666,6 +667,21 @@ export default function BroadcastScreen() {
     });
   }, []);
 
+  const toggleBeauty = useCallback(() => {
+    setBeautyEnabled(prev => {
+      const nextOn = !prev;
+      if (engineRef.current && typeof engineRef.current.setBeautyEffectOptions === 'function') {
+        engineRef.current.setBeautyEffectOptions(nextOn, {
+          lighteningContrastLevel: 1,
+          lighteningLevel: 0.7,
+          smoothnessLevel: 0.5,
+          rednessLevel: 0.1,
+        });
+      }
+      return nextOn;
+    });
+  }, []);
+
   const requestPermissions = async () => {
     const perms = await ensureRtcPermissions();
     if (!perms.mic) {
@@ -697,6 +713,16 @@ export default function BroadcastScreen() {
       engine.setClientRole(ClientRoleType.ClientRoleBroadcaster);
       engine.enableVideo();
       engine.enableAudio();
+
+      if (typeof engine.setBeautyEffectOptions === 'function') {
+        engine.setBeautyEffectOptions(beautyEnabled, {
+          lighteningContrastLevel: 1,
+          lighteningLevel: 0.7,
+          smoothnessLevel: 0.5,
+          rednessLevel: 0.1,
+        });
+      }
+
       engine.startPreview();
 
       const numericUid = typeof hostUid === 'number' ? hostUid : toAgoraUid(user?.id);
@@ -736,7 +762,7 @@ export default function BroadcastScreen() {
       await requestMicPermission();
     }
     setAgoraReady(false);
-  }, [user?.id, cameraPermission, micPermission, requestCameraPermission, requestMicPermission, micEnabled, cameraEnabled]);
+  }, [user?.id, cameraPermission, micPermission, requestCameraPermission, requestMicPermission, micEnabled, cameraEnabled, beautyEnabled]);
 
   useEffect(() => {
     return subscribe('live_call_screen_ended', () => {
@@ -1048,6 +1074,12 @@ export default function BroadcastScreen() {
               </View>
               <Text style={st.sideBtnLabel}>{cameraEnabled ? 'Cam On' : 'Cam Off'}</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={st.sideBtn} onPress={toggleBeauty} activeOpacity={0.7}>
+              <View style={[st.sideBtnCircle, !beautyEnabled && st.sideBtnOff]}>
+                <Ionicons name={beautyEnabled ? 'sparkles' : 'sparkles-outline'} size={20} color={beautyEnabled ? '#FFF' : '#FF4466'} />
+              </View>
+              <Text style={st.sideBtnLabel}>{beautyEnabled ? 'Beauty On' : 'Beauty Off'}</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={st.sideBtn} onPress={noopPress} activeOpacity={0.7}>
               <View style={st.sideBtnCircle}><Ionicons name="share-social" size={20} color="#FFF" /></View>
               <Text style={st.sideBtnLabel}>Share</Text>
@@ -1146,6 +1178,12 @@ export default function BroadcastScreen() {
                   <Ionicons name={cameraEnabled ? 'videocam' : 'videocam-off'} size={20} color={cameraEnabled ? 'rgba(255,255,255,0.8)' : '#FF4466'} />
                 </View>
                 <Text style={st.toolBtnLabel}>{cameraEnabled ? 'Cam On' : 'Cam Off'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={st.toolBtn} onPress={toggleBeauty} activeOpacity={0.7}>
+                <View style={[st.toolBtnIcon, !beautyEnabled && st.toolBtnOff]}>
+                  <Ionicons name={beautyEnabled ? 'sparkles' : 'sparkles-outline'} size={20} color={beautyEnabled ? 'rgba(255,255,255,0.8)' : '#FF4466'} />
+                </View>
+                <Text style={st.toolBtnLabel}>{beautyEnabled ? 'Beauty On' : 'Beauty Off'}</Text>
               </TouchableOpacity>
             </View>
 

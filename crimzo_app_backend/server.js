@@ -62,7 +62,11 @@ app.use("/api/payments", require("./routes/paymentRoutes"));
 app.use("/api/video-call", require("./routes/videoCallRoutes"));
 app.use("/api/settings", require("./routes/settingsRoutes"));
 app.use("/api/tasks", require("./routes/taskRoutes"));
+app.use("/api/referral", require("./routes/referralRoutes"));
 app.use("/api/admin", require("./routes/adminRoutes"));
+
+const referralLanding = require("./controllers/referralController");
+app.get("/invite/:code", referralLanding.renderInviteLandingPage);
 
 // Online count lives under /api/users (not /api/user)
 app.get("/api/users/online-count", authenticateToken, user.getOnlineCount);
