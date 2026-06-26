@@ -43,7 +43,10 @@ export function attachAppTimeTracker(socket: Socket | null) {
 
   sendHeartbeat();
 
+  const heartbeat = setInterval(sendHeartbeat, 30 * 1000);
+
   return () => {
+    clearInterval(heartbeat);
     sub.remove();
   };
 }

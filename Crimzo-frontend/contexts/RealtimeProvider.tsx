@@ -7,7 +7,7 @@ import { API_URL } from '../lib/apiClient';
 import { publish } from '../lib/realtimeSync';
 import { loadAppSettings, onAppSettingsChange, type AppSettings } from '../lib/appSettings';
 import { attachAppTimeTracker } from '../lib/appTimeTracker';
-import { playGiftPop } from '../lib/uiSounds';
+import { playGiftSplashSound } from '../lib/uiSounds';
 
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
@@ -133,7 +133,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       senderUsername?: string;
     }) => {
       if (String(data?.receiverId) !== String(userIdRef.current)) return;
-      playGiftPop();
+      playGiftSplashSound('received', data?.diamondsSpent ?? data?.amount);
       publish('gift_received', data);
     });
 
@@ -175,15 +175,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
     const detachAppTime = attachAppTimeTracker(socket);
 
-    const heartbeat = setInterval(() => {
-      if (socket.connected) {
-        socket.emit('presence_heartbeat', { category: 'home', foreground: true });
-      }
-    }, 30 * 1000);
-
     return () => {
       detachAppTime();
-      clearInterval(heartbeat);
       socket.disconnect();
       socketRef.current = null;
     };

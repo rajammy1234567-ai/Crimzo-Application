@@ -8,7 +8,7 @@ import { KEYBOARD_BEHAVIOR } from '../../components/KeyboardAware';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { apiGet, apiPost, ApiError } from '../../lib/apiClient';
-import { publishDmDiamondGiftSplash } from '../../lib/giftSplash';
+import { publishDmDiamondGiftSplash, publishDmDiamondGiftSplashSent } from '../../lib/giftSplash';
 import { playMessageReceivePop, playMessageSendPop } from '../../lib/uiSounds';
 import { subscribe } from '../../lib/realtimeSync';
 import GiftSplashOverlay from '../../components/GiftSplashOverlay';
@@ -311,7 +311,7 @@ export default function MessagesScreen() {
         if (data.senderDiamonds != null) {
           updateUser({ diamonds: data.senderDiamonds });
         }
-        publishDmDiamondGiftSplash(giftMsg);
+        publishDmDiamondGiftSplashSent(diamonds, selectedChat.username);
         setShowGift(false);
       }
     } catch (e: unknown) {

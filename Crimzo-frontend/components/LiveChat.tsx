@@ -88,9 +88,9 @@ function getColor(uid?: string | number, isHost?: boolean): string {
     return NAME_COLORS[num % NAME_COLORS.length];
 }
 
-function triggerGiftSplash(data: ChatMessage) {
+function triggerGiftSplash(data: ChatMessage, fromSelf: boolean) {
     publishGiftSplash({
-        id: data.id,
+        id: String(data.id),
         username: data.username || 'User',
         stickerName: data.stickerName || 'Gift',
         icon_name: data.icon_name,
@@ -98,6 +98,7 @@ function triggerGiftSplash(data: ChatMessage) {
         bg_color: data.bg_color,
         gift_diamonds: data.gift_diamonds,
         emoji: data.emoji,
+        variant: fromSelf ? 'sent' : 'received',
     });
 }
 
@@ -224,7 +225,9 @@ export default function LiveChat({
                 if (!fromSelf && data.type === 'text') {
                     playMessageReceivePop();
                 }
-                if (data.type === 'sticker') triggerGiftSplash(data);
+                if (data.type === 'sticker') {
+                    if (!fromSelf) triggerGiftSplash(data, false);
+                }
             };
             const onSystem = (data: { message?: string; username?: string }) => {
                 setMessages((prev) => appendChatMessage(prev, {

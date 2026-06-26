@@ -11,7 +11,19 @@ export interface GiftSplashPayload {
   bg_color?: string;
   gift_diamonds?: number;
   emoji?: string;
+  /** sent = you sent the gift; received = someone sent to you */
+  variant?: 'sent' | 'received';
 }
+
+export type StickerGiftInfo = {
+  id?: string | number;
+  name: string;
+  emoji?: string;
+  icon_name?: string;
+  icon_color?: string;
+  bg_color?: string;
+  price?: number;
+};
 
 export function publishGiftSplash(data: Omit<GiftSplashPayload, 'id'> & { id?: string }): void {
   publish(GIFT_SPLASH_EVENT, {
@@ -23,7 +35,27 @@ export function publishGiftSplash(data: Omit<GiftSplashPayload, 'id'> & { id?: s
     bg_color: data.bg_color,
     gift_diamonds: data.gift_diamonds,
     emoji: data.emoji,
+    variant: data.variant || 'received',
   } satisfies GiftSplashPayload);
+}
+
+/** Sticker / gift panel — immediate full-screen popup + sound */
+export function publishStickerGiftSplash(
+  sticker: StickerGiftInfo,
+  username: string,
+  options?: { variant?: 'sent' | 'received'; id?: string },
+): void {
+  publishGiftSplash({
+    id: options?.id,
+    username,
+    stickerName: sticker.name || 'Gift',
+    icon_name: sticker.icon_name,
+    icon_color: sticker.icon_color,
+    bg_color: sticker.bg_color,
+    gift_diamonds: sticker.price,
+    emoji: sticker.emoji,
+    variant: options?.variant || 'sent',
+  });
 }
 
 export function subscribeGiftSplash(cb: (payload: GiftSplashPayload) => void): () => void {
@@ -59,5 +91,25 @@ export function publishDmDiamondGiftSplash(msg: {
     bg_color: '#00BFFF',
     gift_diamonds: diamonds,
     emoji: '💎',
+    variant: 'received',
+  });
+}
+
+export function publishDmDiamondGiftSplashSent(
+  diamonds: number,
+  receiverUsername?: string,
+): void {
+  const amount = Math.max(0, Math.floor(Number(diamonds) || 0));
+  publishGiftSplash({
+    username: receiverUsername || 'Friend',
+    stickerName: amount > 0
+      ? `${amount.toLocaleString('en-IN')} Diamonds`
+      : 'Diamond Gift',
+    icon_name: 'diamond',
+    icon_color: '#FFFFFF',
+    bg_color: '#00BFFF',
+    gift_diamonds: amount,
+    emoji: '💎',
+    variant: 'sent',
   });
 }

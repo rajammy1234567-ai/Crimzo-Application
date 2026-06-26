@@ -100,27 +100,42 @@ export default function TasksScreen() {
       return;
     }
     try {
-      const [data, timeData] = await Promise.all([
-        apiGet<{
-          success?: boolean;
-          pendingReward?: number;
-          pendingDiamonds?: number;
-          checkedInToday?: boolean;
-          totalEarned?: number;
-          totalPossible?: number;
+      const data = await apiGet<{
+        success?: boolean;
+        pendingReward?: number;
+        pendingDiamonds?: number;
+        checkedInToday?: boolean;
+        totalEarned?: number;
+        totalPossible?: number;
+        streak?: StreakInfo;
+        sections?: { newbie?: Task[]; daily?: Task[]; monthly?: Task[] };
+        autoCheckin?: {
+          added?: number;
           streak?: StreakInfo;
-          sections?: { newbie?: Task[]; daily?: Task[]; monthly?: Task[] };
-        }>('/api/tasks', token),
-        apiGet<AppTimeStats & { success?: boolean }>('/api/user/app-time/today', token).catch(() => null),
-      ]);
+          streakMilestoneReward?: number;
+        } | null;
+      }>('/api/tasks', token);
+
+      const timeData = await apiGet<
+        AppTimeStats & {
+          success?: boolean;
+          autoCheckin?: {
+            added?: number;
+            streak?: StreakInfo;
+            streakMilestoneReward?: number;
+          } | null;
+        }
+      >('/api/user/app-time/today', token).catch(() => null);
+
+      const autoCheckin = data.autoCheckin || timeData?.autoCheckin || null;
 
       if (data.success) {
         setPendingReward(data.pendingReward || 0);
         setPendingDiamonds(data.pendingDiamonds || 0);
-        setCheckedIn(!!data.checkedInToday);
+        setCheckedIn(!!data.checkedInToday || !!autoCheckin);
         setTotalEarned(data.totalEarned || 0);
         setTotalPossible(data.totalPossible || 0);
-        setStreak(data.streak || null);
+        setStreak(autoCheckin?.streak || data.streak || null);
         setNewbieTasks(data.sections?.newbie || []);
         setDailyTasks(data.sections?.daily || []);
         setMonthlyTasks(data.sections?.monthly || []);
@@ -128,6 +143,13 @@ export default function TasksScreen() {
 
       if (timeData && (timeData as { success?: boolean }).success !== false) {
         setAppTime(timeData);
+      }
+
+      if (autoCheckin?.added && autoCheckin.streakMilestoneReward) {
+        appAlert(
+          '🎉 30-Day Streak!',
+          `Day streak updated! +${autoCheckin.added} beans and ${autoCheckin.streakMilestoneReward.toLocaleString()} diamonds from Crimzo.`,
+        );
       }
     } catch (e) {
       console.error('Fetch tasks error:', e);
@@ -214,12 +236,15 @@ export default function TasksScreen() {
         }
       }
     } catch (e) {
-      if (e instanceof ApiError && e.data?.code === 'STREAK_TIME_REQUIRED') {
-        const mins = e.data?.appTime?.remaining_minutes ?? 60;
-        appAlert('1 Hour Required', `Spend ${mins} more minutes in the app today before check-in.`);
-      } else {
-        appAlert('Error', e instanceof ApiError ? e.message : 'Check-in failed');
+      if (e instanceof ApiError && e.data && typeof e.data === 'object') {
+        const errData = e.data as { code?: string; appTime?: { remaining_minutes?: number } };
+        if (errData.code === 'STREAK_TIME_REQUIRED') {
+          const mins = errData.appTime?.remaining_minutes ?? 60;
+          appAlert('1 Hour Required', `Spend ${mins} more minutes in the app today before check-in.`);
+          return;
+        }
       }
+      appAlert('Error', e instanceof ApiError ? e.message : 'Check-in failed');
     } finally {
       setCheckingIn(false);
     }
@@ -583,7 +608,11 @@ export default function TasksScreen() {
                   <View style={[styles.appTimeFill, { width: `${appTime.progress_percent || 0}%` }]} />
                 </View>
                 {appTime.requirement_met ? (
-                  <Text style={styles.appTimeDone}>✓ 1 hour done — tap Check in below</Text>
+                  <Text style={styles.appTimeDone}>
+                    {checkedIn
+                      ? '✓ 1 hour done — streak counted for today'
+                      : '✓ 1 hour done — checking in automatically…'}
+                  </Text>
                 ) : (
                   <Text style={styles.appTimePending}>
                     {appTime.remaining_minutes || 60} min left · Home, Reels, Live, Messages, PK
@@ -600,7 +629,7 @@ export default function TasksScreen() {
                   (!appTime?.requirement_met && !checkedIn) && styles.quickActionDisabled,
                 ]}
                 onPress={handleCheckIn}
-                disabled={checkedIn || checkingIn}
+                disabled={checkedIn || checkingIn || !appTime?.requirement_met}
               >
                 {checkedIn && (
                   <Ionicons name="checkmark-circle" size={16} color="#9333EA" style={styles.checkIcon} />

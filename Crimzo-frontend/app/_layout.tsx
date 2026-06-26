@@ -28,6 +28,10 @@ export default function RootLayout() {
           options={{ presentation: 'modal' }}
         />
         <Stack.Screen name="live/[sessionId]" />
+        <Stack.Screen
+          name="live/feed"
+          options={{ presentation: 'fullScreenModal', animation: 'fade' }}
+        />
         <Stack.Screen 
           name="live/watch" 
           options={{ presentation: 'modal' }}

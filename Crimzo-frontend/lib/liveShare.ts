@@ -17,7 +17,7 @@ export function buildLiveShareLink(sessionId: string): string {
 
 export function buildLiveWatchRoute(sessionId: string): string {
   const id = String(sessionId || '').trim();
-  return `/live/watch?sessionId=${encodeURIComponent(id)}`;
+  return `/live/feed?sessionId=${encodeURIComponent(id)}`;
 }
 
 export function buildLiveShareMessage(

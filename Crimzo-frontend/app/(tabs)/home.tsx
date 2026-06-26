@@ -330,7 +330,7 @@ export default function HomeScreen() {
           loading={loading}
           refreshing={refreshing}
           onRefresh={onRefresh}
-          onWatchStream={(id) => router.push(`/live/watch?sessionId=${id}`)}
+          onWatchStream={(id) => router.push(`/live/feed?sessionId=${id}`)}
           onStartBroadcast={openBroadcast}
         />
       )}

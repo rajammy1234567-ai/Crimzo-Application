@@ -8,6 +8,7 @@ import axios from 'axios';
 import { useRouter } from 'expo-router';
 import { API_URL } from '../lib/apiClient';
 import { subscribe, publish } from '../lib/realtimeSync';
+import { publishStickerGiftSplash } from '../lib/giftSplash';
 import { useAuth } from '../contexts/AuthContext';
 
 const { width: SW } = Dimensions.get('window');
@@ -31,6 +32,7 @@ interface StickerPanelProps {
     onSendSticker?: (sticker: Sticker) => void;
     token: string;
     receiverId?: number | string;
+    receiverUsername?: string;
     sessionId?: number | string;
     talkSessionId?: string;
     channelName?: string;
@@ -104,6 +106,7 @@ export default function StickerPanel({
     onSendSticker,
     token,
     receiverId,
+    receiverUsername,
     sessionId,
     talkSessionId,
     channelName,
@@ -201,6 +204,10 @@ export default function StickerPanel({
                     sticker,
                 });
             }
+            publishStickerGiftSplash(sticker, receiverUsername || 'Friend', {
+                variant: 'sent',
+                id: `send_${sticker.id}_${Date.now()}`,
+            });
             onSendSticker?.(sticker);
             onClose();
         } catch (e: unknown) {

@@ -35,3 +35,12 @@ export default function LiveDeepLinkScreen() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#06060F',
+  },
+});

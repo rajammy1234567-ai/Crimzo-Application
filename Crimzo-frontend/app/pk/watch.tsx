@@ -19,7 +19,7 @@ import {
 
 import { API_URL, apiGet, ApiError, resolveMediaUrl } from '../../lib/apiClient';
 import { toAgoraUid, sameUserId } from '../../lib/agoraUid';
-import { PK_GIFTS, findPkGiftByValue } from '../../lib/pkGifts';
+import { PK_GIFTS, findPkGiftByValue, type PKGift } from '../../lib/pkGifts';
 import { playMessageReceivePop, playMessageSendPop } from '../../lib/uiSounds';
 
 const { width: SW, height: SH } = Dimensions.get('window');
@@ -279,7 +279,7 @@ export default function PKWatchScreen() {
     socketRef.current = sock;
   };
 
-  const sendGift = (gift: typeof GIFTS[0], targetHost: 'host1' | 'host2') => {
+  const sendGift = (gift: PKGift, targetHost: 'host1' | 'host2') => {
     if (!battleData?.battleId) return;
     const hostId = targetHost === 'host1' ? host1Info?.id : host2Info?.id;
     if (!hostId) return;

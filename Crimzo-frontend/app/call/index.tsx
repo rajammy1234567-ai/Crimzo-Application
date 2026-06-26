@@ -51,6 +51,7 @@ import {
 } from '../../lib/agoraRtcHelpers';
 import { publish, subscribe } from '../../lib/realtimeSync';
 import StickerPanel from '../../components/StickerPanel';
+import GiftSplashOverlay from '../../components/GiftSplashOverlay';
 
 function PeerAvatar({
   name,
@@ -737,9 +738,11 @@ export default function VideoCallScreen() {
           onClose={() => setShowGifts(false)}
           token={token}
           receiverId={peerId}
+          receiverUsername={peerName}
           channelName={channelName}
         />
       )}
+      <GiftSplashOverlay />
     </View>
   );
 }
