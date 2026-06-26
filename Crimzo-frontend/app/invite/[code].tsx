@@ -77,7 +77,7 @@ export default function InviteScreen() {
         <Text style={styles.title}>{valid ? `${referrerName} invited you!` : 'Join Crimzo'}</Text>
         <Text style={styles.subtitle}>
           {valid
-            ? `Register with referral ID below — ${formatReferralDiamonds(preview?.referredUserRewardDiamonds ?? REFERRED_USER_REWARD_DIAMONDS)} diamonds milenge.`
+            ? `Register with the referral ID below and get ${formatReferralDiamonds(preview?.referredUserRewardDiamonds ?? REFERRED_USER_REWARD_DIAMONDS)} diamonds.`
             : 'This invite link looks invalid, but you can still join Crimzo at www.crimzo.live.'}
         </Text>
         {code ? (

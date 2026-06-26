@@ -7,6 +7,9 @@ const STORAGE_KEY = 'pending_referral_code';
 /** Fixed referral domain — do not change per environment. */
 export const REFERRAL_WEB_BASE = 'https://www.crimzo.live';
 
+/** Link sent in share message — always this URL only. */
+export const REFERRAL_SHARE_URL = 'www.crimzo.live';
+
 /** Tier-1 package rate — must match backend referralConfig */
 const TIER1_DIAMONDS_PER_INR = 13800 / 272;
 
@@ -40,18 +43,17 @@ export function formatReferralInviteCode(code: string): string {
   return normalized ? `CRIMZO-${normalized}` : '';
 }
 
-export function buildReferralShareMessage(code: string, link?: string): string {
+export function buildReferralShareMessage(code: string): string {
   const normalized = normalizeReferralCode(code) || code;
   const inviteId = formatReferralInviteCode(normalized) || `CRIMZO-${normalized}`;
-  const url = link || buildReferralLink(normalized);
   return [
     'Join me on Crimzo!',
     '',
     `Referral ID: ${inviteId}`,
-    'Register karte waqt yeh ID use karo.',
-    `Signup par ${formatReferralDiamonds(REFERRED_USER_REWARD_DIAMONDS)} diamonds milenge.`,
+    'Use this ID when you register.',
+    `You will get ${formatReferralDiamonds(REFERRED_USER_REWARD_DIAMONDS)} diamonds on signup.`,
     '',
-    url,
+    REFERRAL_SHARE_URL,
   ].join('\n');
 }
 
@@ -76,7 +78,7 @@ export async function getReferralSharePayload(
   if (!code) return null;
   return {
     code,
-    link: buildReferralLink(code),
+    link: REFERRAL_SHARE_URL,
   };
 }
 
@@ -88,7 +90,7 @@ export async function shareReferralInvite(
   if (!payload) return false;
 
   await Share.share({
-    message: buildReferralShareMessage(payload.code, payload.link),
+    message: buildReferralShareMessage(payload.code),
   });
   return true;
 }

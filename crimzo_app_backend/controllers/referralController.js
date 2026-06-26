@@ -101,7 +101,7 @@ exports.renderInviteLandingPage = async (req, res) => {
     ${valid
       ? `<p>Download Crimzo from <strong>www.crimzo.live</strong> and register with this Referral ID:</p>
          <div class="code">CRIMZO-${code}</div>
-         <p class="reward">Signup par ${REFERRED_USER_REWARD_DIAMONDS.toLocaleString('en-IN')} diamonds milenge</p>`
+         <p class="reward">You will get ${REFERRED_USER_REWARD_DIAMONDS.toLocaleString('en-IN')} diamonds on signup</p>`
       : `<p class="invalid">This invite link is invalid or expired. You can still download Crimzo from www.crimzo.live.</p>`}
     <a class="btn btn-primary" href="${APP_DOWNLOAD_URL}" id="downloadApp">Download from crimzo.live</a>
     <a class="btn btn-secondary" href="${appDeepLink}" id="openApp">Open in Crimzo App</a>

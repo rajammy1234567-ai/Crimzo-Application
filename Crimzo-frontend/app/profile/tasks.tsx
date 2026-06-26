@@ -268,7 +268,7 @@ export default function TasksScreen() {
     } catch {
       const payload = await getReferralSharePayload(token, user?.crimzo_id);
       if (payload) {
-        appAlert('Invitation', buildReferralShareMessage(payload.code, payload.link));
+        appAlert('Invitation', buildReferralShareMessage(payload.code));
       } else {
         appAlert('Invite', 'Your referral ID is loading. Try again in a moment.');
       }
