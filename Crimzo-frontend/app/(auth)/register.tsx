@@ -179,6 +179,18 @@ export default function RegisterScreen() {
 
             {/* Card */}
             <View style={s.card}>
+              <GoogleSignInButton
+                variant="primary"
+                disabled={loading}
+                onSuccess={async () => router.replace((await resolvePostAuthRoute()) as never)}
+              />
+
+              <View style={s.dividerRow}>
+                <View style={s.dividerLine} />
+                <Text style={s.dividerText}>or register with email</Text>
+                <View style={s.dividerLine} />
+              </View>
+
               {/* Avatar Picker */}
               <TouchableOpacity style={s.avatarPicker} onPress={pickAvatar} activeOpacity={0.7}>
                 {avatarUri ? (
@@ -313,16 +325,6 @@ export default function RegisterScreen() {
                 </LinearGradient>
               </TouchableOpacity>
 
-              <View style={s.dividerRow}>
-                <View style={s.dividerLine} />
-                <Text style={s.dividerText}>or</Text>
-                <View style={s.dividerLine} />
-              </View>
-
-              <GoogleSignInButton
-                disabled={loading}
-                onSuccess={async () => router.replace((await resolvePostAuthRoute()) as never)}
-              />
             </View>
 
             <View style={s.footer}>

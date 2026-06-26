@@ -127,7 +127,11 @@ const ChatBubble = React.memo(function ChatBubble({
             <View style={[msgS.row, { opacity }]}>
                 <View style={[msgS.giftPill, { borderColor: bgColor + '25' }]}>
                     <View style={[msgS.giftIcon, { backgroundColor: bgColor }]}>
-                        <Ionicons name={iconName} size={12} color={item.icon_color || '#FFF'} />
+                        {item.emoji ? (
+                            <Text style={{ fontSize: 16 }}>{item.emoji}</Text>
+                        ) : (
+                            <Ionicons name={iconName} size={16} color={item.icon_color || '#FFF'} />
+                        )}
                     </View>
                     <Text style={[msgS.giftUser, { color: bgColor }]}>{item.username || 'User'}</Text>
                     <Text style={msgS.giftAction}> sent a present</Text>
@@ -169,7 +173,7 @@ const msgS = StyleSheet.create({
         paddingHorizontal: 10, paddingVertical: 6, gap: 6,
         borderWidth: 1,
     },
-    giftIcon: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+    giftIcon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
     giftUser: { fontSize: 13, fontWeight: '800', letterSpacing: 0.2 },
     giftAction: { color: 'rgba(255,255,255,0.5)', fontSize: 13, fontWeight: '500' },
     // Chat

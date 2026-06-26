@@ -100,8 +100,8 @@ function ConfettiParticle({
 function SplashCard({ gift, onDone }: { gift: GiftSplashPayload; onDone: () => void }) {
   const tier = giftSplashTier(gift.gift_diamonds);
   const isSent = gift.variant === 'sent';
-  const iconSize = tier === 'mega' ? 108 : tier === 'premium' ? 88 : 72;
-  const holdMs = tier === 'mega' ? 3600 : tier === 'premium' ? 3000 : 2600;
+  const iconSize = tier === 'legend' ? 220 : tier === 'mega' ? 180 : tier === 'premium' ? 140 : 110;
+  const holdMs = tier === 'legend' ? 4500 : tier === 'mega' ? 4000 : tier === 'premium' ? 3200 : 2800;
 
   const scrim = useRef(new Animated.Value(0)).current;
   const flash = useRef(new Animated.Value(0)).current;
@@ -123,7 +123,7 @@ function SplashCard({ gift, onDone }: { gift: GiftSplashPayload; onDone: () => v
     Animated.parallel([
       Animated.timing(scrim, { toValue: 1, duration: 200, useNativeDriver: true }),
       Animated.sequence([
-        Animated.timing(flash, { toValue: tier === 'mega' ? 0.55 : 0.4, duration: 100, useNativeDriver: true }),
+        Animated.timing(flash, { toValue: tier === 'legend' || tier === 'mega' ? 0.65 : 0.4, duration: 100, useNativeDriver: true }),
         Animated.timing(flash, { toValue: 0, duration: 650, useNativeDriver: true }),
       ]),
       Animated.sequence([
@@ -204,12 +204,9 @@ function SplashCard({ gift, onDone }: { gift: GiftSplashPayload; onDone: () => v
           ]}
         />
 
-        <LinearGradient
-          colors={['rgba(6,6,14,0.95)', 'rgba(18,10,28,0.98)']}
-          style={styles.card}
-        >
+        <View style={[styles.card, tier === 'legend' && styles.cardLegend]}>
           <LinearGradient
-            colors={[bg + '55', 'transparent']}
+            colors={[bg + '35', 'transparent']}
             style={styles.cardGlow}
           />
 
@@ -217,18 +214,22 @@ function SplashCard({ gift, onDone }: { gift: GiftSplashPayload; onDone: () => v
 
           <Animated.View style={{ transform: [{ scale: glowScale }] }}>
             <LinearGradient
-              colors={[bg, bg + 'AA', bg + '66']}
-              style={[styles.iconOrb, { width: iconSize + 36, height: iconSize + 36, borderRadius: (iconSize + 36) / 2 }]}
+              colors={[bg, bg + 'CC', bg + '88']}
+              style={[styles.iconOrb, {
+                width: iconSize + (tier === 'legend' ? 60 : 48),
+                height: iconSize + (tier === 'legend' ? 60 : 48),
+                borderRadius: (iconSize + (tier === 'legend' ? 60 : 48)) / 2,
+              }]}
             >
               {gift.emoji ? (
-                <Text style={{ fontSize: iconSize * 0.52 }}>{gift.emoji}</Text>
+                <Text style={{ fontSize: iconSize * 0.55 }}>{gift.emoji}</Text>
               ) : (
-                <Ionicons name={iconName} size={iconSize * 0.48} color={iconColor} />
+                <Ionicons name={iconName} size={iconSize * 0.5} color={iconColor} />
               )}
             </LinearGradient>
           </Animated.View>
 
-          <Text style={styles.giftName} numberOfLines={2}>{gift.stickerName}</Text>
+          <Text style={[styles.giftName, tier === 'legend' && styles.giftNameLegend]} numberOfLines={2}>{gift.stickerName}</Text>
 
           <View style={styles.senderRow}>
             <Ionicons name={isSent ? 'paper-plane' : 'heart'} size={14} color={isSent ? '#7DD3FC' : '#FF6B8A'} />
@@ -242,13 +243,18 @@ function SplashCard({ gift, onDone }: { gift: GiftSplashPayload; onDone: () => v
             </View>
           ) : null}
 
-          {tier === 'mega' ? (
+          {tier === 'legend' ? (
+            <View style={styles.legendBadge}>
+              <Ionicons name="diamond" size={14} color="#FFD700" />
+              <Text style={styles.legendText}>LEGENDARY GIFT</Text>
+            </View>
+          ) : tier === 'mega' ? (
             <View style={styles.megaBadge}>
               <Ionicons name="flash" size={12} color="#FFD700" />
               <Text style={styles.megaText}>MEGA GIFT</Text>
             </View>
           ) : null}
-        </LinearGradient>
+        </View>
       </Animated.View>
     </View>
   );
@@ -305,6 +311,7 @@ const styles = StyleSheet.create({
   scrim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#000',
+    opacity: 0.82,
   },
   flash: {
     ...StyleSheet.absoluteFillObject,
@@ -340,19 +347,16 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 340,
-    borderRadius: 32,
-    paddingVertical: 32,
-    paddingHorizontal: 24,
+    maxWidth: SW * 0.92,
+    borderRadius: 36,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.14)',
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.55,
-    shadowRadius: 28,
-    elevation: 24,
+    backgroundColor: 'transparent',
+    overflow: 'visible',
+  },
+  cardLegend: {
+    maxWidth: SW,
   },
   cardGlow: {
     position: 'absolute',
@@ -381,11 +385,18 @@ const styles = StyleSheet.create({
   },
   giftName: {
     color: '#FFF',
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '900',
     textAlign: 'center',
     marginBottom: 10,
-    lineHeight: 34,
+    lineHeight: 38,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
+  },
+  giftNameLegend: {
+    fontSize: 38,
+    lineHeight: 44,
   },
   senderRow: {
     flexDirection: 'row',
@@ -433,5 +444,23 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     letterSpacing: 2,
+  },
+  legendBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 16,
+    backgroundColor: 'rgba(255,45,85,0.2)',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,215,0,0.5)',
+  },
+  legendText: {
+    color: '#FFD700',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 3,
   },
 });

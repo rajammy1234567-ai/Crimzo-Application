@@ -20,6 +20,7 @@ import {
 } from '../../components/agoraImports';
 import { ensureRtcPermissions, configurePublisherAudio } from '../../lib/agoraRtcHelpers';
 import { toAgoraUid } from '../../lib/agoraUid';
+import { releaseAgoraEngine, trackAgoraEngine } from '../../lib/agoraEngineRelease';
 
 import { API_URL, apiGet, apiPost, ApiError } from '../../lib/apiClient';
 import {
@@ -197,6 +198,9 @@ export default function BroadcastScreen() {
     requesterName?: string;
     requesterAvatar?: string | null;
     channelName?: string;
+    callType?: 'voice' | 'video';
+    ratePerMin?: number;
+    beansPerMin?: number;
   }>>([]);
   const [hostChatBeansEarned, setHostChatBeansEarned] = useState(0);
   const [activeChatCount, setActiveChatCount] = useState(0);
@@ -211,6 +215,7 @@ export default function BroadcastScreen() {
   const promptedTalkRequestIds = useRef<Set<string>>(new Set());
   const handledCallRequestIds = useRef<Set<string>>(new Set());
   const promptedCallRequestIds = useRef<Set<string>>(new Set());
+  const joiningCallRef = useRef(false);
   const liveBroadcastMediaRef = useRef<{
     channelName: string;
     agoraToken: string;
@@ -283,39 +288,39 @@ export default function BroadcastScreen() {
     }
   }, [token]);
 
-  const joinAcceptedCallAsHost = useCallback((data: {
+  const joinAcceptedCallAsHost = useCallback(async (data: {
     channelName?: string;
     requesterId?: string;
     requesterName?: string;
     requesterAvatar?: string | null;
     ratePerMin?: number;
     beansPerMin?: number;
+    callType?: 'voice' | 'video';
   }) => {
-    if (!data?.channelName || !data?.requesterId) return;
-    if (engineRef.current) {
-      const eng = engineRef.current;
-      engineRef.current = null;
-      eng.leaveChannel();
-      setTimeout(() => { try { eng.release(); } catch {} }, 300);
-      setAgoraReady(false);
-    }
-    setTimeout(() => {
-      router.push({
-        pathname: '/call',
-        params: {
-          channel: data.channelName,
-          role: 'callee',
-          peerId: String(data.requesterId),
-          peerName: data.requesterName || 'Viewer',
-          peerAvatar: data.requesterAvatar || '',
-          ratePerMin: data.ratePerMin != null ? String(data.ratePerMin) : String(myRates.voiceRatePerMin),
-          beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : String(myRates.voiceBeansPerMin),
-          fromLive: '1',
-          accepted: '1',
-          sessionId: sessionId || '',
-        },
-      } as any);
-    }, 400);
+    if (!data?.channelName || !data?.requesterId || joiningCallRef.current) return;
+    joiningCallRef.current = true;
+
+    const eng = engineRef.current;
+    engineRef.current = null;
+    setAgoraReady(false);
+    await releaseAgoraEngine(eng);
+
+    router.replace({
+      pathname: '/call',
+      params: {
+        channel: data.channelName,
+        role: 'callee',
+        peerId: String(data.requesterId),
+        peerName: data.requesterName || 'Viewer',
+        peerAvatar: data.requesterAvatar || '',
+        ratePerMin: data.ratePerMin != null ? String(data.ratePerMin) : String(data.callType === 'video' ? myRates.videoRatePerMin : myRates.voiceRatePerMin),
+        beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : String(data.callType === 'video' ? myRates.videoBeansPerMin : myRates.voiceBeansPerMin),
+        callMode: data.callType === 'video' ? 'video' : 'voice',
+        fromLive: '1',
+        accepted: '1',
+        sessionId: sessionId || '',
+      },
+    } as any);
   }, [router, myRates, sessionId]);
 
   const handleCallRequestAction = useCallback(async (
@@ -326,6 +331,7 @@ export default function BroadcastScreen() {
       requesterName?: string;
       requesterAvatar?: string | null;
       channelName?: string;
+      callType?: 'voice' | 'video';
       ratePerMin?: number;
       beansPerMin?: number;
     },
@@ -337,11 +343,12 @@ export default function BroadcastScreen() {
       promptedCallRequestIds.current.add(requestId);
       setPendingCallRequests((prev) => prev.filter((r) => r.id !== requestId));
       if (action === 'accept') {
-        joinAcceptedCallAsHost({
+        void joinAcceptedCallAsHost({
           channelName: res.channelName || meta?.channelName,
           requesterId: res.requesterId || meta?.requesterId,
           requesterName: res.requesterName || meta?.requesterName,
           requesterAvatar: meta?.requesterAvatar,
+          callType: res.callType || meta?.callType,
           ratePerMin: res.ratePerMin ?? meta?.ratePerMin,
           beansPerMin: res.beansPerMin ?? meta?.beansPerMin,
         });
@@ -357,14 +364,16 @@ export default function BroadcastScreen() {
     requesterName?: string;
     requesterAvatar?: string | null;
     channelName?: string;
+    callType?: 'voice' | 'video';
     ratePerMin?: number;
     beansPerMin?: number;
   }) => {
     if (!data?.requestId || handledCallRequestIds.current.has(data.requestId)) return;
     if (promptedCallRequestIds.current.has(data.requestId)) return;
     promptedCallRequestIds.current.add(data.requestId);
-    const rate = data.ratePerMin || myRates.voiceRatePerMin;
-    const beans = data.beansPerMin || myRates.voiceBeansPerMin;
+    const isVideo = data.callType === 'video';
+    const rate = data.ratePerMin || (isVideo ? myRates.videoRatePerMin : myRates.voiceRatePerMin);
+    const beans = data.beansPerMin || (isVideo ? myRates.videoBeansPerMin : myRates.voiceBeansPerMin);
     setPendingCallRequests((prev) => {
       if (prev.some((r) => r.id === data.requestId)) return prev;
       return [...prev, {
@@ -373,11 +382,14 @@ export default function BroadcastScreen() {
         requesterName: data.requesterName,
         requesterAvatar: data.requesterAvatar,
         channelName: data.channelName,
+        callType: data.callType,
+        ratePerMin: data.ratePerMin,
+        beansPerMin: data.beansPerMin,
       }];
     });
     appAlert(
-      'Call Request',
-      `${data.requesterName || 'A viewer'} wants a private voice call.\n\nViewer pays ₹${rate}/min from wallet.\nYou earn ${beans} beans/min.`,
+      isVideo ? 'Video Call Request' : 'Voice Call Request',
+      `${data.requesterName || 'A viewer'} wants a private ${isVideo ? 'video' : 'voice'} call.\n\nViewer pays ₹${rate}/min from wallet.\nYou earn ${beans} beans/min.`,
       [
         {
           text: 'Decline',
@@ -552,23 +564,26 @@ export default function BroadcastScreen() {
       requesterName?: string;
       requesterAvatar?: string | null;
       channelName?: string;
+      callType?: 'voice' | 'video';
       ratePerMin?: number;
       beansPerMin?: number;
     }) => {
       promptCallRequest(data);
     });
     s.on('live_call_accepted', (data: {
+      requestId?: string;
       channelName?: string;
       requesterId?: string;
       requesterName?: string;
       requesterAvatar?: string | null;
+      callType?: 'voice' | 'video';
       ratePerMin?: number;
       beansPerMin?: number;
       role?: string;
     }) => {
-      if (data?.role === 'callee') {
-        joinAcceptedCallAsHost(data);
-      }
+      if (data?.role !== 'callee') return;
+      if (data?.requestId && handledCallRequestIds.current.has(data.requestId)) return;
+      void joinAcceptedCallAsHost(data);
     });
     s.on('talk_private_ready', (data: {
       talkSessionId?: string;
@@ -736,6 +751,7 @@ export default function BroadcastScreen() {
       });
       configurePublisherAudio(engine);
       engineRef.current = engine;
+      trackAgoraEngine(engine);
 
       if (!micEnabled && typeof engine.muteLocalAudioStream === 'function') {
         engine.muteLocalAudioStream(true);
@@ -1052,10 +1068,14 @@ export default function BroadcastScreen() {
 
         {isLive && pendingCallRequests.length > 0 && (
           <View style={[st.talkRequestBanner, { top: pendingTalkRequests.length > 0 ? 200 : 120 }]}>
-            {pendingCallRequests.map((req) => (
-              <View key={req.id} style={[st.talkRequestCard, { borderColor: 'rgba(16,185,129,0.35)' }]}>
-                <Text style={[st.talkRequestText, { color: '#6EE7B7' }]}>
-                  {req.requesterName || 'A viewer'} wants a voice call · ₹{myRates.voiceRatePerMin}/min · you earn {myRates.voiceBeansPerMin} beans/min
+            {pendingCallRequests.map((req) => {
+              const isVideoReq = req.callType === 'video';
+              const rate = req.ratePerMin ?? (isVideoReq ? myRates.videoRatePerMin : myRates.voiceRatePerMin);
+              const beans = req.beansPerMin ?? (isVideoReq ? myRates.videoBeansPerMin : myRates.voiceBeansPerMin);
+              return (
+              <View key={req.id} style={[st.talkRequestCard, { borderColor: isVideoReq ? 'rgba(168,85,247,0.35)' : 'rgba(16,185,129,0.35)' }]}>
+                <Text style={[st.talkRequestText, { color: isVideoReq ? '#D8B4FE' : '#6EE7B7' }]}>
+                  {req.requesterName || 'A viewer'} wants a {isVideoReq ? 'video' : 'voice'} call · ₹{rate}/min · you earn {beans} beans/min
                 </Text>
                 <View style={st.talkRequestActions}>
                   <TouchableOpacity
@@ -1065,14 +1085,16 @@ export default function BroadcastScreen() {
                     <Text style={st.talkRejectText}>Decline</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[st.talkAcceptBtn, { backgroundColor: 'rgba(16,185,129,0.25)' }]}
+                    style={[st.talkAcceptBtn, { backgroundColor: isVideoReq ? 'rgba(168,85,247,0.25)' : 'rgba(16,185,129,0.25)' }]}
                     onPress={() => void handleCallRequestAction(req.id, 'accept', req)}
                   >
-                    <Text style={[st.talkAcceptText, { color: '#6EE7B7' }]}>Accept Call</Text>
+                    <Text style={[st.talkAcceptText, { color: isVideoReq ? '#D8B4FE' : '#6EE7B7' }]}>
+                      {isVideoReq ? 'Accept Video' : 'Accept Call'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
-            ))}
+            );})}
           </View>
         )}
 

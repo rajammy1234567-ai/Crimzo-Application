@@ -11,12 +11,22 @@ export type LiveCallStatus = {
     id: string;
     status: string;
     channelName?: string;
+    callType?: LiveCallType;
   } | null;
+  pendingRequests_all?: Array<{
+    id: string;
+    status: string;
+    channelName?: string;
+    callType?: LiveCallType;
+  }>;
   acceptedCall?: {
     id: string;
     channelName: string;
     status: string;
+    callType?: LiveCallType;
   } | null;
+  videoRatePerMin?: number;
+  videoBeansPerMin?: number;
   pendingRequests?: Array<{
     id: string;
     requesterId?: string;
@@ -26,14 +36,17 @@ export type LiveCallStatus = {
   }>;
 };
 
-export async function requestLiveCall(token: string, sessionId: string) {
+export type LiveCallType = 'voice' | 'video';
+
+export async function requestLiveCall(token: string, sessionId: string, callType: LiveCallType = 'voice') {
   return apiPost<{
     success?: boolean;
     requestId?: string;
     channelName?: string;
+    callType?: LiveCallType;
     status?: string;
     alreadyAccepted?: boolean;
-  }>('/api/live/call/request', { sessionId }, token);
+  }>('/api/live/call/request', { sessionId, callType }, token);
 }
 
 export async function respondLiveCall(token: string, requestId: string, action: 'accept' | 'reject') {
@@ -42,6 +55,7 @@ export async function respondLiveCall(token: string, requestId: string, action: 
     channelName?: string;
     requesterId?: string;
     requesterName?: string;
+    callType?: LiveCallType;
     ratePerMin?: number;
     beansPerMin?: number;
   }>('/api/live/call/respond', { requestId, action }, token);

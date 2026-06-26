@@ -39,6 +39,7 @@ import {
   type IRtcEngine,
 } from '../components/agoraImports';
 import { toAgoraUid } from '../lib/agoraUid';
+import { releaseAgoraEngine, trackAgoraEngine } from '../lib/agoraEngineRelease';
 
 import { API_URL, apiGet, apiPost, ApiError } from '../lib/apiClient';
 const { width: SW, height: SH } = Dimensions.get('window');
@@ -127,6 +128,7 @@ export default function LiveWatchRoom({
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
   const [agoraReady, setAgoraReady] = useState(false);
   const remoteUidRef = useRef<number | null>(null);
+  const joiningCallRef = useRef(false);
   const [hostCameraOff, setHostCameraOff] = useState(false);
   const [canChat, setCanChat] = useState(false);
   const [talkRequestId, setTalkRequestId] = useState<string | null>(null);
@@ -138,6 +140,9 @@ export default function LiveWatchRoom({
   const [callStatus, setCallStatus] = useState<'idle' | 'pending' | 'accepted'>('idle');
   const [callRequestId, setCallRequestId] = useState<string | null>(null);
   const [requestingCall, setRequestingCall] = useState(false);
+  const [videoCallStatus, setVideoCallStatus] = useState<'idle' | 'pending' | 'accepted'>('idle');
+  const [videoCallRequestId, setVideoCallRequestId] = useState<string | null>(null);
+  const [requestingVideoCall, setRequestingVideoCall] = useState(false);
   const [activeTalkSessionId, setActiveTalkSessionId] = useState<string | null>(null);
   const [privateChatOpen, setPrivateChatOpen] = useState(false);
   const [hostBusy, setHostBusy] = useState(false);
@@ -302,7 +307,7 @@ export default function LiveWatchRoom({
     }
   }, [token, sessionId, user?.id, startTalkBillingLoop]);
 
-  const joinAcceptedCall = useCallback((data: {
+  const joinAcceptedCall = useCallback(async (data: {
     channelName?: string;
     requesterId?: string;
     hostId?: string;
@@ -310,64 +315,77 @@ export default function LiveWatchRoom({
     hostAvatar?: string | null;
     ratePerMin?: number;
     beansPerMin?: number;
+    callType?: 'voice' | 'video';
   }) => {
-    if (!data?.channelName) return;
-    if (engineRef.current) {
-      const eng = engineRef.current;
-      engineRef.current = null;
-      eng.leaveChannel();
-      setTimeout(() => {
-        try { eng.release(); } catch {}
-      }, 300);
-    }
+    if (!data?.channelName || joiningCallRef.current) return;
+    joiningCallRef.current = true;
+
+    const eng = engineRef.current;
+    engineRef.current = null;
+    await releaseAgoraEngine(eng);
+
     if (socketRef.current) {
       try { socketRef.current.emit('leave_live', { sessionId }); } catch { /* ignore */ }
     }
     remoteUidRef.current = null;
     setRemoteUid(null);
     setAgoraReady(false);
-    setCallStatus('accepted');
-    setTimeout(() => {
-      router.push({
-        pathname: '/call',
-        params: {
-          channel: data.channelName,
-          role: 'caller',
-          peerId: String(data.hostId || streamData?.hostId || ''),
-          peerName: data.hostName || streamData?.hostUsername || 'Host',
-          peerAvatar: data.hostAvatar || streamData?.hostAvatar || '',
-          ratePerMin: String(data.ratePerMin ?? hostRates.voiceRatePerMin),
-          beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : '',
-          fromLive: '1',
-          accepted: '1',
-          sessionId: String(sessionId || ''),
-        },
-      } as any);
-    }, 400);
-  }, [router, streamData, hostRates.voiceRatePerMin, sessionId]);
+    const isVideo = data.callType === 'video';
+    if (isVideo) setVideoCallStatus('accepted');
+    else setCallStatus('accepted');
 
-  const sendCallRequest = useCallback(async () => {
-    if (!token || !sessionId || requestingCall) return;
-    setRequestingCall(true);
+    router.replace({
+      pathname: '/call',
+      params: {
+        channel: data.channelName,
+        role: 'caller',
+        peerId: String(data.hostId || streamData?.hostId || ''),
+        peerName: data.hostName || streamData?.hostUsername || 'Host',
+        peerAvatar: data.hostAvatar || streamData?.hostAvatar || '',
+        ratePerMin: String(data.ratePerMin ?? (isVideo ? hostRates.videoRatePerMin : hostRates.voiceRatePerMin)),
+        beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : '',
+        callMode: isVideo ? 'video' : 'voice',
+        fromLive: '1',
+        accepted: '1',
+        sessionId: String(sessionId || ''),
+      },
+    } as any);
+  }, [router, streamData, hostRates, sessionId]);
+
+  const sendCallRequest = useCallback(async (callType: 'voice' | 'video' = 'voice') => {
+    const isVideo = callType === 'video';
+    const requesting = isVideo ? requestingVideoCall : requestingCall;
+    if (!token || !sessionId || requesting) return;
+    if (isVideo) setRequestingVideoCall(true);
+    else setRequestingCall(true);
+    const rate = isVideo ? hostRates.videoRatePerMin : hostRates.voiceRatePerMin;
+    const beans = isVideo ? hostRates.videoBeansPerMin : hostRates.voiceBeansPerMin;
+    const label = isVideo ? 'Video call' : 'Voice call';
     try {
-      const res = await requestLiveCall(token, String(sessionId));
+      const res = await requestLiveCall(token, String(sessionId), callType);
       if (res.alreadyAccepted && res.channelName) {
         joinAcceptedCall({
           channelName: res.channelName,
           hostId: streamData?.hostId,
           hostName: streamData?.hostUsername,
           hostAvatar: streamData?.hostAvatar,
-          ratePerMin: hostRates.voiceRatePerMin,
-          beansPerMin: hostRates.voiceBeansPerMin,
+          ratePerMin: rate,
+          beansPerMin: beans,
+          callType,
         });
         return;
       }
       if (res.requestId) {
-        setCallRequestId(res.requestId);
-        setCallStatus('pending');
+        if (isVideo) {
+          setVideoCallRequestId(res.requestId);
+          setVideoCallStatus('pending');
+        } else {
+          setCallRequestId(res.requestId);
+          setCallStatus('pending');
+        }
         appAlert(
-          'Call Request Sent',
-          `Request sent to the host. Voice call at ₹${hostRates.voiceRatePerMin}/min once accepted. Host earns ${hostRates.voiceBeansPerMin} beans/min.`,
+          `${label} Request Sent`,
+          `Request sent to the host. ${label} at ₹${rate}/min once accepted. Host earns ${beans} beans/min.`,
         );
       }
     } catch (e) {
@@ -375,7 +393,7 @@ export default function LiveWatchRoom({
         const data = e.data as { wallet_balance?: number };
         appAlert(
           'Recharge Required',
-          `Please recharge your wallet first for voice calls.\n\nRate: ₹${hostRates.voiceRatePerMin}/min\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
+          `Please recharge your wallet first for ${label.toLowerCase()}s.\n\nRate: ₹${rate}/min\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
           [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Add Money', onPress: () => router.push('/profile/wallet' as any) },
@@ -385,19 +403,29 @@ export default function LiveWatchRoom({
         appAlert('Error', e instanceof ApiError ? e.message : 'Call request failed');
       }
     } finally {
-      setRequestingCall(false);
+      if (isVideo) setRequestingVideoCall(false);
+      else setRequestingCall(false);
     }
-  }, [token, sessionId, requestingCall, router, joinAcceptedCall, streamData, hostRates]);
+  }, [token, sessionId, requestingCall, requestingVideoCall, router, joinAcceptedCall, streamData, hostRates]);
 
   const refreshCallStatus = useCallback(async () => {
     if (!token || !sessionId || !user?.id) return;
     try {
       const status = await getLiveCallStatus(token, String(sessionId));
-      if (status.pendingRequest?.id) {
-        setCallRequestId(status.pendingRequest.id);
+      const pendingAll = (status as { pendingRequests_all?: Array<{ id: string; callType?: string }> }).pendingRequests_all || [];
+      const voicePending = pendingAll.find((p) => (p.callType || 'voice') === 'voice');
+      const videoPending = pendingAll.find((p) => p.callType === 'video');
+      if (voicePending?.id) {
+        setCallRequestId(voicePending.id);
         setCallStatus('pending');
-      } else if (status.acceptedCall?.channelName) {
-        setCallStatus('accepted');
+      }
+      if (videoPending?.id) {
+        setVideoCallRequestId(videoPending.id);
+        setVideoCallStatus('pending');
+      }
+      if (status.acceptedCall?.channelName) {
+        if (status.acceptedCall.callType === 'video') setVideoCallStatus('accepted');
+        else setCallStatus('accepted');
       }
     } catch {
       // non-fatal
@@ -484,6 +512,8 @@ export default function LiveWatchRoom({
     setCanChat(false);
     setTalkStatus('idle');
     setCallStatus('idle');
+    setVideoCallStatus('idle');
+    setVideoCallRequestId(null);
     talkSessionIdRef.current = null;
     setActiveTalkSessionId(null);
   }, [clearTalkBilling, finalizeTalkBilling, sessionId]);
@@ -534,13 +564,20 @@ export default function LiveWatchRoom({
       hostAvatar?: string | null;
       ratePerMin?: number;
       beansPerMin?: number;
+      callType?: 'voice' | 'video';
     }) => {
-      joinAcceptedCall(data);
+      void joinAcceptedCall(data);
     });
-    s.on('live_call_rejected', () => {
-      setCallStatus('idle');
-      setCallRequestId(null);
-      appAlert('Call Declined', 'The host declined your call request.');
+    s.on('live_call_rejected', (data?: { callType?: 'voice' | 'video' }) => {
+      if (data?.callType === 'video') {
+        setVideoCallStatus('idle');
+        setVideoCallRequestId(null);
+        appAlert('Video Call Declined', 'The host declined your video call request.');
+      } else {
+        setCallStatus('idle');
+        setCallRequestId(null);
+        appAlert('Call Declined', 'The host declined your voice call request.');
+      }
     });
     s.on('live_talk_rejected', () => {
       setTalkStatus('rejected');
@@ -712,6 +749,7 @@ export default function LiveWatchRoom({
           autoSubscribeVideo: true,
         });
         engineRef.current = engine;
+        trackAgoraEngine(engine);
       } catch (agoraErr) {
         console.error('[Watch] Agora init error:', agoraErr);
       }
@@ -864,10 +902,31 @@ export default function LiveWatchRoom({
     }
     appAlert(
       'Request Voice Call',
-      `Send a call request to ${streamData.hostUsername}?\n\n₹${hostRates.voiceRatePerMin}/min from wallet once accepted\nHost earns ${hostRates.voiceBeansPerMin} beans/min`,
+      `Send a voice call request to ${streamData.hostUsername}?\n\n₹${hostRates.voiceRatePerMin}/min from wallet once accepted\nHost earns ${hostRates.voiceBeansPerMin} beans/min`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Send Request', onPress: () => void sendCallRequest() },
+        { text: 'Send Request', onPress: () => void sendCallRequest('voice') },
+      ],
+    );
+  };
+
+  const handleVideoCall = () => {
+    if (!streamData?.hostId) return;
+    if (hostBusy) {
+      appAlert('Host Busy', 'The host is busy with someone right now. Please try again later.');
+      return;
+    }
+    if (videoCallStatus === 'pending') return;
+    if (videoCallStatus === 'accepted') {
+      appAlert('Video Call Ready', 'Your video call request was accepted. Joining...');
+      return;
+    }
+    appAlert(
+      'Request Video Call',
+      `Send a video call request to ${streamData.hostUsername}?\n\n₹${hostRates.videoRatePerMin}/min from wallet once accepted\nHost earns ${hostRates.videoBeansPerMin} beans/min\nCamera will be ON during the call.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Send Request', onPress: () => void sendCallRequest('video') },
       ],
     );
   };
@@ -1002,7 +1061,7 @@ export default function LiveWatchRoom({
         </Animated.View>
       </SafeAreaView>
 
-      {/* Call + Chat — vertical rounded pills on the right */}
+      {/* Call + Video + Chat — vertical rounded pills on the right */}
       {isViewer && (
         <View style={[s.actionRail, { bottom: 118 + Math.max(insets.bottom, 8) }]}>
           <TouchableOpacity
@@ -1032,6 +1091,36 @@ export default function LiveWatchRoom({
                 {callStatus === 'pending' ? 'Wait' : 'Call'}
               </Text>
               <Text style={s.actionRailRate}>₹{hostRates.voiceRatePerMin}/m</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[s.actionRailBtnWrap, { shadowColor: videoCallStatus === 'pending' ? '#64748B' : '#A855F7' }]}
+            onPress={handleVideoCall}
+            disabled={hostBusy || requestingVideoCall || videoCallStatus === 'pending'}
+            activeOpacity={0.88}
+          >
+            <LinearGradient
+              colors={
+                videoCallStatus === 'pending'
+                  ? ['#94A3B8', '#64748B']
+                  : ['#C084FC', '#A855F7', '#7C3AED']
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={[s.actionRailBtn, (requestingVideoCall || videoCallStatus === 'pending') && s.actionRailBtnDisabled]}
+            >
+              <View style={s.actionRailIcon}>
+                <Ionicons
+                  name={videoCallStatus === 'pending' ? 'time' : 'videocam'}
+                  size={20}
+                  color="#FFF"
+                />
+              </View>
+              <Text style={s.actionRailLabel}>
+                {videoCallStatus === 'pending' ? 'Wait' : 'Video'}
+              </Text>
+              <Text style={s.actionRailRate}>₹{hostRates.videoRatePerMin}/m</Text>
             </LinearGradient>
           </TouchableOpacity>
 
@@ -1078,16 +1167,12 @@ export default function LiveWatchRoom({
         </View>
       )}
 
-      {isViewer && (talkStatus === 'active' || talkStatus === 'pending' || callStatus === 'pending') && (
+      {isViewer && (talkStatus === 'active' || talkStatus === 'pending' || callStatus === 'pending' || videoCallStatus === 'pending') && (
         <View style={s.talkBanner}>
           <Text style={s.talkBannerText}>
             {talkStatus === 'active'
               ? `Live chat · ₹${talkCharged || hostRates.chatRatePerMin} charged · ${talkMinutes} min${walletBalance != null ? ` · Bal ₹${walletBalance}` : ''}`
-              : callStatus === 'pending' && talkStatus === 'pending'
-                ? 'Chat & call requests sent — waiting for host...'
-                : callStatus === 'pending'
-                  ? 'Call request sent — waiting for host to accept...'
-                  : 'Chat request sent — waiting for host to accept...'}
+              : [talkStatus === 'pending' && 'chat', callStatus === 'pending' && 'voice call', videoCallStatus === 'pending' && 'video call'].filter(Boolean).join(' & ') + ' request(s) sent — waiting for host...'}
           </Text>
         </View>
       )}

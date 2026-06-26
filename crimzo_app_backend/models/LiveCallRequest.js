@@ -5,6 +5,11 @@ const liveCallRequestSchema = new mongoose.Schema({
   requester_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   host_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   channel_name: { type: String, required: true },
+  call_type: {
+    type: String,
+    enum: ['voice', 'video'],
+    default: 'voice',
+  },
   status: {
     type: String,
     enum: ['pending', 'accepted', 'rejected', 'cancelled'],

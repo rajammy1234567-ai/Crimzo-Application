@@ -29,9 +29,12 @@ function resolveUserRates(user, billingSettings) {
   const chatBeansPerMin = receiverBeansFromInr(chatRatePerMin);
   const chatPlatformBeansPerMin = platformBeansFromInr(chatRatePerMin);
 
+  const videoRatePerMin = Math.min(MAX_RATE_INR, Math.max(MIN_RATE_INR, voiceRatePerMin * 2));
+
   return {
     voiceRatePerMin,
     chatRatePerMin,
+    videoRatePerMin,
     voiceGrossBeansPerMin,
     voiceBeansPerMin,
     voicePlatformBeansPerMin,
@@ -40,6 +43,8 @@ function resolveUserRates(user, billingSettings) {
     chatPlatformBeansPerMin,
     voice_rate_per_min_inr: voiceRatePerMin,
     chat_rate_per_min_inr: chatRatePerMin,
+    video_rate_per_min_inr: videoRatePerMin,
+    videoBeansPerMin: receiverBeansFromInr(videoRatePerMin),
   };
 }
 

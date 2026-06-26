@@ -8,7 +8,7 @@ import axios from 'axios';
 import { useRouter } from 'expo-router';
 import { API_URL } from '../lib/apiClient';
 import { subscribe, publish } from '../lib/realtimeSync';
-import { publishStickerGiftSplash } from '../lib/giftSplash';
+import { publishStickerGiftSplash, formatDiamondPrice } from '../lib/giftSplash';
 import { useAuth } from '../contexts/AuthContext';
 
 const { width: SW } = Dimensions.get('window');
@@ -47,7 +47,7 @@ const CATEGORIES = [
 ];
 
 // ── Animated Sticker Icon ──
-function StickerIcon({ sticker, size = 36 }: { sticker: Sticker; size?: number }) {
+function StickerIcon({ sticker, size = 56 }: { sticker: Sticker; size?: number }) {
     const pulse = useRef(new Animated.Value(1)).current;
     const glow = useRef(new Animated.Value(0)).current;
 
@@ -227,11 +227,11 @@ export default function StickerPanel({
                 <ActivityIndicator size="small" color="#FFD700" />
             ) : (
                 <>
-                    <StickerIcon sticker={item} size={32} />
+                    <StickerIcon sticker={item} size={52} />
                     <Text style={st.cardName} numberOfLines={1}>{item.name}</Text>
                     <View style={st.pricePill}>
-                        <Ionicons name="diamond" size={9} color="#00BFFF" />
-                        <Text style={st.priceText}>{item.price}</Text>
+                        <Ionicons name="diamond" size={10} color="#00BFFF" />
+                        <Text style={st.priceText}>{formatDiamondPrice(item.price)}</Text>
                     </View>
                 </>
             )}
@@ -306,7 +306,7 @@ export default function StickerPanel({
                         data={filtered}
                         renderItem={renderSticker}
                         keyExtractor={(item, index) => item?.id ? item.id.toString() : index.toString()}
-                        numColumns={4}
+                        numColumns={3}
                         contentContainerStyle={st.gridContent}
                         columnWrapperStyle={st.gridRow}
                         showsVerticalScrollIndicator={false}
@@ -326,7 +326,7 @@ export default function StickerPanel({
                     <View style={st.confirmCard}>
                         {confirmSticker && (
                             <>
-                                <StickerIcon sticker={confirmSticker} size={52} />
+                                <StickerIcon sticker={confirmSticker} size={80} />
                                 <Text style={st.confirmTitle}>Send {confirmSticker.name}?</Text>
 
                                 <View style={st.confirmCostRow}>
@@ -365,7 +365,7 @@ export default function StickerPanel({
 const st = StyleSheet.create({
     backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
     panel: {
-        height: '60%', backgroundColor: '#0D0D14',
+        height: '68%', backgroundColor: '#0D0D14',
         borderTopLeftRadius: 28, borderTopRightRadius: 28,
         overflow: 'hidden',
     },
@@ -402,11 +402,11 @@ const st = StyleSheet.create({
     gridContent: { paddingHorizontal: 10, paddingBottom: 40, paddingTop: 8 },
     gridRow: { justifyContent: 'space-evenly', marginBottom: 8 },
     card: {
-        width: '22%', aspectRatio: 0.72, backgroundColor: 'rgba(255,255,255,0.03)',
-        borderRadius: 18, alignItems: 'center', justifyContent: 'center', padding: 6,
-        borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)',
+        width: '30%', aspectRatio: 0.78, backgroundColor: 'rgba(255,255,255,0.04)',
+        borderRadius: 22, alignItems: 'center', justifyContent: 'center', padding: 10,
+        borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
     },
-    cardName: { color: 'rgba(255,255,255,0.7)', fontSize: 9, fontWeight: '700', textAlign: 'center', marginTop: 5, marginBottom: 4 },
+    cardName: { color: 'rgba(255,255,255,0.75)', fontSize: 11, fontWeight: '700', textAlign: 'center', marginTop: 8, marginBottom: 6 },
     pricePill: {
         flexDirection: 'row', alignItems: 'center', gap: 3,
         backgroundColor: 'rgba(0,191,255,0.08)', paddingHorizontal: 8, paddingVertical: 3,

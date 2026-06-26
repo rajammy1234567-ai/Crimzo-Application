@@ -15,10 +15,23 @@ async function getHostVoiceRate(hostId, settings) {
   return resolveUserRates(host, settings).voiceRatePerMin;
 }
 
+function normalizeCallType(raw) {
+  return raw === 'video' ? 'video' : 'voice';
+}
+
+function rateForCallType(hostRates, callType) {
+  return callType === 'video' ? hostRates.videoRatePerMin : hostRates.voiceRatePerMin;
+}
+
+function beansForCallType(hostRates, callType) {
+  return callType === 'video' ? hostRates.videoBeansPerMin : hostRates.voiceBeansPerMin;
+}
+
 exports.requestCall = async (req, res) => {
   try {
     const settings = await getBillingSettings();
-    const { sessionId } = req.body;
+    const { sessionId, callType: rawCallType } = req.body;
+    const callType = normalizeCallType(rawCallType);
     const requesterId = req.user.id;
     if (!sessionId) return res.status(400).json({ error: 'sessionId required' });
 
@@ -33,18 +46,21 @@ exports.requestCall = async (req, res) => {
     const hostDoc = session.user_id;
     const hostId = hostDoc?._id || hostDoc?.id || session.user_id;
     const hostRates = resolveUserRates(hostDoc, settings);
-    const voiceRate = hostRates.voiceRatePerMin;
+    const callRate = rateForCallType(hostRates, callType);
+    const callBeans = beansForCallType(hostRates, callType);
     if (String(hostId) === String(requesterId)) {
       return res.status(400).json({ error: 'Hosts cannot request a call on their own stream' });
     }
 
     const requester = await User.findById(requesterId).select('wallet_balance username avatar');
     const balance = requester?.wallet_balance || 0;
-    const callPayload = buildVideoCallBalancePayload(balance, settings, voiceRate);
-    callPayload.beansPerMin = hostRates.voiceBeansPerMin;
+    const callPayload = buildVideoCallBalancePayload(balance, settings, callRate);
+    callPayload.beansPerMin = callBeans;
+    callPayload.callType = callType;
     if (!callPayload.canCall) {
+      const label = callType === 'video' ? 'Video call' : 'Voice call';
       return res.status(400).json({
-        error: `Please recharge your wallet first. Voice call costs ₹${callPayload.ratePerMin}/min.`,
+        error: `Please recharge your wallet first. ${label} costs ₹${callPayload.ratePerMin}/min.`,
         code: 'INSUFFICIENT_BALANCE',
         ...callPayload,
       });
@@ -54,6 +70,7 @@ exports.requestCall = async (req, res) => {
       session_id: sessionId,
       requester_id: requesterId,
       status: 'accepted',
+      call_type: callType,
     }).sort({ responded_at: -1 });
     if (accepted) {
       return res.json({
@@ -70,10 +87,12 @@ exports.requestCall = async (req, res) => {
       session_id: sessionId,
       requester_id: requesterId,
       status: 'pending',
+      call_type: callType,
     });
 
+    const channelPrefix = callType === 'video' ? 'vc_live_vid_' : 'vc_live_';
     const channelName = request?.channel_name
-      || `vc_live_${sessionId}_${requesterId}_${Date.now()}`;
+      || `${channelPrefix}${sessionId}_${requesterId}_${Date.now()}`;
 
     if (!request) {
       request = await LiveCallRequest.create({
@@ -81,6 +100,7 @@ exports.requestCall = async (req, res) => {
         requester_id: requesterId,
         host_id: hostId,
         channel_name: channelName,
+        call_type: callType,
         status: 'pending',
       });
     }
@@ -94,8 +114,9 @@ exports.requestCall = async (req, res) => {
         requesterName: requester?.username || 'Viewer',
         requesterAvatar: requester?.avatar || null,
         channelName,
-        ratePerMin: voiceRate,
-        beansPerMin: hostRates.voiceBeansPerMin,
+        callType,
+        ratePerMin: callRate,
+        beansPerMin: callBeans,
         billingEnabled: settings.videoCallBillingEnabled,
       });
     }
@@ -104,6 +125,7 @@ exports.requestCall = async (req, res) => {
       success: true,
       requestId: request._id.toString(),
       channelName,
+      callType,
       status: 'pending',
       ...callPayload,
     });
@@ -120,7 +142,6 @@ exports.respondCall = async (req, res) => {
     const hostId = req.user.id;
     const hostUser = await User.findById(hostId).select('username avatar voice_rate_per_min_inr chat_rate_per_min_inr');
     const hostRates = resolveUserRates(hostUser, settings);
-    const voiceRate = hostRates.voiceRatePerMin;
     if (!requestId || !['accept', 'reject'].includes(action)) {
       return res.status(400).json({ error: 'requestId and action (accept/reject) required' });
     }
@@ -137,6 +158,9 @@ exports.respondCall = async (req, res) => {
     request.responded_at = new Date();
     await request.save();
 
+    const callType = request.call_type || 'voice';
+    const callRate = rateForCallType(hostRates, callType);
+    const callBeans = beansForCallType(hostRates, callType);
     const requester = await User.findById(request.requester_id).select('username avatar').lean();
     const payload = {
       requestId: request._id.toString(),
@@ -148,8 +172,9 @@ exports.respondCall = async (req, res) => {
       hostName: hostUser?.username || 'Host',
       hostAvatar: hostUser?.avatar || null,
       channelName: request.channel_name,
-      ratePerMin: voiceRate,
-      beansPerMin: hostRates.voiceBeansPerMin,
+      callType,
+      ratePerMin: callRate,
+      beansPerMin: callBeans,
       billingEnabled: settings.videoCallBillingEnabled,
     };
 
@@ -163,7 +188,7 @@ exports.respondCall = async (req, res) => {
         });
         await syncHostBusyToLiveRoom(request.session_id, hostId);
       } else {
-        io.to(userRoom(request.requester_id)).emit('live_call_rejected', payload);
+        io.to(userRoom(request.requester_id)).emit('live_call_rejected', { ...payload, callType });
       }
     }
 
@@ -188,22 +213,23 @@ exports.getCallStatus = async (req, res) => {
     const isHost = String(session.user_id?._id || session.user_id) === String(userId);
     const hostDoc = session.user_id;
     const hostRates = resolveUserRates(hostDoc, settings);
-    const voiceRate = hostRates.voiceRatePerMin;
     const user = await User.findById(userId).select('wallet_balance');
-    const callPayload = buildVideoCallBalancePayload(user?.wallet_balance, settings, voiceRate);
+    const callPayload = buildVideoCallBalancePayload(user?.wallet_balance, settings, hostRates.voiceRatePerMin);
     callPayload.beansPerMin = hostRates.voiceBeansPerMin;
+    callPayload.videoRatePerMin = hostRates.videoRatePerMin;
+    callPayload.videoBeansPerMin = hostRates.videoBeansPerMin;
 
-    const pending = await LiveCallRequest.findOne({
+    const pending = await LiveCallRequest.find({
       session_id: sessionId,
       requester_id: userId,
       status: 'pending',
-    }).select('_id status channel_name created_at');
+    }).select('_id status channel_name call_type created_at').lean();
 
-    const accepted = await LiveCallRequest.findOne({
+    const accepted = await LiveCallRequest.find({
       session_id: sessionId,
       requester_id: userId,
       status: 'accepted',
-    }).sort({ responded_at: -1 }).select('_id status channel_name responded_at');
+    }).sort({ responded_at: -1 }).select('_id status channel_name call_type responded_at').lean();
 
     const pendingForHost = isHost
       ? await LiveCallRequest.find({ session_id: sessionId, status: 'pending' })
@@ -217,16 +243,25 @@ exports.getCallStatus = async (req, res) => {
       success: true,
       isHost,
       ...callPayload,
-      pendingRequest: pending ? {
-        id: pending._id.toString(),
-        status: pending.status,
-        channelName: pending.channel_name,
-        created_at: pending.created_at,
+      pendingRequest: pending[0] ? {
+        id: pending[0]._id.toString(),
+        status: pending[0].status,
+        channelName: pending[0].channel_name,
+        callType: pending[0].call_type || 'voice',
+        created_at: pending[0].created_at,
       } : null,
-      acceptedCall: accepted ? {
-        id: accepted._id.toString(),
-        channelName: accepted.channel_name,
-        status: accepted.status,
+      pendingRequests_all: pending.map((p) => ({
+        id: p._id.toString(),
+        status: p.status,
+        channelName: p.channel_name,
+        callType: p.call_type || 'voice',
+        created_at: p.created_at,
+      })),
+      acceptedCall: accepted[0] ? {
+        id: accepted[0]._id.toString(),
+        channelName: accepted[0].channel_name,
+        status: accepted[0].status,
+        callType: accepted[0].call_type || 'voice',
       } : null,
       pendingRequests: pendingForHost.map((r) => ({
         id: r._id.toString(),
@@ -234,6 +269,7 @@ exports.getCallStatus = async (req, res) => {
         requesterName: r.requester_id?.username,
         requesterAvatar: r.requester_id?.avatar,
         channelName: r.channel_name,
+        callType: r.call_type || 'voice',
         created_at: r.created_at,
       })),
     });

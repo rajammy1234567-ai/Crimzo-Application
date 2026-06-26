@@ -15,6 +15,11 @@ function requireAgoraCreds(res) {
   return { appId, appCertificate };
 }
 
+function isLivePrivateCallChannel(channelName) {
+  const ch = String(channelName || '');
+  return ch.startsWith('vc_live_') || ch.startsWith('vc_live_vid_');
+}
+
 /** 1-on-1 video call token (Communication channel — both users publish) */
 exports.generateCallToken = async (req, res) => {
   try {
@@ -23,7 +28,8 @@ exports.generateCallToken = async (req, res) => {
       return res.status(400).json({ error: 'Valid call channel name required' });
     }
 
-    if (peerId) {
+    // Live private calls are already accepted by the host — no follow gate for RTC.
+    if (peerId && !isLivePrivateCallChannel(channelName)) {
       try {
         await assertCanInteract(req.user.id, peerId);
       } catch (permErr) {

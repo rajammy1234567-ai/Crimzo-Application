@@ -50,6 +50,7 @@ import {
   shouldConfigureRemoteAudio,
 } from '../../lib/agoraRtcHelpers';
 import { publish, subscribe } from '../../lib/realtimeSync';
+import { releaseAgoraEngine, releaseTrackedAgoraEngine, trackAgoraEngine } from '../../lib/agoraEngineRelease';
 import StickerPanel from '../../components/StickerPanel';
 import GiftSplashOverlay from '../../components/GiftSplashOverlay';
 
@@ -131,6 +132,7 @@ export default function VideoCallScreen() {
     beansPerMin?: string;
     accepted?: string;
     fromLive?: string;
+    callMode?: string;
   }>();
 
   const channelName = params.channel || '';
@@ -140,6 +142,7 @@ export default function VideoCallScreen() {
   const role = params.role || 'caller';
   const isCaller = role === 'caller';
   const preAccepted = params.accepted === '1';
+  const isVideoMode = params.callMode !== 'voice';
   const ratePerMin = Number(params.ratePerMin) || VIDEO_CALL_RATE_PER_MIN;
   const beansPerMin = params.beansPerMin ? Number(params.beansPerMin) : undefined;
 
@@ -159,6 +162,7 @@ export default function VideoCallScreen() {
   const finalizeBillingRef = useRef<() => Promise<void>>(async () => {});
   const peerNameRef = useRef(peerName);
   const isCallerRef = useRef(isCaller);
+  const initAgoraInProgressRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [callPhase, setCallPhase] = useState<CallPhase>(
@@ -167,7 +171,7 @@ export default function VideoCallScreen() {
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
   const [remoteCamOn, setRemoteCamOn] = useState(true);
   const [micOn, setMicOn] = useState(true);
-  const [camOn, setCamOn] = useState(true);
+  const [camOn, setCamOn] = useState(isVideoMode);
   const [speakerOn, setSpeakerOn] = useState(true);
   const [localUid, setLocalUid] = useState<number>(0);
   const [elapsedSec, setElapsedSec] = useState(0);
@@ -234,10 +238,7 @@ export default function VideoCallScreen() {
     if (engineRef.current) {
       const eng = engineRef.current;
       engineRef.current = null;
-      eng.leaveChannel();
-      setTimeout(() => {
-        try { eng.release(); } catch {}
-      }, 300);
+      void releaseAgoraEngine(eng);
     }
     if (socketRef.current) {
       socketRef.current.removeAllListeners();
@@ -340,9 +341,14 @@ export default function VideoCallScreen() {
   }, [speakerOn]);
 
   const initAgora = useCallback(async () => {
-    if (!channelName || !token || !user?.id || engineRef.current) return;
+    if (!channelName || !token || !user?.id || engineRef.current || initAgoraInProgressRef.current) return;
+    initAgoraInProgressRef.current = true;
 
     try {
+      await releaseTrackedAgoraEngine();
+      if (params.fromLive === '1') {
+        await new Promise<void>((resolve) => setTimeout(resolve, 300));
+      }
       await prepareVoiceCallAudio();
       const perms = await ensureRtcPermissions();
       if (!perms.mic) {
@@ -384,10 +390,14 @@ export default function VideoCallScreen() {
         appId: creds.appId,
         channelProfile: ChannelProfileType.ChannelProfileCommunication,
       });
-      engine.enableVideo();
+      if (isVideoMode) {
+        engine.enableVideo();
+        engine.startPreview();
+      } else {
+        engine.disableVideo();
+      }
       engine.enableAudio();
       configureCallAudioEngine(engine, { speakerphone: speakerOn });
-      engine.startPreview();
 
       engine.registerEventHandler({
         onJoinChannelSuccess: () => {
@@ -436,18 +446,23 @@ export default function VideoCallScreen() {
 
       engine.joinChannel(creds.token, channelName, uid, {
         publishMicrophoneTrack: true,
-        publishCameraTrack: true,
+        publishCameraTrack: isVideoMode && camOn,
         autoSubscribeAudio: true,
-        autoSubscribeVideo: true,
+        autoSubscribeVideo: isVideoMode,
       });
       configureCallAudioEngine(engine, { speakerphone: speakerOn });
 
       engineRef.current = engine;
+      trackAgoraEngine(engine);
     } catch (e: unknown) {
       const msg = e instanceof ApiError
         ? e.message
         : (e instanceof Error ? e.message : 'Call failed');
       const code = e instanceof ApiError ? (e.data as { code?: string })?.code : undefined;
+      if (code === 'FOLLOW_REQUIRED') {
+        appAlert('Call Failed', msg || 'Could not join this call.', [{ text: 'OK', onPress: () => endCall() }]);
+        return;
+      }
       if (code === 'INSUFFICIENT_BALANCE') {
         appAlert(
           'Recharge Required',
@@ -460,8 +475,10 @@ export default function VideoCallScreen() {
         return;
       }
       appAlert('Call Failed', msg, [{ text: 'OK', onPress: () => endCall() }]);
+    } finally {
+      initAgoraInProgressRef.current = false;
     }
-  }, [channelName, token, user?.id, role, peerId, initCallBilling, endCall, router, tryActivateCall, speakerOn]);
+  }, [channelName, token, user?.id, role, peerId, initCallBilling, endCall, router, tryActivateCall, speakerOn, isVideoMode, camOn, params.fromLive]);
 
   endCallRef.current = endCall;
   finalizeBillingRef.current = finalizeBilling;
@@ -536,9 +553,9 @@ export default function VideoCallScreen() {
         void finalizeBillingRef.current();
       }
       if (engineRef.current) {
-        engineRef.current.leaveChannel();
-        engineRef.current.release();
+        const eng = engineRef.current;
         engineRef.current = null;
+        void releaseAgoraEngine(eng);
       }
       socket.disconnect();
     };
@@ -570,6 +587,19 @@ export default function VideoCallScreen() {
       unsubReject();
     };
   }, [channelName, clearRingTimeout]);
+
+  useEffect(() => {
+    if (connected || callPhase === 'ringing') return;
+    const timeout = setTimeout(() => {
+      if (callEndedRef.current || remoteUidRef.current) return;
+      appAlert(
+        'Connection Timeout',
+        'Could not connect to the other person. Check your internet and try again.',
+        [{ text: 'OK', onPress: () => endCallRef.current() }],
+      );
+    }, 45000);
+    return () => clearTimeout(timeout);
+  }, [connected, callPhase]);
 
   useEffect(() => {
     if (!connected) return;
@@ -720,13 +750,13 @@ export default function VideoCallScreen() {
             )}
             {renderControl(micOn ? 'mic' : 'mic-off', 'Mute', toggleMic, micOn)}
             {renderControl('call', 'End', () => endCall(), true, true)}
-            {renderControl(camOn ? 'videocam' : 'videocam-off', 'Video', toggleCam, camOn)}
+            {isVideoMode && renderControl(camOn ? 'videocam' : 'videocam-off', 'Video', toggleCam, camOn)}
             {renderControl('gift', 'Gift', () => setShowGifts(true))}
           </>
         )}
       </View>
 
-      {connected && (
+      {connected && isVideoMode && camOn && (
         <TouchableOpacity style={s.flipCamBtn} onPress={switchCam}>
           <Ionicons name="camera-reverse" size={22} color="#FFF" />
         </TouchableOpacity>

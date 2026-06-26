@@ -1,33 +1,22 @@
 import Constants, { ExecutionEnvironment } from 'expo-constants';
+import * as AuthSession from 'expo-auth-session';
 import { Platform } from 'react-native';
 
 export const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '';
 export const GOOGLE_ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '';
 export const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
 
-/** Release APK keystore SHA-1 — must match Google Console Android OAuth client */
+/** Release APK keystore SHA-1 — only needed if using native @react-native-google-signin */
 export const GOOGLE_ANDROID_RELEASE_SHA1 =
   '96:D4:98:56:64:40:D3:7F:C6:42:F1:96:00:05:A0:86:F6:61:B6:C9';
 
 export const ANDROID_PACKAGE = 'com.livestreamhub';
-
-function clientIdToReverseScheme(clientId: string): string | null {
-  const match = clientId.match(/^([\w-]+)\.apps\.googleusercontent\.com$/);
-  return match ? `com.googleusercontent.apps.${match[1]}` : null;
-}
-
-export function getGoogleWebReverseScheme(): string | null {
-  return clientIdToReverseScheme(GOOGLE_WEB_CLIENT_ID);
-}
-
-export function getGoogleAndroidReverseScheme(): string | null {
-  return clientIdToReverseScheme(GOOGLE_ANDROID_CLIENT_ID);
-}
+export const APP_SCHEME = Constants.expoConfig?.scheme || 'crimzo';
 
 const expoOwner = Constants.expoConfig?.owner || 'dev_eas_office_viz001';
 const expoSlug = Constants.expoConfig?.slug || 'crimzo';
 
-/** Expo Go only — legacy web redirect (not used with native sign-in) */
+/** Expo Go redirect — add to Google Console Web client authorized redirect URIs */
 export const EXPO_GOOGLE_REDIRECT = `https://auth.expo.io/@${expoOwner}/${expoSlug}`;
 
 export function getGoogleWebClientId(): string {
@@ -38,24 +27,35 @@ export function isGoogleSignInAvailable(): boolean {
   return !!GOOGLE_WEB_CLIENT_ID;
 }
 
-/** True when running inside Expo Go (not standalone APK) */
 export function isExpoGo(): boolean {
   return Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 }
 
-/** Native Google Sign-In works in dev build / APK — not in Expo Go */
-export function supportsNativeGoogleSignIn(): boolean {
-  if (isExpoGo()) return false;
-  if (!GOOGLE_WEB_CLIENT_ID) return false;
-  if (Platform.OS === 'web') return false;
-  return true;
-}
+/**
+ * Same browser OAuth flow as website — works on web, APK, and Expo Go.
+ * (Native @react-native-google-signin needs matching SHA-1 and often breaks on APK.)
+ */
+export function getGoogleOAuthRedirectUri(): string {
+  if (isExpoGo()) {
+    return EXPO_GOOGLE_REDIRECT;
+  }
 
-/** @deprecated Use native Google Sign-In; kept for error messages */
-export function getGoogleRedirectUri(): string {
-  return `${Constants.expoConfig?.android?.package || 'com.livestreamhub'}:/oauthredirect`;
+  if (Platform.OS === 'web') {
+    return AuthSession.makeRedirectUri({ path: 'oauthredirect' });
+  }
+
+  return AuthSession.makeRedirectUri({
+    scheme: ANDROID_PACKAGE,
+    path: 'oauthredirect',
+  });
 }
 
 export function getGoogleWebClientRedirectUris(): string[] {
-  return [EXPO_GOOGLE_REDIRECT];
+  return [
+    EXPO_GOOGLE_REDIRECT,
+    `${ANDROID_PACKAGE}:/oauthredirect`,
+    `${APP_SCHEME}://oauthredirect`,
+    'http://localhost:8081/oauthredirect',
+    'http://localhost:19006/oauthredirect',
+  ];
 }

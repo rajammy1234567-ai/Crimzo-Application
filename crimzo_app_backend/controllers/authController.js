@@ -4,6 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 const nodemailer = require('nodemailer');
 const User = require('../models/User');
 const { uploadToCloudinary } = require('../config/cloudinary');
+const { sendOtpSms, verifyOtpSms, normalizeIndianMobile, isFast2SmsConfigured } = require('../utils/fast2sms');
 
 // In-memory OTP store (dev only — use Redis/DB in production)
 const otpStore = new Map();
@@ -128,19 +129,32 @@ exports.guestLogin = async (req, res) => {
   }
 };
 
-// Send OTP
-exports.sendOtp = (req, res) => {
+// Send OTP (FAST2SMS in production; console log fallback in dev)
+exports.sendOtp = async (req, res) => {
   try {
-    const { phone } = req.body;
-    if (!phone || phone.length < 10) {
-      return res.status(400).json({ error: 'Valid phone number required' });
+    const mobile = normalizeIndianMobile(req.body.phone);
+    if (!mobile) {
+      return res.status(400).json({ error: 'Valid 10-digit Indian mobile number required' });
     }
 
     const otp = Math.floor(1000 + Math.random() * 9000).toString();
-    otpStore.set(phone, { otp, expiresAt: Date.now() + 5 * 60 * 1000 });
+    otpStore.set(mobile, { otp, expiresAt: Date.now() + 5 * 60 * 1000 });
 
-    console.log(`\n📱 OTP for +91${phone}: ${otp}\n`);
-    res.json({ success: true, message: 'OTP sent successfully' });
+    try {
+      const result = await sendOtpSms(mobile, otp);
+      const devHint = result.devMode && !isFast2SmsConfigured()
+        ? ' (dev mode — check server logs for OTP)'
+        : '';
+      res.json({ success: true, message: `OTP sent to +91${mobile}${devHint}` });
+    } catch (smsErr) {
+      console.error('FAST2SMS send error:', smsErr.message);
+      if (process.env.NODE_ENV === 'production') {
+        otpStore.delete(mobile);
+        return res.status(500).json({ error: 'Failed to send OTP. Please try again.' });
+      }
+      console.log(`\n📱 [FALLBACK] OTP for +91${mobile}: ${otp}\n`);
+      res.json({ success: true, message: 'OTP sent (dev fallback — check server logs)' });
+    }
   } catch (error) {
     console.error('Send OTP error:', error);
     res.status(500).json({ error: 'Failed to send OTP' });
@@ -155,26 +169,43 @@ exports.verifyOtp = async (req, res) => {
       return res.status(400).json({ error: 'Phone and OTP required' });
     }
 
-    const stored = otpStore.get(phone);
-    if (!stored) {
-      return res.status(400).json({ error: 'OTP not found. Please request a new one.' });
-    }
-    if (stored.otp !== otp) {
-      return res.status(400).json({ error: 'Invalid OTP. Please try again.' });
-    }
-    if (Date.now() > stored.expiresAt) {
-      otpStore.delete(phone);
-      return res.status(400).json({ error: 'OTP expired. Please request a new one.' });
+    const mobile = normalizeIndianMobile(phone);
+    if (!mobile) {
+      return res.status(400).json({ error: 'Valid 10-digit Indian mobile number required' });
     }
 
-    otpStore.delete(phone);
+    let verified = false;
+    if (isFast2SmsConfigured()) {
+      try {
+        await verifyOtpSms(mobile, otp);
+        verified = true;
+        otpStore.delete(mobile);
+      } catch (smsErr) {
+        console.error('FAST2SMS verify error:', smsErr.message);
+      }
+    }
 
-    const phoneEmail = `${phone}@phone.crimzo.local`;
+    if (!verified) {
+      const stored = otpStore.get(mobile);
+      if (!stored) {
+        return res.status(400).json({ error: 'OTP not found. Please request a new one.' });
+      }
+      if (stored.otp !== String(otp)) {
+        return res.status(400).json({ error: 'Invalid OTP. Please try again.' });
+      }
+      if (Date.now() > stored.expiresAt) {
+        otpStore.delete(mobile);
+        return res.status(400).json({ error: 'OTP expired. Please request a new one.' });
+      }
+      otpStore.delete(mobile);
+    }
+
+    const phoneEmail = `${mobile}@phone.crimzo.local`;
     let user = await User.findOne({ email: phoneEmail });
     let referralResult = null;
 
     if (!user) {
-      const username = `User_${phone.slice(-4)}`;
+      const username = `User_${mobile.slice(-4)}`;
       const crimzoId = await generateCrimzoId();
       user = await User.create({
         crimzo_id: crimzoId,

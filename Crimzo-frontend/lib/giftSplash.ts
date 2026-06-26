@@ -66,11 +66,19 @@ export function subscribeGiftSplash(cb: (payload: GiftSplashPayload) => void): (
   });
 }
 
-export function giftSplashTier(diamonds?: number): 'normal' | 'premium' | 'mega' {
+export function giftSplashTier(diamonds?: number): 'normal' | 'premium' | 'mega' | 'legend' {
   const n = Number(diamonds) || 0;
-  if (n >= 80) return 'mega';
-  if (n >= 25) return 'premium';
+  if (n >= 100000) return 'legend';
+  if (n >= 1000) return 'mega';
+  if (n >= 50) return 'premium';
   return 'normal';
+}
+
+export function formatDiamondPrice(price: number): string {
+  const n = Math.max(0, Math.floor(Number(price) || 0));
+  if (n >= 100000) return `${(n / 100000).toFixed(n % 100000 === 0 ? 0 : 1)}L`;
+  if (n >= 1000) return `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}K`;
+  return String(n);
 }
 
 /** Follower DM chat — diamond gift popup */

@@ -20,8 +20,10 @@ export function receiverBeansFromChatInr(inr: number): number {
 export type UserRates = {
   voiceRatePerMin: number;
   chatRatePerMin: number;
+  videoRatePerMin: number;
   voiceBeansPerMin: number;
   chatBeansPerMin: number;
+  videoBeansPerMin: number;
 };
 
 export function resolveRates(
@@ -31,11 +33,14 @@ export function resolveRates(
 ): UserRates {
   const voice = Math.max(MIN_RATE_INR, voiceRate ?? defaults?.voice ?? 1);
   const chat = Math.max(MIN_RATE_INR, chatRate ?? defaults?.chat ?? 1);
+  const video = Math.min(MAX_RATE_INR, voice * 2);
   return {
     voiceRatePerMin: voice,
     chatRatePerMin: chat,
+    videoRatePerMin: video,
     voiceBeansPerMin: receiverBeansFromCallInr(voice),
     chatBeansPerMin: receiverBeansFromChatInr(chat),
+    videoBeansPerMin: receiverBeansFromCallInr(video),
   };
 }
 
