@@ -8,8 +8,6 @@ import {
     StyleSheet,
     KeyboardAvoidingView,
     Platform,
-    Animated,
-    Easing,
     Dimensions,
     Keyboard,
 } from 'react-native';
@@ -19,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import io, { type Socket } from 'socket.io-client';
 
 import { API_URL } from '../lib/apiClient';
+import { publishGiftSplash } from '../lib/giftSplash';
 import { playMessageReceivePop, playMessageSendPop } from '../lib/uiSounds';
 import { KEYBOARD_BEHAVIOR } from './KeyboardAware';
 const { width: SW } = Dimensions.get('window');
@@ -35,20 +34,8 @@ interface ChatMessage {
     icon_name?: string;
     icon_color?: string;
     bg_color?: string;
+    gift_diamonds?: number;
     timestamp: number;
-}
-
-interface FloatingGift {
-    id: string;
-    icon_name: string;
-    icon_color: string;
-    bg_color: string;
-    stickerName: string;
-    username: string;
-    animY: Animated.Value;
-    animX: Animated.Value;
-    animOpacity: Animated.Value;
-    animScale: Animated.Value;
 }
 
 interface LiveChatProps {
@@ -101,40 +88,18 @@ function getColor(uid?: string | number, isHost?: boolean): string {
     return NAME_COLORS[num % NAME_COLORS.length];
 }
 
-// ── Floating Gift Animation ──
-function FloatingGiftView({ gift }: { gift: FloatingGift }) {
-    const iconName = (gift.icon_name || 'gift') as keyof typeof Ionicons.glyphMap;
-    return (
-        <Animated.View style={[floatS.wrap, {
-            transform: [{ translateY: gift.animY }, { translateX: gift.animX }, { scale: gift.animScale }],
-            opacity: gift.animOpacity,
-        }]}>
-            <View style={[floatS.pill, { borderColor: gift.bg_color + '40' }]}>
-                <View style={[floatS.iconCircle, { backgroundColor: gift.bg_color }]}>
-                    <Ionicons name={iconName} size={20} color={gift.icon_color || '#FFF'} />
-                </View>
-                <View>
-                    <Text style={floatS.giftName}>{gift.stickerName}</Text>
-                    <Text style={floatS.giftFrom}>from {gift.username}</Text>
-                </View>
-            </View>
-        </Animated.View>
-    );
+function triggerGiftSplash(data: ChatMessage) {
+    publishGiftSplash({
+        id: data.id,
+        username: data.username || 'User',
+        stickerName: data.stickerName || 'Gift',
+        icon_name: data.icon_name,
+        icon_color: data.icon_color,
+        bg_color: data.bg_color,
+        gift_diamonds: data.gift_diamonds,
+        emoji: data.emoji,
+    });
 }
-
-const floatS = StyleSheet.create({
-    wrap: { position: 'absolute', right: 16, bottom: 200, alignItems: 'flex-end' },
-    pill: {
-        flexDirection: 'row', alignItems: 'center', gap: 10,
-        backgroundColor: 'rgba(0,0,0,0.75)', borderRadius: 28,
-        paddingVertical: 8, paddingLeft: 8, paddingRight: 16,
-        borderWidth: 1, shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 12, elevation: 10,
-    },
-    iconCircle: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-    giftName: { color: '#FFD700', fontSize: 13, fontWeight: '800' },
-    giftFrom: { color: 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: '500', marginTop: 1 },
-});
 
 // ── Single Chat Message ──
 const ChatBubble = React.memo(function ChatBubble({
@@ -230,7 +195,6 @@ export default function LiveChat({
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputText, setInputText] = useState('');
     const [socket, setSocket] = useState<any>(null);
-    const [floatingGifts, setFloatingGifts] = useState<FloatingGift[]>([]);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
     const flatListRef = useRef<FlatList>(null);
 
@@ -239,43 +203,6 @@ export default function LiveChat({
         const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardVisible(true));
         const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardVisible(false));
         return () => { show.remove(); hide.remove(); };
-    }, []);
-
-    // Floating gift animation
-    const addFloatingGift = useCallback((data: ChatMessage) => {
-        const id = `fg_${Date.now()}_${Math.random()}`;
-        const animY = new Animated.Value(0);
-        const animX = new Animated.Value(0);
-        const animOpacity = new Animated.Value(0);
-        const animScale = new Animated.Value(0.3);
-
-        const gift: FloatingGift = {
-            id,
-            icon_name: data.icon_name || 'gift',
-            icon_color: data.icon_color || '#FFF',
-            bg_color: data.bg_color || '#FF2D55',
-            stickerName: data.stickerName || 'Gift',
-            username: data.username || 'User',
-            animY, animX, animOpacity, animScale,
-        };
-
-        setFloatingGifts(prev => [...prev, gift]);
-
-        Animated.parallel([
-            Animated.sequence([
-                Animated.timing(animOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
-                Animated.delay(2200),
-                Animated.timing(animOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
-            ]),
-            Animated.timing(animY, { toValue: -260, duration: 3000, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
-            Animated.timing(animX, { toValue: (Math.random() - 0.5) * 60, duration: 3000, useNativeDriver: true }),
-            Animated.sequence([
-                Animated.spring(animScale, { toValue: 1.1, tension: 80, friction: 5, useNativeDriver: true }),
-                Animated.timing(animScale, { toValue: 0.8, duration: 1500, useNativeDriver: true }),
-            ]),
-        ]).start(() => {
-            setFloatingGifts(prev => prev.filter(g => g.id !== id));
-        });
     }, []);
 
     const joinLiveRoom = useCallback((s: Socket) => {
@@ -297,7 +224,7 @@ export default function LiveChat({
                 if (!fromSelf && data.type === 'text') {
                     playMessageReceivePop();
                 }
-                if (data.type === 'sticker') addFloatingGift(data);
+                if (data.type === 'sticker') triggerGiftSplash(data);
             };
             const onSystem = (data: { message?: string; username?: string }) => {
                 setMessages((prev) => appendChatMessage(prev, {
@@ -360,7 +287,7 @@ export default function LiveChat({
             try { s.emit('leave_live', { sessionId: normalizeSessionId(sessionId) }); } catch {}
             s.disconnect();
         };
-    }, [sessionId, token, sharedSocket, joinLiveRoom, addFloatingGift]);
+    }, [sessionId, token, sharedSocket, joinLiveRoom]);
 
     const sendMessage = useCallback(() => {
         const text = inputText.trim();
@@ -412,9 +339,6 @@ export default function LiveChat({
             style={cs.container}
             keyboardVerticalOffset={0}
         >
-            {/* Floating gifts */}
-            {floatingGifts.map(g => <FloatingGiftView key={g.id} gift={g} />)}
-
             {/* Messages */}
             <FlatList
                 ref={flatListRef}

@@ -29,6 +29,7 @@ import LiveChat from '../../components/LiveChat';
 import PrivateTalkChat from '../../components/PrivateTalkChat';
 import HostBusyOverlay from '../../components/HostBusyOverlay';
 import StickerPanel from '../../components/StickerPanel';
+import GiftSplashOverlay from '../../components/GiftSplashOverlay';
 import {
   createAgoraRtcEngine,
   ChannelProfileType,
@@ -788,6 +789,7 @@ export default function WatchScreen() {
   return (
     <View style={s.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <GiftSplashOverlay />
 
       {/* ═══ STREAM VIDEO ═══ */}
       <View style={StyleSheet.absoluteFill}>

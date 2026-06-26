@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { Socket } from 'socket.io-client';
 
+import { publishGiftSplash } from '../lib/giftSplash';
 import { playMessageReceivePop, playMessageSendPop } from '../lib/uiSounds';
 import { subscribe } from '../lib/realtimeSync';
 import { KEYBOARD_BEHAVIOR } from './KeyboardAware';
@@ -147,7 +148,18 @@ export default function PrivateTalkChat({
     const onMessage = (data: ChatMessage) => {
       if (!belongsToThisTalk(data)) return;
       setMessages((prev) => appendMessage(prev, data));
-      if (String(data.userId) !== String(userId) && data.type === 'text') {
+      if (data.type === 'sticker') {
+        publishGiftSplash({
+          id: data.id,
+          username: data.username || 'User',
+          stickerName: data.stickerName || 'Gift',
+          icon_name: data.icon_name,
+          icon_color: data.icon_color,
+          bg_color: data.bg_color,
+          gift_diamonds: data.gift_diamonds,
+          emoji: data.emoji,
+        });
+      } else if (String(data.userId) !== String(userId) && data.type === 'text') {
         playMessageReceivePop();
       }
       scrollToEnd();

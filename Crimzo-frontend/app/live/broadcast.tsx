@@ -35,6 +35,7 @@ import { resolveRates } from '../../lib/userRates';
 import { subscribe } from '../../lib/realtimeSync';
 import { shareLiveStream } from '../../lib/liveShare';
 import LiveFilterPanel from '../../components/LiveFilterPanel';
+import GiftSplashOverlay from '../../components/GiftSplashOverlay';
 import {
   applyLiveFilterToEngine,
   getLiveFilterPreset,
@@ -894,6 +895,7 @@ export default function BroadcastScreen() {
   return (
     <View style={st.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <GiftSplashOverlay />
 
       {/* ═══ CAMERA VIEW ═══ */}
       <View style={st.cameraWrap}>
