@@ -78,7 +78,7 @@ exports.renderInviteLandingPage = async (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Join ${displayName} on Crimzo</title>
   <meta property="og:title" content="Join ${displayName} on Crimzo" />
-  <meta property="og:description" content="Sign up on Crimzo with referral code ${code || ''}. You get ${REFERRED_USER_REWARD_DIAMONDS.toLocaleString('en-IN')} diamonds and ${displayName} gets ${REFERRAL_REWARD_DIAMONDS.toLocaleString('en-IN')} diamonds!" />
+  <meta property="og:description" content="Sign up on Crimzo with referral code ${code || ''} and get ${REFERRED_USER_REWARD_DIAMONDS.toLocaleString('en-IN')} diamonds!" />
   <style>
     * { box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; min-height: 100vh; background: linear-gradient(160deg, #06060f 0%, #141428 100%); color: #eee; display: flex; align-items: center; justify-content: center; padding: 24px; }
