@@ -34,7 +34,7 @@ export function buildReferralShareMessage(code: string, link?: string): string {
   const url = link || buildReferralLink(normalized);
   return [
     'Join me on Crimzo!',
-    `Sign up with my referral ID — you get ${formatReferralDiamonds(REFERRED_USER_REWARD_DIAMONDS)} diamonds, I get ${formatReferralDiamonds(REFERRER_REWARD_DIAMONDS)} diamonds.`,
+    `Sign up with my referral ID and get ${formatReferralDiamonds(REFERRED_USER_REWARD_DIAMONDS)} diamonds!`,
     `Code: CRIMZO-${normalized}`,
     url,
   ].join('\n');
