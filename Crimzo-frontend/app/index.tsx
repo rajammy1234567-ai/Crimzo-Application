@@ -2,6 +2,11 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Easing, Image, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  buildLiveWatchRoute,
+  clearPendingLiveSession,
+  getPendingLiveSession,
+} from '../lib/liveShare';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export default function Index() {
@@ -28,8 +33,14 @@ export default function Index() {
 
   useEffect(() => {
     if (!loading) {
-      const timeout = setTimeout(() => {
+      const timeout = setTimeout(async () => {
         if (user) {
+          const pendingLive = await getPendingLiveSession();
+          if (pendingLive) {
+            await clearPendingLiveSession();
+            router.replace(buildLiveWatchRoute(pendingLive) as never);
+            return;
+          }
           router.replace('/(tabs)/home');
         } else {
           router.replace('/(auth)/login');

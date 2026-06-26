@@ -66,7 +66,13 @@ app.use("/api/referral", require("./routes/referralRoutes"));
 app.use("/api/admin", require("./routes/adminRoutes"));
 
 const referralLanding = require("./controllers/referralController");
+const liveLanding = require("./controllers/liveController");
+const deepLink = require("./controllers/deepLinkController");
+app.get("/.well-known/assetlinks.json", deepLink.getAndroidAssetLinks);
+app.get("/.well-known/apple-app-site-association", deepLink.getAppleAppSiteAssociation);
+app.get("/apple-app-site-association", deepLink.getAppleAppSiteAssociation);
 app.get("/invite/:code", referralLanding.renderInviteLandingPage);
+app.get("/live/:sessionId", liveLanding.renderLiveLandingPage);
 
 // Online count lives under /api/users (not /api/user)
 app.get("/api/users/online-count", authenticateToken, user.getOnlineCount);

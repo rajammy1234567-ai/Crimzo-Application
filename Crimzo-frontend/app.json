@@ -11,6 +11,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.livestreamhub",
+      "associatedDomains": [
+        "applinks:www.crimzo.live",
+        "applinks:crimzo.live"
+      ],
       "infoPlist": {
         "NSCameraUsageDescription": "Broadcast live video to viewers",
         "NSMicrophoneUsageDescription": "Share audio in your streams",
@@ -24,7 +28,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.livestreamhub",
-      "versionCode": 26,
+      "versionCode": 27,
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",
@@ -60,6 +64,16 @@
               "scheme": "https",
               "host": "crimzo.live",
               "pathPrefix": "/invite"
+            },
+            {
+              "scheme": "https",
+              "host": "www.crimzo.live",
+              "pathPrefix": "/live"
+            },
+            {
+              "scheme": "https",
+              "host": "crimzo.live",
+              "pathPrefix": "/live"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]

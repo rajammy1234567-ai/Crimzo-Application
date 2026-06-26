@@ -5,7 +5,7 @@ import { RealtimeProvider } from '../contexts/RealtimeProvider';
 import { VideoCallProvider } from '../contexts/VideoCallContext';
 import { DialogProvider } from '../contexts/DialogProvider';
 import ScreenPrivacy from '../components/ScreenPrivacy';
-import ReferralLinkHandler from '../components/ReferralLinkHandler';
+import DeepLinkHandler from '../components/DeepLinkHandler';
 import { StatusBar } from 'expo-status-bar';
 
 export default function RootLayout() {
@@ -15,7 +15,7 @@ export default function RootLayout() {
       <RealtimeProvider>
       <VideoCallProvider>
       <ScreenPrivacy />
-      <ReferralLinkHandler />
+      <DeepLinkHandler />
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
@@ -27,6 +27,7 @@ export default function RootLayout() {
           name="live/broadcast" 
           options={{ presentation: 'modal' }}
         />
+        <Stack.Screen name="live/[sessionId]" />
         <Stack.Screen 
           name="live/watch" 
           options={{ presentation: 'modal' }}

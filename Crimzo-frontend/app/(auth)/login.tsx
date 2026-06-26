@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { PRIVACY_URL, TERMS_URL } from '../../lib/apiClient';
 import GoogleSignInButton from '../../components/auth/GoogleSignInButton';
+import { resolvePostAuthRoute } from '../../lib/liveShare';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -47,7 +48,7 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       await login(email.trim().toLowerCase(), password);
-      router.replace('/(tabs)/home');
+      router.replace((await resolvePostAuthRoute()) as never);
     } catch (err: any) {
       appAlert('Login Failed', err.message || 'Please check your credentials and try again.');
     } finally {
@@ -175,7 +176,7 @@ export default function LoginScreen() {
 
               <GoogleSignInButton
                 disabled={loading}
-                onSuccess={() => router.replace('/(tabs)/home')}
+                onSuccess={async () => router.replace((await resolvePostAuthRoute()) as never)}
               />
             </View>
 

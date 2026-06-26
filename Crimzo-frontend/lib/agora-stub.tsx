@@ -53,6 +53,8 @@ const engineStub = {
   muteLocalAudioStream: (_mute: boolean) => {},
   muteLocalVideoStream: (_mute: boolean) => {},
   switchCamera: () => {},
+  setBeautyEffectOptions: (_enabled: boolean, _options: Record<string, number>) => 0,
+  setColorEnhanceOptions: (_enabled: boolean, _options: Record<string, number>) => 0,
 };
 
 export const createAgoraRtcEngine = () => engineStub;

@@ -15,6 +15,7 @@ import {
   getPendingReferralCode,
   savePendingReferralCode,
 } from '../../lib/referral';
+import { resolvePostAuthRoute } from '../../lib/liveShare';
 
 export default function RegisterScreen() {
   const [email, setEmail] = useState('');
@@ -127,7 +128,7 @@ export default function RegisterScreen() {
         await savePendingReferralCode(referralId.trim());
       }
       await register(trimmedEmail, password, trimmedUsername, avatarUri || undefined);
-      router.replace('/(tabs)/home');
+      router.replace((await resolvePostAuthRoute()) as never);
     } catch (err: any) {
       appAlert('Registration Failed', err.message || 'Please try again.');
     } finally {
@@ -320,7 +321,7 @@ export default function RegisterScreen() {
 
               <GoogleSignInButton
                 disabled={loading}
-                onSuccess={() => router.replace('/(tabs)/home')}
+                onSuccess={async () => router.replace((await resolvePostAuthRoute()) as never)}
               />
             </View>
 

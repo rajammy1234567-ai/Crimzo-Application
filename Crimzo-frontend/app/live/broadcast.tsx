@@ -33,6 +33,13 @@ import {
 } from '../../lib/liveCallRequest';
 import { resolveRates } from '../../lib/userRates';
 import { subscribe } from '../../lib/realtimeSync';
+import { shareLiveStream } from '../../lib/liveShare';
+import LiveFilterPanel from '../../components/LiveFilterPanel';
+import {
+  applyLiveFilterToEngine,
+  getLiveFilterPreset,
+  type LiveFilterId,
+} from '../../lib/liveFilters';
 
 const LIVE_START_TIMEOUT_MS = 10000;
 const LOADING_SAFETY_MS = 15000;
@@ -167,7 +174,8 @@ export default function BroadcastScreen() {
   // Controls state
   const [micEnabled, setMicEnabled] = useState(true);
   const [cameraEnabled, setCameraEnabled] = useState(true);
-  const [beautyEnabled, setBeautyEnabled] = useState(true);
+  const [selectedFilterId, setSelectedFilterId] = useState<LiveFilterId>('natural');
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [facing, setFacing] = useState<'front' | 'back'>('front');
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
@@ -667,20 +675,18 @@ export default function BroadcastScreen() {
     });
   }, []);
 
-  const toggleBeauty = useCallback(() => {
-    setBeautyEnabled(prev => {
-      const nextOn = !prev;
-      if (engineRef.current && typeof engineRef.current.setBeautyEffectOptions === 'function') {
-        engineRef.current.setBeautyEffectOptions(nextOn, {
-          lighteningContrastLevel: 1,
-          lighteningLevel: 0.7,
-          smoothnessLevel: 0.5,
-          rednessLevel: 0.1,
-        });
-      }
-      return nextOn;
-    });
+  const activeFilter = getLiveFilterPreset(selectedFilterId);
+
+  const handleFilterSelect = useCallback((filterId: LiveFilterId) => {
+    setSelectedFilterId(filterId);
+    applyLiveFilterToEngine(engineRef.current, getLiveFilterPreset(filterId));
   }, []);
+
+  useEffect(() => {
+    if (agoraReady && engineRef.current) {
+      applyLiveFilterToEngine(engineRef.current, activeFilter);
+    }
+  }, [agoraReady, selectedFilterId]);
 
   const requestPermissions = async () => {
     const perms = await ensureRtcPermissions();
@@ -714,14 +720,7 @@ export default function BroadcastScreen() {
       engine.enableVideo();
       engine.enableAudio();
 
-      if (typeof engine.setBeautyEffectOptions === 'function') {
-        engine.setBeautyEffectOptions(beautyEnabled, {
-          lighteningContrastLevel: 1,
-          lighteningLevel: 0.7,
-          smoothnessLevel: 0.5,
-          rednessLevel: 0.1,
-        });
-      }
+      applyLiveFilterToEngine(engine, getLiveFilterPreset(selectedFilterId));
 
       engine.startPreview();
 
@@ -762,7 +761,7 @@ export default function BroadcastScreen() {
       await requestMicPermission();
     }
     setAgoraReady(false);
-  }, [user?.id, cameraPermission, micPermission, requestCameraPermission, requestMicPermission, micEnabled, cameraEnabled, beautyEnabled]);
+  }, [user?.id, cameraPermission, micPermission, requestCameraPermission, requestMicPermission, micEnabled, cameraEnabled, selectedFilterId]);
 
   useEffect(() => {
     return subscribe('live_call_screen_ended', () => {
@@ -874,6 +873,19 @@ export default function BroadcastScreen() {
     else { engineRef.current = null; router.back(); }
   }, [isLive, endBroadcast, router]);
 
+  const handleShareLive = useCallback(async () => {
+    if (!sessionId) {
+      appAlert('Share', 'Go live first to share your stream.');
+      return;
+    }
+    try {
+      await shareLiveStream(user?.username || 'Host', sessionId, { isSelf: true });
+    } catch (e) {
+      console.error('Share live error:', e);
+      appAlert('Share Failed', 'Could not open the share menu. Please try again.');
+    }
+  }, [sessionId, user?.username]);
+
   const noopPress = useCallback(() => { }, []);
   const selectedTimerLabel = TIMER_OPTIONS.find(o => o.value === selectedDuration)?.label || 'No Limit';
   const avatarUri = user?.avatar;
@@ -917,6 +929,13 @@ export default function BroadcastScreen() {
             </View>
           </View>
         )}
+
+        {activeFilter.overlay ? (
+          <View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { backgroundColor: activeFilter.overlay }]}
+          />
+        ) : null}
 
         {useExpoCamera && isLive && (
           <View style={st.devModeBanner}>
@@ -1074,13 +1093,13 @@ export default function BroadcastScreen() {
               </View>
               <Text style={st.sideBtnLabel}>{cameraEnabled ? 'Cam On' : 'Cam Off'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={st.sideBtn} onPress={toggleBeauty} activeOpacity={0.7}>
-              <View style={[st.sideBtnCircle, !beautyEnabled && st.sideBtnOff]}>
-                <Ionicons name={beautyEnabled ? 'sparkles' : 'sparkles-outline'} size={20} color={beautyEnabled ? '#FFF' : '#FF4466'} />
+            <TouchableOpacity style={st.sideBtn} onPress={() => setShowFilterPanel(true)} activeOpacity={0.7}>
+              <View style={[st.sideBtnCircle, selectedFilterId !== 'none' && st.sideBtnActive]}>
+                <Ionicons name="color-filter-outline" size={20} color={selectedFilterId !== 'none' ? '#FF6B8A' : '#FFF'} />
               </View>
-              <Text style={st.sideBtnLabel}>{beautyEnabled ? 'Beauty On' : 'Beauty Off'}</Text>
+              <Text style={st.sideBtnLabel}>{activeFilter.label}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={st.sideBtn} onPress={noopPress} activeOpacity={0.7}>
+            <TouchableOpacity style={st.sideBtn} onPress={handleShareLive} activeOpacity={0.7}>
               <View style={st.sideBtnCircle}><Ionicons name="share-social" size={20} color="#FFF" /></View>
               <Text style={st.sideBtnLabel}>Share</Text>
             </TouchableOpacity>
@@ -1179,11 +1198,11 @@ export default function BroadcastScreen() {
                 </View>
                 <Text style={st.toolBtnLabel}>{cameraEnabled ? 'Cam On' : 'Cam Off'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={st.toolBtn} onPress={toggleBeauty} activeOpacity={0.7}>
-                <View style={[st.toolBtnIcon, !beautyEnabled && st.toolBtnOff]}>
-                  <Ionicons name={beautyEnabled ? 'sparkles' : 'sparkles-outline'} size={20} color={beautyEnabled ? 'rgba(255,255,255,0.8)' : '#FF4466'} />
+              <TouchableOpacity style={st.toolBtn} onPress={() => setShowFilterPanel(true)} activeOpacity={0.7}>
+                <View style={[st.toolBtnIcon, selectedFilterId !== 'none' && st.toolBtnActive]}>
+                  <Ionicons name="color-filter-outline" size={20} color={selectedFilterId !== 'none' ? '#FF6B8A' : 'rgba(255,255,255,0.8)'} />
                 </View>
-                <Text style={st.toolBtnLabel}>{beautyEnabled ? 'Beauty On' : 'Beauty Off'}</Text>
+                <Text style={[st.toolBtnLabel, selectedFilterId !== 'none' && { color: '#FF6B8A' }]}>{activeFilter.label}</Text>
               </TouchableOpacity>
             </View>
 
@@ -1245,6 +1264,13 @@ export default function BroadcastScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <LiveFilterPanel
+        visible={showFilterPanel}
+        selectedId={selectedFilterId}
+        onSelect={handleFilterSelect}
+        onClose={() => setShowFilterPanel(false)}
+      />
     </View>
   );
 }
@@ -1384,6 +1410,7 @@ const st = StyleSheet.create({
   sideBtn: { alignItems: 'center', gap: 3 },
   sideBtnCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   sideBtnOff: { backgroundColor: 'rgba(255,45,85,0.2)', borderColor: 'rgba(255,45,85,0.3)' },
+  sideBtnActive: { backgroundColor: 'rgba(255,45,85,0.2)', borderColor: 'rgba(255,45,85,0.35)' },
   sideBtnLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '600' },
   endBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,45,85,0.7)', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,45,85,0.4)' },
 

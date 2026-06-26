@@ -10,6 +10,8 @@ const { resolveUserRates } = require('../utils/userRates');
 const { emitLiveStreamsUpdated } = require('../utils/socketEmitter');
 const { getHostBusyState } = require('../utils/liveHostBusy');
 const { deriveAgoraUid } = require('../utils/agoraUid');
+const { APP_DOWNLOAD_URL, REFERRAL_WEB_BASE_URL } = require('../config/referralConfig');
+const { ANDROID_PACKAGE_NAME } = require('../config/deepLinkConfig');
 
 const STALE_LIVE_MS = 6 * 60 * 60 * 1000; // 6 hours max live session
 const LIVE_JOIN_GRACE_MS = 30 * 1000; // allow brief window after go-live before socket joins
@@ -353,5 +355,93 @@ exports.joinLive = async (req, res) => {
   } catch (error) {
     console.error('Join live error:', error);
     res.status(500).json({ error: 'Failed to join live stream' });
+  }
+};
+
+exports.renderLiveLandingPage = async (req, res) => {
+  try {
+    const sessionId = String(req.params.sessionId || '').trim();
+    const session = sessionId
+      ? await LiveSession.findById(sessionId).populate('user_id', 'username avatar').lean()
+      : null;
+    const active = !!(session && session.status === 'active');
+    const host = session?.user_id;
+    const displayName = host?.username || 'Crimzo Host';
+    const avatar = host?.avatar || `${REFERRAL_WEB_BASE_URL}/favicon.ico`;
+    const appDeepLink = `crimzo://live/watch?sessionId=${encodeURIComponent(sessionId)}`;
+    const webUrl = `${REFERRAL_WEB_BASE_URL}/live/${encodeURIComponent(sessionId)}`;
+    const intentUrl = `intent://www.crimzo.live/live/${encodeURIComponent(sessionId)}#Intent;scheme=https;package=${ANDROID_PACKAGE_NAME};S.browser_fallback_url=${encodeURIComponent(APP_DOWNLOAD_URL)};end`;
+
+    res.type('html').send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${displayName} is live on Crimzo</title>
+  <meta property="og:title" content="${displayName} is live on Crimzo" />
+  <meta property="og:description" content="Join the live stream on Crimzo now." />
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; min-height: 100vh; background: linear-gradient(160deg, #06060f 0%, #141428 100%); color: #eee; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .card { max-width: 420px; width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,45,85,0.25); border-radius: 20px; padding: 28px; text-align: center; }
+    .avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; border: 2px solid #ff2d55; margin-bottom: 16px; }
+    h1 { color: #fff; font-size: 1.35rem; margin: 0 0 8px; }
+    p { color: #aaa; line-height: 1.55; margin: 0 0 16px; }
+    .live-pill { display: inline-flex; align-items: center; gap: 8px; background: rgba(255,45,85,0.2); color: #ff6b8a; padding: 8px 14px; border-radius: 999px; font-weight: 700; margin-bottom: 16px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #ff2d55; }
+    .btn { display: block; width: 100%; text-decoration: none; border-radius: 14px; padding: 14px 18px; font-weight: 700; margin-bottom: 12px; }
+    .btn-primary { background: linear-gradient(90deg, #ff2d55, #ff6b35); color: #fff; }
+    .btn-secondary { background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.12); }
+    .invalid { color: #ff8a8a; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    ${active ? `<img class="avatar" src="${avatar}" alt="${displayName}" onerror="this.style.display='none'" />` : ''}
+    <h1>${active ? `${displayName} is live!` : 'Live stream unavailable'}</h1>
+    ${active
+      ? `<div class="live-pill"><span class="dot"></span> LIVE NOW</div><p>Open Crimzo and join the live stream.</p>`
+      : `<p class="invalid">This live stream has ended or does not exist. Download Crimzo to watch other live streams.</p>`}
+    <a class="btn btn-primary" href="${appDeepLink}" id="openApp">Join Live in App</a>
+    <a class="btn btn-secondary" href="${APP_DOWNLOAD_URL}">Download from crimzo.live</a>
+  </div>
+  <script>
+    (function () {
+      var deep = ${JSON.stringify(appDeepLink)};
+      var intent = ${JSON.stringify(intentUrl)};
+      var web = ${JSON.stringify(webUrl)};
+      var download = ${JSON.stringify(APP_DOWNLOAD_URL)};
+      var isAndroid = /Android/i.test(navigator.userAgent);
+      var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+      function openApp() {
+        if (isAndroid && intent) {
+          window.location.href = intent;
+          setTimeout(function () { window.location.href = deep; }, 600);
+        } else if (isIOS) {
+          window.location.href = deep;
+        } else {
+          window.location.href = deep;
+        }
+      }
+
+      if (isAndroid || isIOS) {
+        setTimeout(openApp, 350);
+      }
+
+      document.getElementById('openApp').addEventListener('click', function (e) {
+        e.preventDefault();
+        openApp();
+        setTimeout(function () {
+          if (isAndroid) window.location.href = download;
+        }, 1800);
+      });
+    })();
+  </script>
+</body>
+</html>`);
+  } catch (error) {
+    console.error('Live landing page error:', error);
+    res.status(500).send('Unable to load live page');
   }
 };
