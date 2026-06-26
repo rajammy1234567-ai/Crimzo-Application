@@ -8,8 +8,8 @@ const {
   todayKey,
   monthKey,
   getStreakSnapshot,
-  applyCheckinStreak,
-  applyStreakMilestoneReward,
+  performDailyCheckin,
+  tryAutoCheckinOnAppTime,
 } = require('../utils/taskProgress');
 
 function computeNewbieProgress(user) {
@@ -86,14 +86,20 @@ function buildTaskList(state, user, taskDefs) {
 exports.getTasks = async (req, res) => {
   try {
     const userId = req.user.id;
-    const [user, state, taskDefs] = await Promise.all([
+    const [user, taskDefs] = await Promise.all([
       User.findById(userId).lean(),
-      getOrCreateState(userId),
       loadActiveTasks(),
     ]);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
+    let state = await getOrCreateState(userId);
     await syncNewbieTaskRewards(state, user, taskDefs);
+
+    const autoCheckin = await tryAutoCheckinOnAppTime(userId);
+    if (autoCheckin) {
+      state = await getOrCreateState(userId);
+    }
+
     const sections = buildTaskList(state, user, taskDefs);
     const totalPossible = taskDefs.reduce((s, t) => s + t.reward_amount * t.max_count, 0);
     const totalEarned = [...sections.newbie, ...sections.daily, ...sections.monthly]
@@ -110,6 +116,13 @@ exports.getTasks = async (req, res) => {
       sections,
       totalPossible,
       totalEarned,
+      autoCheckin: autoCheckin
+        ? {
+          added: autoCheckin.added || 50,
+          streak: autoCheckin.streak,
+          streakMilestoneReward: autoCheckin.streakMilestoneReward || 0,
+        }
+        : null,
     });
   } catch (error) {
     console.error('Get tasks error:', error);
@@ -129,50 +142,23 @@ exports.getStreak = async (req, res) => {
 
 exports.checkIn = async (req, res) => {
   try {
-    const { getTodayAppTime } = require('../utils/appTimeService');
-    const appTime = await getTodayAppTime(req.user.id);
-    if (!appTime.requirement_met) {
+    const result = await performDailyCheckin(req.user.id);
+    if (!result.success) {
       return res.status(400).json({
         error: 'Spend at least 1 hour in the app today before check-in',
-        code: 'STREAK_TIME_REQUIRED',
-        appTime,
+        code: result.code || 'STREAK_TIME_REQUIRED',
+        appTime: result.appTime,
       });
     }
-
-    const state = await getOrCreateState(req.user.id);
-    const today = todayKey();
-    const streakUpdate = applyCheckinStreak(state, today);
-
-    if (streakUpdate.alreadyCheckedIn) {
-      return res.json({
-        success: true,
-        alreadyCheckedIn: true,
-        pendingReward: state.pending_reward,
-        pendingDiamonds: state.pending_diamonds || 0,
-        streak: getStreakSnapshot(state),
-      });
-    }
-
-    if (streakUpdate.streakReset) {
-      state.streak_milestones_claimed = 0;
-    }
-
-    state.last_checkin = today;
-    state.checkin_streak = streakUpdate.streak;
-    state.longest_streak = streakUpdate.longest;
-    state.pending_reward = (state.pending_reward || 0) + 50;
-
-    const milestone = applyStreakMilestoneReward(state, streakUpdate.streak);
-    state.updated_at = new Date();
-    await state.save();
 
     res.json({
       success: true,
-      added: 50,
-      pendingReward: state.pending_reward,
-      pendingDiamonds: state.pending_diamonds || 0,
-      streakMilestoneReward: milestone.diamondsAwarded,
-      streak: getStreakSnapshot(state),
+      alreadyCheckedIn: !!result.alreadyCheckedIn,
+      added: result.added,
+      pendingReward: result.pendingReward,
+      pendingDiamonds: result.pendingDiamonds,
+      streakMilestoneReward: result.streakMilestoneReward,
+      streak: result.streak,
     });
   } catch (error) {
     console.error('Check-in error:', error);

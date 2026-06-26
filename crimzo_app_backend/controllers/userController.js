@@ -860,8 +860,23 @@ exports.getFriends = async (req, res) => {
 exports.getAppTimeToday = async (req, res) => {
   try {
     const { getTodayAppTime } = require('../utils/appTimeService');
+    const { tryAutoCheckinOnAppTime } = require('../utils/taskProgress');
     const stats = await getTodayAppTime(req.user.id);
-    res.json({ success: true, ...stats });
+    let autoCheckin = null;
+    if (stats.requirement_met) {
+      autoCheckin = await tryAutoCheckinOnAppTime(req.user.id);
+    }
+    res.json({
+      success: true,
+      ...stats,
+      autoCheckin: autoCheckin
+        ? {
+          added: autoCheckin.added || 50,
+          streak: autoCheckin.streak,
+          streakMilestoneReward: autoCheckin.streakMilestoneReward || 0,
+        }
+        : null,
+    });
   } catch (error) {
     console.error('Get app time error:', error);
     res.status(500).json({ error: 'Failed to get app time' });

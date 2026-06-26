@@ -13,12 +13,28 @@ async function recordAppTime(userId, seconds, category = 'other') {
   const capped = Math.min(Math.floor(seconds), 120);
   const date = todayKey();
   const cat = normalizeCategory(category);
+
+  const existing = await UserAppTimeDaily.findOne({ user_id: userId, date })
+    .select('total_seconds')
+    .lean();
+  const beforeTotal = existing?.total_seconds || 0;
+
   const inc = { total_seconds: capped, [`breakdown.${cat}`]: capped };
-  return UserAppTimeDaily.findOneAndUpdate(
+  const doc = await UserAppTimeDaily.findOneAndUpdate(
     { user_id: userId, date },
     { $inc: inc, $setOnInsert: { user_id: userId, date } },
     { upsert: true, new: true },
   ).lean();
+
+  const afterTotal = doc?.total_seconds || 0;
+  if (beforeTotal < DAILY_REQUIRED_SECONDS && afterTotal >= DAILY_REQUIRED_SECONDS) {
+    const { tryAutoCheckinOnAppTime } = require('./taskProgress');
+    void tryAutoCheckinOnAppTime(userId).catch((err) => {
+      console.error('Auto check-in on app time error:', err.message);
+    });
+  }
+
+  return doc;
 }
 
 async function getTodayAppTime(userId) {

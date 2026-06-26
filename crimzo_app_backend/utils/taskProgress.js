@@ -162,6 +162,72 @@ function addPendingReward(state, task, count) {
   }
 }
 
+async function performDailyCheckin(userId, options = {}) {
+  const { requireAppTime = true } = options;
+  if (requireAppTime) {
+    const { getTodayAppTime } = require('./appTimeService');
+    const appTime = await getTodayAppTime(userId);
+    if (!appTime.requirement_met) {
+      return {
+        success: false,
+        code: 'STREAK_TIME_REQUIRED',
+        appTime,
+      };
+    }
+  }
+
+  const state = await getOrCreateState(userId);
+  const today = todayKey();
+  const streakUpdate = applyCheckinStreak(state, today);
+
+  if (streakUpdate.alreadyCheckedIn) {
+    return {
+      success: true,
+      alreadyCheckedIn: true,
+      pendingReward: state.pending_reward || 0,
+      pendingDiamonds: state.pending_diamonds || 0,
+      streak: getStreakSnapshot(state),
+    };
+  }
+
+  if (streakUpdate.streakReset) {
+    state.streak_milestones_claimed = 0;
+  }
+
+  state.last_checkin = today;
+  state.checkin_streak = streakUpdate.streak;
+  state.longest_streak = streakUpdate.longest;
+  state.pending_reward = (state.pending_reward || 0) + 50;
+
+  const milestone = applyStreakMilestoneReward(state, streakUpdate.streak);
+  state.updated_at = new Date();
+  await state.save();
+
+  return {
+    success: true,
+    added: 50,
+    pendingReward: state.pending_reward,
+    pendingDiamonds: state.pending_diamonds || 0,
+    streakMilestoneReward: milestone.diamondsAwarded,
+    streak: getStreakSnapshot(state),
+  };
+}
+
+/** Auto check-in once 1h app time is met (idempotent per day). */
+async function tryAutoCheckinOnAppTime(userId) {
+  try {
+    const { getTodayAppTime } = require('./appTimeService');
+    const appTime = await getTodayAppTime(userId);
+    if (!appTime.requirement_met) return null;
+    const result = await performDailyCheckin(userId, { requireAppTime: false });
+    if (!result.success || result.alreadyCheckedIn) return null;
+    return result;
+  } catch (err) {
+    console.error('Auto check-in error:', err.message);
+    return null;
+  }
+}
+
 async function recordTaskAction(userId, actionType, value = 1) {
   if (!userId || !actionType) return;
   const tasks = await Task.find({ is_active: true, action_type: actionType }).lean();
@@ -209,4 +275,6 @@ module.exports = {
   getStreakSnapshot,
   applyCheckinStreak,
   applyStreakMilestoneReward,
+  performDailyCheckin,
+  tryAutoCheckinOnAppTime,
 };

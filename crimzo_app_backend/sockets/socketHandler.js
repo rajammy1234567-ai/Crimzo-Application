@@ -163,6 +163,8 @@ module.exports = (io) => {
       if (!uid) return;
       socket.join(userRoom(uid));
       socket.crimzoUserId = uid;
+      socket.crimzoPresenceUserId = uid;
+      socket.lastTimeTick = Date.now();
       console.log(`User ${uid} joined personal room`);
     });
 
@@ -187,24 +189,31 @@ module.exports = (io) => {
     });
 
     socket.on('presence_heartbeat', async (data) => {
-      if (!socket.crimzoPresenceUserId) return;
-      touchPresence(socket.crimzoPresenceUserId, socket.id);
+      const uid = socket.crimzoPresenceUserId || socket.authenticatedUserId;
+      if (!uid) return;
+      if (!socket.crimzoPresenceUserId) {
+        socket.crimzoPresenceUserId = uid;
+      }
+      touchPresence(uid, socket.id);
 
       const foreground = data?.foreground !== false;
       const category = data?.category || socket.appCategory || 'other';
       socket.appCategory = category;
       const now = Date.now();
+      if (!socket.lastTimeTick) {
+        socket.lastTimeTick = now;
+      }
       if (foreground && socket.lastTimeTick) {
         const elapsed = Math.floor((now - socket.lastTimeTick) / 1000);
-        if (elapsed > 0 && elapsed <= 90) {
+        if (elapsed > 0 && elapsed <= 120) {
           try {
             const { recordAppTime } = require('../utils/appTimeService');
-            await recordAppTime(socket.crimzoPresenceUserId, elapsed, category);
+            await recordAppTime(uid, elapsed, category);
             if (category === 'live') {
               const { recordTaskAction } = require('../utils/taskProgress');
               const minutes = elapsed / 60;
               if (minutes > 0) {
-                void recordTaskAction(socket.crimzoPresenceUserId, 'watch_live', minutes).catch(() => {});
+                void recordTaskAction(uid, 'watch_live', minutes).catch(() => {});
               }
             }
           } catch (err) {
