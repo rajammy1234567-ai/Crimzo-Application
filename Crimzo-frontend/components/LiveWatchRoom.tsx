@@ -1002,13 +1002,11 @@ export default function LiveWatchRoom({
         </Animated.View>
       </SafeAreaView>
 
-      {/* Call + Chat — highlighted above live chat input */}
+      {/* Call + Chat — vertical rounded pills on the right */}
       {isViewer && (
-        <View style={[s.actionBar, { bottom: 62 + Math.max(insets.bottom, 8) }]}>
+        <View style={[s.actionRail, { bottom: 118 + Math.max(insets.bottom, 8) }]}>
           <TouchableOpacity
-            style={[s.actionBarBtnWrap, {
-              shadowColor: callStatus === 'pending' ? '#64748B' : '#10B981',
-            }]}
+            style={[s.actionRailBtnWrap, { shadowColor: callStatus === 'pending' ? '#64748B' : '#10B981' }]}
             onPress={handleVoiceCall}
             disabled={hostBusy || requestingCall || callStatus === 'pending'}
             activeOpacity={0.88}
@@ -1016,31 +1014,29 @@ export default function LiveWatchRoom({
             <LinearGradient
               colors={
                 callStatus === 'pending'
-                  ? ['#94A3B8', '#64748B', '#475569']
+                  ? ['#94A3B8', '#64748B']
                   : ['#34D399', '#10B981', '#059669']
               }
               start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[s.actionBarBtn, (requestingCall || callStatus === 'pending') && s.actionBarBtnDisabled]}
+              end={{ x: 0, y: 1 }}
+              style={[s.actionRailBtn, (requestingCall || callStatus === 'pending') && s.actionRailBtnDisabled]}
             >
-              <View style={s.actionBarIcon}>
+              <View style={s.actionRailIcon}>
                 <Ionicons
                   name={callStatus === 'pending' ? 'time' : 'call'}
-                  size={22}
+                  size={20}
                   color="#FFF"
                 />
               </View>
-              <View style={s.actionBarTextCol}>
-                <Text style={s.actionBarTitle}>
-                  {callStatus === 'pending' ? 'Calling...' : 'Call'}
-                </Text>
-                <Text style={s.actionBarRate}>₹{hostRates.voiceRatePerMin}/min</Text>
-              </View>
+              <Text style={s.actionRailLabel}>
+                {callStatus === 'pending' ? 'Wait' : 'Call'}
+              </Text>
+              <Text style={s.actionRailRate}>₹{hostRates.voiceRatePerMin}/m</Text>
             </LinearGradient>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[s.actionBarBtnWrap, {
+            style={[s.actionRailBtnWrap, {
               shadowColor: talkStatus === 'active' ? '#F59E0B' : talkStatus === 'pending' ? '#64748B' : '#3B82F6',
             }]}
             onPress={handleChatRequest}
@@ -1052,26 +1048,24 @@ export default function LiveWatchRoom({
                 talkStatus === 'active'
                   ? ['#FBBF24', '#F59E0B', '#D97706']
                   : talkStatus === 'pending'
-                    ? ['#94A3B8', '#64748B', '#475569']
+                    ? ['#94A3B8', '#64748B']
                     : ['#60A5FA', '#3B82F6', '#2563EB']
               }
               start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[s.actionBarBtn, (requestingTalk || talkStatus === 'pending') && s.actionBarBtnDisabled]}
+              end={{ x: 0, y: 1 }}
+              style={[s.actionRailBtn, (requestingTalk || talkStatus === 'pending') && s.actionRailBtnDisabled]}
             >
-              <View style={s.actionBarIcon}>
+              <View style={s.actionRailIcon}>
                 <Ionicons
                   name={talkStatus === 'active' ? 'chatbubble' : talkStatus === 'pending' ? 'time' : 'chatbubble-ellipses'}
-                  size={22}
+                  size={20}
                   color="#FFF"
                 />
               </View>
-              <View style={s.actionBarTextCol}>
-                <Text style={s.actionBarTitle}>
-                  {talkStatus === 'active' ? 'Chatting' : talkStatus === 'pending' ? 'Pending' : 'Chat'}
-                </Text>
-                <Text style={s.actionBarRate}>₹{hostRates.chatRatePerMin}/min</Text>
-              </View>
+              <Text style={s.actionRailLabel}>
+                {talkStatus === 'active' ? 'Live' : talkStatus === 'pending' ? 'Wait' : 'Chat'}
+              </Text>
+              <Text style={s.actionRailRate}>₹{hostRates.chatRatePerMin}/m</Text>
             </LinearGradient>
           </TouchableOpacity>
         </View>
@@ -1302,59 +1296,58 @@ const s = StyleSheet.create({
   },
   privateChatFabText: { color: '#F5F3FF', fontSize: 13, fontWeight: '800' },
 
-  actionBar: {
+  actionRail: {
     position: 'absolute',
-    left: 12,
     right: 12,
     zIndex: 30,
-    flexDirection: 'row',
-    gap: 10,
-  },
-  actionBarBtnWrap: {
-    flex: 1,
-    borderRadius: 18,
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.7,
-    shadowRadius: 12,
-    elevation: 14,
-  },
-  actionBarBtn: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.4)',
+    gap: 12,
   },
-  actionBarBtnDisabled: { opacity: 0.72 },
-  actionBarIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.22)',
+  actionRailBtnWrap: {
+    borderRadius: 28,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.55,
+    shadowRadius: 10,
+    elevation: 12,
+  },
+  actionRailBtn: {
+    width: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 28,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
+  actionRailBtnDisabled: { opacity: 0.7 },
+  actionRailIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
+    borderColor: 'rgba(255,255,255,0.3)',
+    marginBottom: 4,
   },
-  actionBarTextCol: { flex: 1 },
-  actionBarTitle: {
+  actionRailLabel: {
     color: '#FFF',
-    fontSize: 15,
+    fontSize: 11,
     fontWeight: '900',
-    letterSpacing: 0.3,
-    textShadowColor: 'rgba(0,0,0,0.35)',
+    letterSpacing: 0.2,
+    textShadowColor: 'rgba(0,0,0,0.4)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    textShadowRadius: 2,
   },
-  actionBarRate: {
-    color: '#FFFDE7',
-    fontSize: 12,
+  actionRailRate: {
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 9,
     fontWeight: '800',
     marginTop: 2,
-    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowColor: 'rgba(0,0,0,0.35)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },

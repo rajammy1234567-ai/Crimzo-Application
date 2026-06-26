@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { appAlert } from '../../lib/appAlert';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Easing, Dimensions, StatusBar, Platform, Image, TextInput, KeyboardAvoidingView, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Easing, Dimensions, StatusBar, Platform, Image, TextInput, KeyboardAvoidingView, Keyboard, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
@@ -96,7 +96,7 @@ const GiftFloat = ({ gift, side, onDone }: { gift: any; side: 'left' | 'right'; 
     ]).start(onDone);
   }, []);
   return (
-    <Animated.View style={[s.giftFloat, side === 'left' ? { left: 20 } : { right: 20 }, { transform: [{ translateY: ty }, { scale: sc }], opacity: op }]}>
+    <Animated.View style={[s.giftFloat, side === 'left' ? { top: '35%', left: 16 } : { top: '35%', right: 16 }, { transform: [{ translateY: ty }, { scale: sc }], opacity: op }]}>
       <View style={[s.giftFloatBubble, { backgroundColor: gift.color + '30' }]}>
         <Ionicons name={gift.icon as any} size={22} color={gift.color} />
         <Text style={[s.giftFloatVal, { color: gift.color }]}>+{gift.value}</Text>
@@ -333,132 +333,139 @@ export default function PKWatchScreen() {
     <View style={s.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* ── Split Video Arena ── */}
-      <View style={s.arena}>
-        {/* Host 1 */}
-        <TouchableOpacity style={s.hostPanel} activeOpacity={0.8} onPress={() => setSelectedHost('host1')}>
-          <LinearGradient colors={['rgba(255,45,85,0.15)', 'rgba(255,45,85,0.05)', 'transparent']} style={StyleSheet.absoluteFill} />
-          {isAgoraNativeLinked && remoteUids.includes(host1AgoraUid) ? (
-            <RtcSurfaceView style={s.video} canvas={{ uid: host1AgoraUid }} />
-          ) : (
-            <View style={s.placeholder}>
-              {host1Info?.avatar ? (
-                <Image source={{ uri: resolveMediaUrl(host1Info.avatar) }} style={s.avatarLg} />
-              ) : (
-                <LinearGradient colors={['#FF2D55', '#FF6B8A']} style={s.avatarFallback}>
-                  <Text style={s.avatarTxt}>{(host1Info?.username || 'H').charAt(0).toUpperCase()}</Text>
-                </LinearGradient>
-              )}
-            </View>
-          )}
-          <View style={s.hostLabel}>
-            <View style={[s.hostDot, { backgroundColor: '#FF2D55' }]} />
-            <Text style={s.hostName} numberOfLines={1}>{host1Info?.username || 'Host 1'}</Text>
-            {ended && winnerData?.winner && sameUserId(winnerData.winner, host1Info?.id) && (
-              <View style={s.winnerBadge}>
-                <Ionicons name="trophy" size={10} color="#FFD700" />
-                <Text style={s.winnerBadgeText}>WINNER</Text>
+      {/* ── Top half: Left / Right video arena ── */}
+      <View style={s.arenaSection}>
+        <View style={s.arena}>
+          {/* Host 1 — Left */}
+          <TouchableOpacity style={[s.hostPanel, s.hostPanelLeft]} activeOpacity={0.8} onPress={() => setSelectedHost('host1')}>
+            <LinearGradient colors={['rgba(255,45,85,0.15)', 'rgba(255,45,85,0.05)', 'transparent']} style={StyleSheet.absoluteFill} />
+            {isAgoraNativeLinked && remoteUids.includes(host1AgoraUid) ? (
+              <RtcSurfaceView style={s.video} canvas={{ uid: host1AgoraUid }} />
+            ) : (
+              <View style={s.placeholder}>
+                {host1Info?.avatar ? (
+                  <Image source={{ uri: resolveMediaUrl(host1Info.avatar) }} style={s.avatarLg} />
+                ) : (
+                  <LinearGradient colors={['#FF2D55', '#FF6B8A']} style={s.avatarFallback}>
+                    <Text style={s.avatarTxt}>{(host1Info?.username || 'H').charAt(0).toUpperCase()}</Text>
+                  </LinearGradient>
+                )}
               </View>
             )}
-          </View>
-          {selectedHost === 'host1' && <View style={[s.selectedBorder, { borderColor: '#FF2D55' }]} />}
-        </TouchableOpacity>
+            <View style={s.hostLabel}>
+              <View style={[s.hostDot, { backgroundColor: '#FF2D55' }]} />
+              <Text style={s.hostName} numberOfLines={1}>{host1Info?.username || 'Host 1'}</Text>
+              {ended && winnerData?.winner && sameUserId(winnerData.winner, host1Info?.id) && (
+                <View style={s.winnerBadge}>
+                  <Ionicons name="trophy" size={10} color="#FFD700" />
+                  <Text style={s.winnerBadgeText}>WINNER</Text>
+                </View>
+              )}
+            </View>
+            {selectedHost === 'host1' && <View style={[s.selectedBorder, { borderColor: '#FF2D55' }]} />}
+          </TouchableOpacity>
+
+          {/* Host 2 — Right */}
+          <TouchableOpacity style={s.hostPanel} activeOpacity={0.8} onPress={() => setSelectedHost('host2')}>
+            <LinearGradient colors={['rgba(48,209,88,0.15)', 'rgba(48,209,88,0.05)', 'transparent']} style={StyleSheet.absoluteFill} />
+            {host2Info && isAgoraNativeLinked && remoteUids.includes(host2AgoraUid) ? (
+              <RtcSurfaceView style={s.video} canvas={{ uid: host2AgoraUid }} />
+            ) : host2Info ? (
+              <View style={s.placeholder}>
+                {host2Info?.avatar ? (
+                  <Image source={{ uri: resolveMediaUrl(host2Info.avatar) }} style={s.avatarLg} />
+                ) : (
+                  <LinearGradient colors={['#30D158', '#4ADE80']} style={s.avatarFallback}>
+                    <Text style={s.avatarTxt}>{(host2Info?.username || 'H').charAt(0).toUpperCase()}</Text>
+                  </LinearGradient>
+                )}
+              </View>
+            ) : (
+              <View style={s.placeholder}>
+                <ActivityIndicator size="small" color="#666" />
+                <Text style={s.waitText}>Waiting...</Text>
+              </View>
+            )}
+            <View style={s.hostLabel}>
+              <View style={[s.hostDot, { backgroundColor: '#30D158' }]} />
+              <Text style={s.hostName} numberOfLines={1}>{host2Info?.username || 'Waiting...'}</Text>
+              {ended && winnerData?.winner && sameUserId(winnerData.winner, host2Info?.id) && (
+                <View style={s.winnerBadge}>
+                  <Ionicons name="trophy" size={10} color="#FFD700" />
+                  <Text style={s.winnerBadgeText}>WINNER</Text>
+                </View>
+              )}
+            </View>
+            {selectedHost === 'host2' && <View style={[s.selectedBorder, { borderColor: '#30D158' }]} />}
+          </TouchableOpacity>
+        </View>
 
         {/* VS */}
         <View style={s.vsPos}>
           <PulsingVS />
         </View>
 
-        {/* Host 2 */}
-        <TouchableOpacity style={s.hostPanel} activeOpacity={0.8} onPress={() => setSelectedHost('host2')}>
-          <LinearGradient colors={['rgba(48,209,88,0.15)', 'rgba(48,209,88,0.05)', 'transparent']} style={StyleSheet.absoluteFill} />
-          {host2Info && isAgoraNativeLinked && remoteUids.includes(host2AgoraUid) ? (
-            <RtcSurfaceView style={s.video} canvas={{ uid: host2AgoraUid }} />
-          ) : host2Info ? (
-            <View style={s.placeholder}>
-              {host2Info?.avatar ? (
-                <Image source={{ uri: resolveMediaUrl(host2Info.avatar) }} style={s.avatarLg} />
-              ) : (
-                <LinearGradient colors={['#30D158', '#4ADE80']} style={s.avatarFallback}>
-                  <Text style={s.avatarTxt}>{(host2Info?.username || 'H').charAt(0).toUpperCase()}</Text>
-                </LinearGradient>
-              )}
+        {/* Floating gifts */}
+        {floatingGifts.map(fg => (
+          <GiftFloat key={fg.id} gift={fg.gift} side={fg.side} onDone={() => removeFloat(fg.id)} />
+        ))}
+
+        {/* ── Top HUD ── */}
+        <View style={s.topHud}>
+          <TouchableOpacity style={s.closeBtn} onPress={handleExit}>
+            <Ionicons name="close" size={22} color="#FFF" />
+          </TouchableOpacity>
+          <View style={s.topCenter}>
+            <View style={s.liveBadge}>
+              <View style={s.liveDot} />
+              <Text style={s.liveText}>PK BATTLE</Text>
             </View>
-          ) : (
-            <View style={s.placeholder}>
-              <ActivityIndicator size="small" color="#666" />
-              <Text style={s.waitText}>Waiting...</Text>
-            </View>
-          )}
-          <View style={s.hostLabel}>
-            <View style={[s.hostDot, { backgroundColor: '#30D158' }]} />
-            <Text style={s.hostName} numberOfLines={1}>{host2Info?.username || 'Waiting...'}</Text>
-            {ended && winnerData?.winner && sameUserId(winnerData.winner, host2Info?.id) && (
-              <View style={s.winnerBadge}>
-                <Ionicons name="trophy" size={10} color="#FFD700" />
-                <Text style={s.winnerBadgeText}>WINNER</Text>
+            {isBattleActive ? (
+              <View style={s.timerBadge}>
+                <Ionicons name="timer-outline" size={12} color="#FFD700" />
+                <Text style={s.timerText}>{formatBattleTime(timeRemaining)}</Text>
               </View>
-            )}
-          </View>
-          {selectedHost === 'host2' && <View style={[s.selectedBorder, { borderColor: '#30D158' }]} />}
-        </TouchableOpacity>
-      </View>
-
-      {/* Floating gifts */}
-      {floatingGifts.map(fg => (
-        <GiftFloat key={fg.id} gift={fg.gift} side={fg.side} onDone={() => removeFloat(fg.id)} />
-      ))}
-
-      {/* ── Top HUD ── */}
-      <View style={s.topHud}>
-        <TouchableOpacity style={s.closeBtn} onPress={handleExit}>
-          <Ionicons name="close" size={22} color="#FFF" />
-        </TouchableOpacity>
-        <View style={s.topCenter}>
-          <View style={s.liveBadge}>
-            <View style={s.liveDot} />
-            <Text style={s.liveText}>PK BATTLE</Text>
-          </View>
-          {isBattleActive ? (
-            <View style={s.timerBadge}>
-              <Ionicons name="timer-outline" size={12} color="#FFD700" />
-              <Text style={s.timerText}>{formatBattleTime(timeRemaining)}</Text>
+            ) : null}
+            <View style={s.viewerBadge}>
+              <Ionicons name="eye" size={12} color="rgba(255,255,255,0.6)" />
+              <Text style={s.viewerText}>{viewerCount} watching</Text>
             </View>
-          ) : null}
-          <View style={s.viewerBadge}>
-            <Ionicons name="eye" size={12} color="rgba(255,255,255,0.6)" />
-            <Text style={s.viewerText}>{viewerCount} watching</Text>
           </View>
+          <View style={{ width: 36 }} />
         </View>
-        <View style={{ width: 36 }} />
+
+        {/* ── Score Bar ── */}
+        <View style={s.scorePos}>
+          <ScoreBar host1Score={host1Score} host2Score={host2Score} />
+        </View>
       </View>
 
-      {/* ── Score Bar ── */}
-      <View style={s.scorePos}>
-        <ScoreBar host1Score={host1Score} host2Score={host2Score} />
-      </View>
-
-      {/* ── Bottom Panel: Chat + Gifts ── */}
+      {/* ── Bottom half: Chat + Gifts ── */}
       <KeyboardAvoidingView
         behavior={KEYBOARD_BEHAVIOR}
-        style={s.bottomPanel}
+        style={s.bottomSection}
         keyboardVerticalOffset={0}
       >
-        {/* Chat messages */}
-        {chatMessages.length > 0 && (
-          <View style={s.chatArea}>
-            {chatMessages.slice(-5).map(msg => (
+        <ScrollView
+          style={s.chatArea}
+          contentContainerStyle={s.chatAreaContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {chatMessages.length === 0 ? (
+            <Text style={s.chatEmpty}>Chat with other viewers…</Text>
+          ) : (
+            chatMessages.map(msg => (
               <View key={msg.id} style={s.chatBubble}>
                 <Text style={s.chatMsg}>
                   <Text style={s.chatUser}>{msg.username} </Text>
                   {msg.type === 'sticker' ? `sent ${msg.stickerName}` : msg.message}
                 </Text>
               </View>
-            ))}
-          </View>
-        )}
+            ))
+          )}
+        </ScrollView>
 
-        {/* Chat input */}
         <View style={s.chatRow}>
           <View style={s.chatField}>
             <TextInput
@@ -479,7 +486,6 @@ export default function PKWatchScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Gift selector + host target */}
         {selectedHost && (
           <Text style={s.giftTarget}>
             Sending to: <Text style={{ color: selectedHost === 'host1' ? '#FF2D55' : '#30D158', fontWeight: '700' }}>
@@ -555,9 +561,11 @@ const s = StyleSheet.create({
   loadWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 16 },
   loadText: { color: '#AAA', fontSize: 15 },
 
-  // Arena
+  // Top half — arena
+  arenaSection: { flex: 1, position: 'relative', overflow: 'hidden' },
   arena: { flex: 1, flexDirection: 'row' },
   hostPanel: { flex: 1, overflow: 'hidden' },
+  hostPanelLeft: { borderRightWidth: 2, borderRightColor: 'rgba(255,255,255,0.1)' },
   video: { flex: 1 },
   placeholder: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111' },
   avatarLg: { width: 80, height: 80, borderRadius: 40 },
@@ -565,7 +573,7 @@ const s = StyleSheet.create({
   avatarTxt: { color: '#FFF', fontSize: 32, fontWeight: 'bold' },
   waitText: { color: '#666', fontSize: 13, marginTop: 8 },
   hostLabel: {
-    position: 'absolute', bottom: 100, left: 0, right: 0, alignItems: 'center',
+    position: 'absolute', bottom: 10, left: 0, right: 0, alignItems: 'center',
   },
   hostDot: { width: 8, height: 8, borderRadius: 4 },
   hostName: {
@@ -583,7 +591,7 @@ const s = StyleSheet.create({
 
   // VS
   vsPos: {
-    position: 'absolute', left: '50%', top: '40%', zIndex: 20, marginLeft: -24, marginTop: -24,
+    position: 'absolute', left: '50%', top: '50%', zIndex: 20, marginLeft: -24, marginTop: -24,
   },
   vsCircle: { width: 48, height: 48, borderRadius: 24 },
   vsGrad: {
@@ -595,8 +603,8 @@ const s = StyleSheet.create({
   // Top HUD
   topHud: {
     position: 'absolute', top: 0, left: 0, right: 0,
-    paddingTop: Platform.OS === 'ios' ? 54 : 40,
-    paddingHorizontal: 16, paddingBottom: 12,
+    paddingTop: Platform.OS === 'ios' ? 44 : 28,
+    paddingHorizontal: 16, paddingBottom: 8,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   closeBtn: {
@@ -624,7 +632,7 @@ const s = StyleSheet.create({
 
   // Score
   scorePos: {
-    position: 'absolute', top: Platform.OS === 'ios' ? 110 : 96,
+    position: 'absolute', top: Platform.OS === 'ios' ? 88 : 72,
     left: 16, right: 16, zIndex: 15,
   },
   scoreWrap: { gap: 4 },
@@ -634,14 +642,19 @@ const s = StyleSheet.create({
   scoreTrack: { height: 6, borderRadius: 3, backgroundColor: 'rgba(48,209,88,0.4)', overflow: 'hidden' },
   scoreFill: { height: '100%', backgroundColor: '#FF2D55', borderRadius: 3 },
 
-  // Bottom panel
-  bottomPanel: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    paddingTop: 8, paddingBottom: Platform.OS === 'ios' ? 34 : 16, paddingHorizontal: 16,
-    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+  // Bottom half — chat + gifts
+  bottomSection: {
+    flex: 1,
+    backgroundColor: '#0a0a0a',
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
   },
-  chatArea: { marginBottom: 8, maxHeight: 100 },
+  chatArea: { flex: 1, marginBottom: 8 },
+  chatAreaContent: { flexGrow: 1, paddingBottom: 4 },
+  chatEmpty: { color: 'rgba(255,255,255,0.25)', fontSize: 13, textAlign: 'center', marginTop: 12 },
   chatBubble: {
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 4,
@@ -671,7 +684,7 @@ const s = StyleSheet.create({
   tapHint: { color: '#666', fontSize: 11, textAlign: 'center', marginTop: 4 },
 
   // Floating gift
-  giftFloat: { position: 'absolute', bottom: 200, zIndex: 50 },
+  giftFloat: { position: 'absolute', zIndex: 50 },
   giftFloatBubble: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,

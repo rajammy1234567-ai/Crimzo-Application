@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { appAlert } from '../../lib/appAlert';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Easing, Dimensions, StatusBar, Platform, PermissionsAndroid, Image, Modal, TextInput, FlatList, KeyboardAvoidingView, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Easing, Dimensions, StatusBar, Platform, PermissionsAndroid, Image, Modal, TextInput, KeyboardAvoidingView, Keyboard, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
@@ -129,7 +129,7 @@ const GiftFloat = ({ gift, side, onDone }: { gift: any; side: 'left' | 'right'; 
     <Animated.View
       style={[
         styles.giftFloat,
-        side === 'left' ? { left: 20 } : { right: 20 },
+        side === 'left' ? { top: '35%', left: 16 } : { top: '35%', right: 16 },
         { transform: [{ translateY }, { scale }], opacity },
       ]}
     >
@@ -656,26 +656,47 @@ export default function PKBattleScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* ── BATTLE ARENA (Split Screen) ── */}
-      <View style={styles.arenaWrap}>
-        {/* Host 1 (Left - Red) */}
-        <View style={styles.hostPanel}>
-          <LinearGradient colors={['rgba(255,45,85,0.15)', 'rgba(255,45,85,0.05)', 'transparent']} style={StyleSheet.absoluteFill} />
-          {renderHost1Video()}
-          {/* Host 1 info overlay */}
-          <View style={styles.hostInfoOverlay}>
-            <View style={styles.hostNameBadge}>
-              <View style={[styles.hostDot, { backgroundColor: '#FF2D55' }]} />
-              <Text style={styles.hostNameText} numberOfLines={1}>
-                {host1Info?.username || 'Host 1'}
-              </Text>
-            </View>
-            {showWinner && isHost1Winner && (
-              <View style={styles.winnerSideBadge}>
-                <Ionicons name="trophy" size={12} color="#FFD700" />
-                <Text style={styles.winnerSideText}>WINNER</Text>
+      {/* ── Top half: Left / Right video arena ── */}
+      <View style={styles.arenaSection}>
+        <View style={styles.arenaWrap}>
+          {/* Host 1 (Left - Red) */}
+          <View style={[styles.hostPanel, styles.hostPanelLeft]}>
+            <LinearGradient colors={['rgba(255,45,85,0.15)', 'rgba(255,45,85,0.05)', 'transparent']} style={StyleSheet.absoluteFill} />
+            {renderHost1Video()}
+            <View style={styles.hostInfoOverlay}>
+              <View style={styles.hostNameBadge}>
+                <View style={[styles.hostDot, { backgroundColor: '#FF2D55' }]} />
+                <Text style={styles.hostNameText} numberOfLines={1}>
+                  {host1Info?.username || 'Host 1'}
+                </Text>
               </View>
-            )}
+              {showWinner && isHost1Winner && (
+                <View style={styles.winnerSideBadge}>
+                  <Ionicons name="trophy" size={12} color="#FFD700" />
+                  <Text style={styles.winnerSideText}>WINNER</Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Host 2 (Right - Green) */}
+          <View style={styles.hostPanel}>
+            <LinearGradient colors={['rgba(48,209,88,0.15)', 'rgba(48,209,88,0.05)', 'transparent']} style={StyleSheet.absoluteFill} />
+            {renderHost2Video()}
+            <View style={styles.hostInfoOverlay}>
+              <View style={styles.hostNameBadge}>
+                <View style={[styles.hostDot, { backgroundColor: '#30D158' }]} />
+                <Text style={styles.hostNameText} numberOfLines={1}>
+                  {host2Info?.username || (isActive ? 'Host 2' : 'Waiting...')}
+                </Text>
+              </View>
+              {showWinner && isHost2Winner && (
+                <View style={[styles.winnerSideBadge, { borderColor: 'rgba(48,209,88,0.5)' }]}>
+                  <Ionicons name="trophy" size={12} color="#FFD700" />
+                  <Text style={styles.winnerSideText}>WINNER</Text>
+                </View>
+              )}
+            </View>
           </View>
         </View>
 
@@ -684,129 +705,114 @@ export default function PKBattleScreen() {
           <PulsingVS />
         </View>
 
-        {/* Host 2 (Right - Green) */}
-        <View style={styles.hostPanel}>
-          <LinearGradient colors={['rgba(48,209,88,0.15)', 'rgba(48,209,88,0.05)', 'transparent']} style={StyleSheet.absoluteFill} />
-          {renderHost2Video()}
-          {/* Host 2 info overlay */}
-          <View style={styles.hostInfoOverlay}>
-            <View style={styles.hostNameBadge}>
-              <View style={[styles.hostDot, { backgroundColor: '#30D158' }]} />
-              <Text style={styles.hostNameText} numberOfLines={1}>
-                {host2Info?.username || (isActive ? 'Host 2' : 'Waiting...')}
+        {/* ── Floating Gifts ── */}
+        {floatingGifts.map((fg) => (
+          <GiftFloat
+            key={fg.id}
+            gift={fg.gift}
+            side={fg.side}
+            onDone={() => removeFloatingGift(fg.id)}
+          />
+        ))}
+
+        {/* ── TOP HUD ── */}
+        <Animated.View style={[styles.topHud, { opacity: fadeIn, transform: [{ translateY: slideUp }] }]}>
+          <TouchableOpacity style={styles.closeBtn} onPress={handleExit}>
+            <Ionicons name="close" size={22} color="#FFF" />
+          </TouchableOpacity>
+
+          <View style={styles.topCenter}>
+            <View style={styles.liveBadge}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>PK BATTLE</Text>
+            </View>
+            <CountdownTimer remaining={timeRemaining} />
+          </View>
+
+          <TouchableOpacity style={styles.endBtn} onPress={endBattleManual}>
+            <Ionicons name="flag" size={16} color="#FFF" />
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* ── SCORE BAR ── */}
+        <View style={styles.scoreBarPosition}>
+          <ScoreBar host1Score={host1Score} host2Score={host2Score} />
+        </View>
+      </View>
+
+      {/* ── Bottom half: Chat / waiting ── */}
+      <View style={styles.bottomSection}>
+        {isActive ? (
+          <KeyboardAvoidingView
+            behavior={KEYBOARD_BEHAVIOR}
+            style={styles.bottomPanelInner}
+            keyboardVerticalOffset={0}
+          >
+            {showChat && (
+              <ScrollView
+                style={styles.chatOverlay}
+                contentContainerStyle={styles.chatOverlayContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                {chatMessages.length === 0 ? (
+                  <Text style={styles.chatEmpty}>Viewer messages will appear here…</Text>
+                ) : (
+                  chatMessages.map((msg) => (
+                    <View key={msg.id} style={styles.chatBubble}>
+                      <Text style={styles.chatText}>
+                        <Text style={styles.chatName}>{msg.username} </Text>
+                        {msg.message}
+                      </Text>
+                    </View>
+                  ))
+                )}
+              </ScrollView>
+            )}
+
+            <View style={styles.chatInputRow}>
+              <View style={styles.chatInputField}>
+                <TextInput
+                  style={styles.chatTextInput}
+                  placeholder="Say something..."
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  value={chatInput}
+                  onChangeText={setChatInput}
+                  onSubmitEditing={sendChatMessage}
+                  returnKeyType="send"
+                  maxLength={150}
+                />
+              </View>
+              <TouchableOpacity onPress={sendChatMessage} disabled={!chatInput.trim()} activeOpacity={0.7}>
+                <View style={[styles.chatSendBtn, chatInput.trim() ? styles.chatSendBtnActive : null]}>
+                  <Ionicons name="send" size={16} color={chatInput.trim() ? '#FFF' : 'rgba(255,255,255,0.3)'} />
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowChat(!showChat)} activeOpacity={0.7}>
+                <View style={styles.chatToggleBtn}>
+                  <Ionicons name={showChat ? 'chatbubble' : 'chatbubble-outline'} size={16} color="#FFF" />
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.viewerVoteBanner}>
+              <Ionicons name="eye" size={14} color="#FFD700" />
+              <Text style={styles.viewerVoteText}>
+                Viewers vote with gifts in the bottom chat — highest total wins
               </Text>
             </View>
-            {showWinner && isHost2Winner && (
-              <View style={[styles.winnerSideBadge, { borderColor: 'rgba(48,209,88,0.5)' }]}>
-                <Ionicons name="trophy" size={12} color="#FFD700" />
-                <Text style={styles.winnerSideText}>WINNER</Text>
-              </View>
-            )}
-          </View>
-        </View>
-      </View>
-
-      {/* ── Floating Gifts ── */}
-      {floatingGifts.map((fg) => (
-        <GiftFloat
-          key={fg.id}
-          gift={fg.gift}
-          side={fg.side}
-          onDone={() => removeFloatingGift(fg.id)}
-        />
-      ))}
-
-      {/* ── TOP HUD ── */}
-      <Animated.View style={[styles.topHud, { opacity: fadeIn, transform: [{ translateY: slideUp }] }]}>
-        <TouchableOpacity style={styles.closeBtn} onPress={handleExit}>
-          <Ionicons name="close" size={22} color="#FFF" />
-        </TouchableOpacity>
-
-        <View style={styles.topCenter}>
-          <View style={styles.liveBadge}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>PK BATTLE</Text>
-          </View>
-          <CountdownTimer remaining={timeRemaining} />
-        </View>
-
-        <TouchableOpacity style={styles.endBtn} onPress={endBattleManual}>
-          <Ionicons name="flag" size={16} color="#FFF" />
-        </TouchableOpacity>
-      </Animated.View>
-
-      {/* ── SCORE BAR ── */}
-      <View style={styles.scoreBarPosition}>
-        <ScoreBar host1Score={host1Score} host2Score={host2Score} />
-      </View>
-
-      {/* ── GIFT PANEL (Bottom) ── */}
-      {isActive && (
-        <KeyboardAvoidingView
-          behavior={KEYBOARD_BEHAVIOR}
-          style={styles.bottomPanel}
-          keyboardVerticalOffset={0}
-        >
-          {/* Chat messages overlay */}
-          {showChat && chatMessages.length > 0 && (
-            <View style={styles.chatOverlay}>
-              {chatMessages.slice(-5).map((msg) => (
-                <View key={msg.id} style={styles.chatBubble}>
-                  <Text style={styles.chatText}>
-                    <Text style={styles.chatName}>{msg.username} </Text>
-                    {msg.message}
-                  </Text>
-                </View>
-              ))}
+          </KeyboardAvoidingView>
+        ) : (
+          <View style={styles.waitingCardWrap}>
+            <View style={styles.waitingCard}>
+              <ActivityIndicator size="small" color="#FF2D55" />
+              <Text style={styles.waitingCardTitle}>Waiting for Opponent</Text>
+              <Text style={styles.waitingCardSub}>Share your battle link to invite someone!</Text>
+              <Text style={styles.waitingCardId}>Battle #{battleData?.battleId?.slice(0, 8)}</Text>
             </View>
-          )}
-
-          {/* Chat input row */}
-          <View style={styles.chatInputRow}>
-            <View style={styles.chatInputField}>
-              <TextInput
-                style={styles.chatTextInput}
-                placeholder="Say something..."
-                placeholderTextColor="rgba(255,255,255,0.3)"
-                value={chatInput}
-                onChangeText={setChatInput}
-                onSubmitEditing={sendChatMessage}
-                returnKeyType="send"
-                maxLength={150}
-              />
-            </View>
-            <TouchableOpacity onPress={sendChatMessage} disabled={!chatInput.trim()} activeOpacity={0.7}>
-              <View style={[styles.chatSendBtn, chatInput.trim() ? styles.chatSendBtnActive : null]}>
-                <Ionicons name="send" size={16} color={chatInput.trim() ? '#FFF' : 'rgba(255,255,255,0.3)'} />
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowChat(!showChat)} activeOpacity={0.7}>
-              <View style={styles.chatToggleBtn}>
-                <Ionicons name={showChat ? 'chatbubble' : 'chatbubble-outline'} size={16} color="#FFF" />
-              </View>
-            </TouchableOpacity>
           </View>
-
-          <View style={styles.viewerVoteBanner}>
-            <Ionicons name="eye" size={14} color="#FFD700" />
-            <Text style={styles.viewerVoteText}>
-              Viewers vote with gifts — highest total wins when timer ends
-            </Text>
-          </View>
-        </KeyboardAvoidingView>
-      )}
-
-      {/* ── Waiting overlay when not active ── */}
-      {!isActive && !loading && (
-        <View style={styles.waitingOverlay}>
-          <View style={styles.waitingCard}>
-            <ActivityIndicator size="small" color="#FF2D55" />
-            <Text style={styles.waitingCardTitle}>Waiting for Opponent</Text>
-            <Text style={styles.waitingCardSub}>Share your battle link to invite someone!</Text>
-            <Text style={styles.waitingCardId}>Battle #{battleData?.battleId?.slice(0, 8)}</Text>
-          </View>
-        </View>
-      )}
+        )}
+      </View>
 
       {/* ── WINNER MODAL ── */}
       <Modal visible={showWinner} transparent animationType="fade">
@@ -866,9 +872,11 @@ const styles = StyleSheet.create({
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 16 },
   loadingText: { color: '#AAA', fontSize: 15 },
 
-  // Arena
+  // Top half — arena
+  arenaSection: { flex: 1, position: 'relative', overflow: 'hidden' },
   arenaWrap: { flex: 1, flexDirection: 'row' },
   hostPanel: { flex: 1, overflow: 'hidden' },
+  hostPanelLeft: { borderRightWidth: 2, borderRightColor: 'rgba(255,255,255,0.1)' },
   videoView: { flex: 1 },
   videoPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111' },
   avatarLarge: { width: 80, height: 80, borderRadius: 40 },
@@ -878,7 +886,7 @@ const styles = StyleSheet.create({
   waitingLabel: { color: '#666', fontSize: 14, textAlign: 'center', lineHeight: 20 },
 
   // Host info overlay
-  hostInfoOverlay: { position: 'absolute', bottom: 100, left: 0, right: 0, alignItems: 'center' },
+  hostInfoOverlay: { position: 'absolute', bottom: 10, left: 0, right: 0, alignItems: 'center' },
   hostNameBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14,
@@ -900,7 +908,7 @@ const styles = StyleSheet.create({
 
   // VS
   vsContainer: {
-    position: 'absolute', left: '50%', top: '40%', zIndex: 20,
+    position: 'absolute', left: '50%', top: '50%', zIndex: 20,
     marginLeft: -28, marginTop: -28,
   },
   vsCircle: { width: 56, height: 56, borderRadius: 28 },
@@ -914,8 +922,8 @@ const styles = StyleSheet.create({
   // Top HUD
   topHud: {
     position: 'absolute', top: 0, left: 0, right: 0,
-    paddingTop: Platform.OS === 'ios' ? 54 : 40,
-    paddingHorizontal: 16, paddingBottom: 12,
+    paddingTop: Platform.OS === 'ios' ? 44 : 28,
+    paddingHorizontal: 16, paddingBottom: 8,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   closeBtn: {
@@ -945,7 +953,7 @@ const styles = StyleSheet.create({
 
   // Score bar
   scoreBarPosition: {
-    position: 'absolute', top: Platform.OS === 'ios' ? 110 : 96,
+    position: 'absolute', top: Platform.OS === 'ios' ? 88 : 72,
     left: 16, right: 16, zIndex: 15,
   },
   scoreBarWrap: { gap: 4 },
@@ -959,16 +967,22 @@ const styles = StyleSheet.create({
     height: '100%', backgroundColor: '#FF2D55', borderRadius: 3,
   },
 
-  // Bottom gift panel
-  bottomPanel: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    paddingTop: 8, paddingBottom: Platform.OS === 'ios' ? 34 : 16, paddingHorizontal: 16,
-    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+  // Bottom half — chat
+  bottomSection: {
+    flex: 1,
+    backgroundColor: '#0a0a0a',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.08)',
   },
-  chatOverlay: {
-    marginBottom: 8, maxHeight: 120,
+  bottomPanelInner: {
+    flex: 1,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+    paddingHorizontal: 16,
   },
+  chatOverlay: { flex: 1, marginBottom: 8 },
+  chatOverlayContent: { flexGrow: 1, paddingBottom: 4 },
+  chatEmpty: { color: 'rgba(255,255,255,0.25)', fontSize: 13, textAlign: 'center', marginTop: 12 },
   chatBubble: {
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 4,
@@ -1016,18 +1030,16 @@ const styles = StyleSheet.create({
   tapHint: { color: '#666', fontSize: 11, textAlign: 'center', marginTop: 6 },
 
   // Floating gift
-  giftFloat: { position: 'absolute', bottom: 180, zIndex: 50 },
+  giftFloat: { position: 'absolute', zIndex: 50 },
   giftFloatBubble: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
   },
   giftFloatValue: { fontSize: 14, fontWeight: '800' },
 
-  // Waiting overlay
-  waitingOverlay: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    paddingHorizontal: 24, paddingBottom: Platform.OS === 'ios' ? 44 : 24,
-    alignItems: 'center',
+  // Waiting card (bottom half)
+  waitingCardWrap: {
+    flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24,
   },
   waitingCard: {
     backgroundColor: 'rgba(28,28,30,0.9)', borderRadius: 20, padding: 24,
