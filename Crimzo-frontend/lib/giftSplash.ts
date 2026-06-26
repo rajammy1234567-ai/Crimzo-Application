@@ -40,3 +40,24 @@ export function giftSplashTier(diamonds?: number): 'normal' | 'premium' | 'mega'
   if (n >= 25) return 'premium';
   return 'normal';
 }
+
+/** Follower DM chat — diamond gift popup */
+export function publishDmDiamondGiftSplash(msg: {
+  id: string | number;
+  sender_username?: string;
+  gift_diamonds?: number;
+}): void {
+  const diamonds = Math.max(0, Math.floor(Number(msg.gift_diamonds) || 0));
+  publishGiftSplash({
+    id: String(msg.id),
+    username: msg.sender_username || 'Someone',
+    stickerName: diamonds > 0
+      ? `${diamonds.toLocaleString('en-IN')} Diamonds`
+      : 'Diamond Gift',
+    icon_name: 'diamond',
+    icon_color: '#FFFFFF',
+    bg_color: '#00BFFF',
+    gift_diamonds: diamonds,
+    emoji: '💎',
+  });
+}

@@ -8,8 +8,10 @@ import { KEYBOARD_BEHAVIOR } from '../../components/KeyboardAware';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { apiGet, apiPost, ApiError } from '../../lib/apiClient';
+import { publishDmDiamondGiftSplash } from '../../lib/giftSplash';
 import { playMessageReceivePop, playMessageSendPop } from '../../lib/uiSounds';
 import { subscribe } from '../../lib/realtimeSync';
+import GiftSplashOverlay from '../../components/GiftSplashOverlay';
 
 function normalizeSenderId(senderId: unknown): string {
   if (senderId == null) return '';
@@ -148,6 +150,10 @@ export default function MessagesScreen() {
           unread_count: chatOpen || !isIncoming ? 0 : (existing?.unread_count || 0) + 1,
         });
       });
+
+      if (msg.message_type === 'gift') {
+        publishDmDiamondGiftSplash(msg);
+      }
 
       if (chatOpen) {
         if (isIncoming && msg.message_type !== 'gift') playMessageReceivePop();
@@ -305,6 +311,7 @@ export default function MessagesScreen() {
         if (data.senderDiamonds != null) {
           updateUser({ diamonds: data.senderDiamonds });
         }
+        publishDmDiamondGiftSplash(giftMsg);
         setShowGift(false);
       }
     } catch (e: unknown) {
@@ -409,6 +416,7 @@ export default function MessagesScreen() {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" />
+        <GiftSplashOverlay />
         <View style={styles.header}>
           <TouchableOpacity onPress={() => setSelectedChat(null)} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color="#FFF" />
@@ -548,6 +556,7 @@ export default function MessagesScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
+      <GiftSplashOverlay />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#FFF" />
