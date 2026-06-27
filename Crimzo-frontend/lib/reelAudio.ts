@@ -1,6 +1,8 @@
 import { apiGet, resolveMediaUrl } from './apiClient';
 
-/** Audius stream URLs expire — refresh before playback */
+const RESOLVABLE_SOURCES = new Set(['audius', 'epidemic', 'soundstripe']);
+
+/** Licensed + Audius stream URLs expire — refresh before playback */
 export async function resolveReelAudioUrl(
   audioUrl: string,
   externalSource?: string | null,
@@ -8,7 +10,8 @@ export async function resolveReelAudioUrl(
   token?: string | null,
 ): Promise<string> {
   const base = resolveMediaUrl(audioUrl);
-  if (!externalSource || !externalId || externalSource !== 'audius' || !token) {
+
+  if (!externalSource || !externalId || !RESOLVABLE_SOURCES.has(externalSource) || !token) {
     return base;
   }
 

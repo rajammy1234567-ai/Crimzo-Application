@@ -14,9 +14,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { apiGet, resolveMediaUrl } from '../../lib/apiClient';
+import { appAlert } from '../../lib/appAlert';
 import { playReelMusic, stopReelMusic } from '../../lib/reelMusicPlayer';
+import { importSoundFromGalleryVideo } from '../../lib/reelSoundImport';
 import { reelStudioColors } from './reelStudioTheme';
 import type { ReelSound, SoundLanguage } from '../../lib/reelTypes';
 
@@ -54,12 +57,15 @@ function languageLabel(code: string, languages: SoundLanguage[]) {
   return languages.find((l) => l.code === code)?.label || code;
 }
 
+const RESOLVABLE_SOURCES = new Set(['audius', 'epidemic', 'soundstripe']);
+
 async function resolvePreviewUrl(sound: ReelSound, token?: string | null) {
   let previewUrl = resolveMediaUrl(sound.audio_url);
-  if (sound.source === 'audius' && sound.external_id && token) {
+
+  if (sound.external_id && RESOLVABLE_SOURCES.has(sound.source) && token) {
     try {
       const resolved = await apiGet<{ audio_url?: string }>(
-        `/api/sounds/resolve/audius/${sound.external_id}`,
+        `/api/sounds/resolve/${sound.source}/${sound.external_id}`,
         token,
       );
       if (resolved.audio_url) previewUrl = resolveMediaUrl(resolved.audio_url);
@@ -67,6 +73,7 @@ async function resolvePreviewUrl(sound: ReelSound, token?: string | null) {
       // fallback
     }
   }
+
   return previewUrl;
 }
 
@@ -87,6 +94,7 @@ export default function MusicPicker({
   const [tab, setTab] = useState<TabId>('trending');
   const [language, setLanguage] = useState('all');
   const [previewId, setPreviewId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const requestIdRef = useRef(0);
 
   const stopPreview = useCallback(async () => {
@@ -185,6 +193,49 @@ export default function MusicPicker({
     void fetchSounds({ search: query, activeTab: tab, activeLanguage: language, isRefresh: true });
   };
 
+  const importFromLibrary = async () => {
+    if (!token || importing) return;
+
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        appAlert('Permission Required', 'Please allow gallery access to import sound from a video.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['videos'],
+        allowsEditing: false,
+        quality: 1,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const asset = result.assets[0];
+      await stopPreview();
+      setImporting(true);
+
+      const sound = await importSoundFromGalleryVideo(
+        {
+          uri: asset.uri,
+          fileName: asset.fileName,
+          mimeType: asset.mimeType,
+          duration: asset.duration,
+        },
+        token,
+        asset.fileName ? asset.fileName.replace(/\.[^.]+$/, '') : 'Imported Sound',
+      );
+
+      onSelect(sound);
+      onClose();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Could not extract sound from this video.';
+      appAlert('Import Failed', msg);
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const renderSound = ({ item }: { item: ReelSound }) => {
     const selected = selectedId === item.id;
     const playing = previewId === item.id;
@@ -212,7 +263,12 @@ export default function MusicPicker({
         <View style={styles.soundMeta}>
           <View style={styles.titleRow}>
             <Text style={styles.soundTitle} numberOfLines={1}>{item.title}</Text>
-            {item.is_trending && (
+            {item.is_licensed && (
+              <View style={styles.licensedBadge}>
+                <Text style={styles.licensedBadgeText}>Licensed</Text>
+              </View>
+            )}
+            {item.is_trending && !item.is_licensed && (
               <View style={styles.trendingBadge}>
                 <Text style={styles.trendingBadgeText}>Hot</Text>
               </View>
@@ -240,14 +296,10 @@ export default function MusicPicker({
 
         {selected ? (
           <View style={styles.selectedBadge}>
-            <Ionicons name="checkmark" size={14} color="#FFF" />
+            <Ionicons name="checkmark" size={13} color="#FFF" />
           </View>
         ) : (
-          <View style={styles.useBadge}>
-            <Text style={styles.useBadgeText}>
-              {musicFirstMode ? 'Record' : 'Use'}
-            </Text>
-          </View>
+          <Ionicons name="add-circle-outline" size={20} color="rgba(255,255,255,0.35)" />
         )}
       </Pressable>
     );
@@ -263,34 +315,34 @@ export default function MusicPicker({
         </View>
 
         <View style={styles.header}>
-          <View>
-            <Text style={styles.title}>
-              {musicFirstMode ? 'Step 1 · Choose Music' : 'Choose Music'}
-            </Text>
-            {musicFirstMode && (
-              <Text style={styles.headerSub}>Then record your reel to this song</Text>
-            )}
-          </View>
+          <Text style={styles.title}>Music</Text>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Ionicons name="close" size={22} color="#FFF" />
+            <Ionicons name="close" size={18} color="#FFF" />
           </TouchableOpacity>
         </View>
 
-        {/* Quick actions */}
-        <View style={styles.quickActions}>
+        <View style={styles.quickRow}>
           <TouchableOpacity
-            style={[styles.quickCard, !selectedId && styles.quickCardActive]}
+            style={[styles.quickChip, !selectedId && styles.quickChipActive]}
             onPress={() => void handleSelect(null)}
-            activeOpacity={0.85}
+            activeOpacity={0.8}
+            accessibilityLabel="No music"
           >
-            <View style={[styles.quickIcon, { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
-              <Ionicons name="volume-mute" size={20} color="#FFF" />
-            </View>
-            <View style={styles.quickTextWrap}>
-              <Text style={styles.quickTitle}>No Music</Text>
-              <Text style={styles.quickSub}>Only original video sound</Text>
-            </View>
-            {!selectedId && <Ionicons name="checkmark-circle" size={22} color={reelStudioColors.primary} />}
+            <Ionicons name="volume-mute" size={16} color="#FFF" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.quickChip, styles.quickChipImport, importing && styles.quickChipBusy]}
+            onPress={() => void importFromLibrary()}
+            activeOpacity={0.8}
+            disabled={importing || !token}
+            accessibilityLabel="Import from library"
+          >
+            {importing ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <Ionicons name="folder-open-outline" size={16} color="#FFF" />
+            )}
           </TouchableOpacity>
         </View>
 
@@ -317,14 +369,17 @@ export default function MusicPicker({
               key={t}
               style={[styles.mainTab, tab === t && styles.mainTabActive]}
               onPress={() => setTab(t)}
+              accessibilityLabel={t === 'trending' ? 'Trending' : 'Browse'}
             >
-              <Text style={[styles.mainTabText, tab === t && styles.mainTabTextActive]}>
-                {t === 'trending' ? 'Trending' : 'Browse'}
-              </Text>
+              <Ionicons
+                name={t === 'trending' ? 'flame' : 'grid'}
+                size={15}
+                color={tab === t ? '#FFF' : reelStudioColors.textMuted}
+              />
             </TouchableOpacity>
           ))}
           <TouchableOpacity style={styles.refreshBtn} onPress={onRefresh}>
-            <Ionicons name="refresh" size={18} color="#FFF" />
+            <Ionicons name="refresh" size={15} color="#FFF" />
           </TouchableOpacity>
         </View>
 
@@ -399,102 +454,99 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    paddingBottom: 10,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
-  title: { color: '#FFF', fontSize: 20, fontWeight: '800' },
-  headerSub: { color: reelStudioColors.textMuted, fontSize: 12, marginTop: 2 },
+  title: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   closeBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: reelStudioColors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    marginBottom: 10,
+    gap: 8,
+  },
+  quickChip: {
     width: 36,
     height: 36,
     borderRadius: 18,
     backgroundColor: reelStudioColors.surface,
+    borderWidth: 1,
+    borderColor: reelStudioColors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  quickActions: { paddingHorizontal: 16, marginBottom: 12 },
-  quickCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: reelStudioColors.surface,
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: reelStudioColors.border,
-  },
-  quickCardActive: {
+  quickChipActive: {
     borderColor: reelStudioColors.primary,
     backgroundColor: reelStudioColors.primarySoft,
   },
-  quickIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+  quickChipImport: {
+    borderColor: 'rgba(99,102,241,0.4)',
+    backgroundColor: 'rgba(99,102,241,0.12)',
   },
-  quickTextWrap: { flex: 1 },
-  quickTitle: { color: '#FFF', fontSize: 15, fontWeight: '700' },
-  quickSub: { color: reelStudioColors.textMuted, fontSize: 12, marginTop: 2 },
+  quickChipBusy: { opacity: 0.6 },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     marginHorizontal: 16,
-    marginBottom: 10,
+    marginBottom: 8,
     backgroundColor: reelStudioColors.surface,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderWidth: 1,
     borderColor: reelStudioColors.border,
   },
-  searchInput: { flex: 1, color: '#FFF', fontSize: 15 },
+  searchInput: { flex: 1, color: '#FFF', fontSize: 14 },
   tabRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
     paddingHorizontal: 16,
-    marginBottom: 8,
+    marginBottom: 6,
     alignItems: 'center',
   },
   mainTab: {
-    flex: 1,
-    paddingVertical: 9,
-    borderRadius: 12,
-    backgroundColor: reelStudioColors.surface,
-    alignItems: 'center',
-  },
-  mainTabActive: {
-    backgroundColor: reelStudioColors.primarySoft,
-    borderWidth: 1,
-    borderColor: reelStudioColors.primary,
-  },
-  mainTabText: { color: reelStudioColors.textMuted, fontSize: 13, fontWeight: '700' },
-  mainTabTextActive: { color: '#FFF' },
-  refreshBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: 34,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: reelStudioColors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  languageRow: { paddingHorizontal: 16, gap: 8, paddingBottom: 10 },
+  mainTabActive: {
+    backgroundColor: reelStudioColors.primary,
+  },
+  refreshBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: reelStudioColors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 'auto',
+  },
+  languageRow: { paddingHorizontal: 16, gap: 6, paddingBottom: 8 },
   langChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
     backgroundColor: reelStudioColors.surface,
     borderWidth: 1,
     borderColor: reelStudioColors.border,
   },
   langChipActive: { backgroundColor: reelStudioColors.primary, borderColor: reelStudioColors.primary },
-  langChipText: { color: reelStudioColors.textMuted, fontSize: 13, fontWeight: '600' },
+  langChipText: { color: reelStudioColors.textMuted, fontSize: 12, fontWeight: '600' },
   langChipTextActive: { color: '#FFF' },
   loadingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 120 },
   loadingHint: { color: reelStudioColors.textMuted, fontSize: 13 },
-  listContent: { paddingHorizontal: 16, paddingBottom: 20, gap: 8 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 16, gap: 6 },
   emptyText: {
     color: reelStudioColors.textMuted,
     textAlign: 'center',
@@ -505,10 +557,10 @@ const styles = StyleSheet.create({
   soundCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     backgroundColor: reelStudioColors.surface,
-    borderRadius: 14,
-    padding: 10,
+    borderRadius: 12,
+    padding: 8,
     borderWidth: 1,
     borderColor: reelStudioColors.border,
   },
@@ -520,11 +572,11 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,45,85,0.55)',
   },
   soundCardLeft: { position: 'relative' },
-  coverArt: { width: 52, height: 52, borderRadius: 10, backgroundColor: '#1a1a1a' },
+  coverArt: { width: 44, height: 44, borderRadius: 8, backgroundColor: '#1a1a1a' },
   coverFallback: {
-    width: 52,
-    height: 52,
-    borderRadius: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -543,7 +595,14 @@ const styles = StyleSheet.create({
   },
   soundMeta: { flex: 1 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  soundTitle: { color: '#FFF', fontSize: 15, fontWeight: '700', flexShrink: 1 },
+  soundTitle: { color: '#FFF', fontSize: 13, fontWeight: '600', flexShrink: 1 },
+  licensedBadge: {
+    backgroundColor: 'rgba(99,102,241,0.22)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  licensedBadgeText: { color: '#A5B4FC', fontSize: 10, fontWeight: '700' },
   trendingBadge: {
     backgroundColor: 'rgba(255,45,85,0.22)',
     paddingHorizontal: 6,
@@ -551,30 +610,23 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   trendingBadgeText: { color: reelStudioColors.primary, fontSize: 10, fontWeight: '700' },
-  soundArtist: { color: 'rgba(255,255,255,0.78)', fontSize: 13, marginTop: 2, fontWeight: '500' },
-  soundMetaLine: { color: reelStudioColors.textMuted, fontSize: 11, marginTop: 3 },
+  soundArtist: { color: 'rgba(255,255,255,0.65)', fontSize: 11, marginTop: 1, fontWeight: '500' },
+  soundMetaLine: { color: reelStudioColors.textMuted, fontSize: 10, marginTop: 2 },
   previewBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   previewBtnActive: { backgroundColor: reelStudioColors.primary },
   selectedBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: reelStudioColors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  useBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  useBadgeText: { color: '#FFF', fontSize: 11, fontWeight: '700' },
 });

@@ -61,7 +61,13 @@ const uploadToCloudinary = async (buffer, folder = 'misc', resourceType = 'auto'
 
   // === LOCAL DEV FALLBACK ===
   // Save file to disk and return fake "secure_url" that our server will serve
-  const ext = folder === 'reels' ? '.mp4' : (folder === 'stories' && resourceType === 'video' ? '.mp4' : '.jpg');
+  const ext = folder === 'reels'
+    ? '.mp4'
+    : folder === 'sounds'
+      ? '.m4a'
+      : folder === 'stories' && resourceType === 'video'
+        ? '.mp4'
+        : '.jpg';
   const filename = `${folder}_${Date.now()}${ext}`;
   const filepath = path.join(uploadsDir, filename);
 

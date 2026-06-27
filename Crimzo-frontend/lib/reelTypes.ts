@@ -16,7 +16,8 @@ export type ReelSound = {
   usage_count: number;
   reels_count?: number;
   is_trending?: boolean;
-  source: 'crimzo' | 'audius' | string;
+  is_licensed?: boolean;
+  source: 'crimzo' | 'audius' | 'imported' | 'epidemic' | 'soundstripe' | string;
   external_id?: string | null;
 };
 

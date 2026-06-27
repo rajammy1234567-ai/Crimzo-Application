@@ -10,7 +10,6 @@ import {
   KeyboardAvoidingView,
   Image,
   StatusBar,
-  Switch,
 } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
@@ -196,92 +195,74 @@ export default function ReelEditor({
             pointerEvents="none"
           />
 
-          <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+          <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
             <TouchableOpacity onPress={handleClose} disabled={uploading} style={styles.headerBtn}>
-              <Ionicons name="chevron-back" size={24} color="#FFF" />
+              <Ionicons name="chevron-back" size={20} color="#FFF" />
             </TouchableOpacity>
-            <View style={styles.headerCenter}>
-              <Text style={styles.headerTitle}>Preview & Share</Text>
-              <Text style={styles.headerStep}>
-                {initialSound ? 'Music First · Preview' : 'Step 2 of 2'}
-              </Text>
-            </View>
             <View style={styles.durationBadge}>
-              <Ionicons name="time-outline" size={13} color="#FFF" />
+              <Ionicons name="time-outline" size={12} color="#FFF" />
               <Text style={styles.durationText}>{durationLabel}</Text>
             </View>
           </View>
 
-          {/* Audio controls */}
-          <View style={[styles.audioPanel, { top: insets.top + 62 }]}>
-            <View style={styles.audioPanelHeader}>
-              <Ionicons name="options-outline" size={16} color="#FFF" />
-              <Text style={styles.audioPanelTitle}>Audio</Text>
-            </View>
-
-            <View style={styles.audioRow}>
-              <View style={styles.audioRowLeft}>
-                <Ionicons name="videocam-outline" size={18} color="#FFF" />
-                <View>
-                  <Text style={styles.audioRowTitle}>Original video sound</Text>
-                  <Text style={styles.audioRowSub}>
-                    {muteOriginalAudio ? 'Muted' : 'Playing'}
-                  </Text>
-                </View>
-              </View>
-              <Switch
-                value={!muteOriginalAudio}
-                onValueChange={(on) => setMuteOriginalAudio(!on)}
-                disabled={uploading}
-                trackColor={{ false: 'rgba(255,255,255,0.2)', true: reelStudioColors.primarySoft }}
-                thumbColor={!muteOriginalAudio ? reelStudioColors.primary : '#f4f4f4'}
-                ios_backgroundColor="rgba(255,255,255,0.2)"
+          {/* Right tool rail */}
+          <View style={[styles.toolRail, { top: insets.top + 52 }]}>
+            <TouchableOpacity
+              style={[styles.railBtn, !muteOriginalAudio && styles.railBtnActive]}
+              onPress={() => setMuteOriginalAudio((v) => !v)}
+              disabled={uploading}
+              accessibilityLabel="Toggle original sound"
+            >
+              <Ionicons
+                name={muteOriginalAudio ? 'volume-mute' : 'volume-high'}
+                size={18}
+                color="#FFF"
               />
-            </View>
+            </TouchableOpacity>
 
-            {selectedSound ? (
-              <View style={styles.musicChip}>
-                {selectedSound.cover_url ? (
-                  <Image
-                    source={{ uri: resolveMediaUrl(selectedSound.cover_url) }}
-                    style={styles.musicCover}
-                  />
-                ) : (
-                  <View style={styles.musicCoverFallback}>
-                    <Ionicons name="musical-note" size={14} color="#FFF" />
-                  </View>
-                )}
-                <View style={styles.musicMeta}>
-                  <Text style={styles.musicTitle} numberOfLines={1}>{selectedSound.title}</Text>
-                  <Text style={styles.musicArtist} numberOfLines={1}>{selectedSound.artist}</Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.changeMusicBtn}
-                  onPress={() => setShowMusicPicker(true)}
-                  disabled={uploading}
-                >
-                  <Text style={styles.changeMusicText}>Change</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => void handleRemoveMusic()}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  disabled={uploading}
-                >
-                  <Ionicons name="close-circle" size={22} color="rgba(255,255,255,0.65)" />
-                </TouchableOpacity>
-              </View>
-            ) : (
+            <TouchableOpacity
+              style={[styles.railBtn, selectedSound && styles.railBtnActive]}
+              onPress={() => setShowMusicPicker(true)}
+              disabled={uploading}
+              accessibilityLabel="Music"
+            >
+              <Ionicons name="musical-notes" size={18} color="#FFF" />
+            </TouchableOpacity>
+
+            {selectedSound && (
               <TouchableOpacity
-                style={styles.addMusicBtn}
-                onPress={() => setShowMusicPicker(true)}
+                style={styles.railBtn}
+                onPress={() => void handleRemoveMusic()}
                 disabled={uploading}
-                activeOpacity={0.85}
+                accessibilityLabel="Remove music"
               >
-                <Ionicons name="musical-notes" size={18} color="#FFF" />
-                <Text style={styles.addMusicText}>Add Music</Text>
+                <Ionicons name="trash-outline" size={17} color="#FFF" />
               </TouchableOpacity>
             )}
           </View>
+
+          {selectedSound && (
+            <TouchableOpacity
+              style={[styles.musicFloater, { top: insets.top + 52 }]}
+              onPress={() => setShowMusicPicker(true)}
+              disabled={uploading}
+              activeOpacity={0.85}
+            >
+              {selectedSound.cover_url ? (
+                <Image
+                  source={{ uri: resolveMediaUrl(selectedSound.cover_url) }}
+                  style={styles.musicFloaterCover}
+                />
+              ) : (
+                <View style={styles.musicFloaterFallback}>
+                  <Ionicons name="musical-note" size={12} color="#FFF" />
+                </View>
+              )}
+              <Text style={styles.musicFloaterText} numberOfLines={1}>
+                {selectedSound.title}
+              </Text>
+            </TouchableOpacity>
+          )}
 
           {uploading && (
             <View style={styles.uploadOverlay}>
@@ -331,6 +312,7 @@ export default function ReelEditor({
             onPress={() => onPost(caption, buildAudioSelection())}
             disabled={uploading}
             activeOpacity={0.85}
+            accessibilityLabel="Share reel"
           >
             <LinearGradient
               colors={['#FF2D55', '#FF6B8A']}
@@ -338,8 +320,8 @@ export default function ReelEditor({
               end={{ x: 1, y: 0 }}
               style={styles.postBtnGradient}
             >
-              <Ionicons name="paper-plane" size={18} color="#FFF" />
-              <Text style={styles.postBtnText}>Share Reel</Text>
+              <Ionicons name="paper-plane" size={17} color="#FFF" />
+              <Text style={styles.postBtnText}>Share</Text>
             </LinearGradient>
           </TouchableOpacity>
         </KeyboardAvoidingView>
@@ -367,93 +349,70 @@ const styles = StyleSheet.create({
     zIndex: 20,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 12,
-    paddingBottom: 10,
+    paddingBottom: 8,
   },
   headerBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: reelStudioColors.surface,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(0,0,0,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerCenter: { flex: 1, alignItems: 'center' },
-  headerTitle: { color: '#FFF', fontSize: 16, fontWeight: '800' },
-  headerStep: { color: reelStudioColors.textMuted, fontSize: 11, marginTop: 2, fontWeight: '500' },
   durationBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: reelStudioColors.surface,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    gap: 3,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     borderRadius: 12,
   },
-  durationText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
-  audioPanel: {
+  durationText: { color: '#FFF', fontSize: 11, fontWeight: '700' },
+  toolRail: {
     position: 'absolute',
-    left: 14,
-    right: 14,
+    right: 12,
     zIndex: 15,
-    backgroundColor: 'rgba(0,0,0,0.62)',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: reelStudioColors.border,
-    padding: 12,
-    gap: 10,
+    gap: 8,
+    alignItems: 'center',
   },
-  audioPanelHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  audioPanelTitle: { color: '#FFF', fontSize: 13, fontWeight: '700' },
-  audioRow: {
+  railBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  railBtnActive: {
+    backgroundColor: 'rgba(255,45,85,0.55)',
+  },
+  musicFloater: {
+    position: 'absolute',
+    left: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: reelStudioColors.surface,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: 6,
+    maxWidth: '58%',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingVertical: 5,
+    paddingRight: 10,
+    paddingLeft: 5,
+    borderRadius: 18,
+    zIndex: 14,
   },
-  audioRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  audioRowTitle: { color: '#FFF', fontSize: 13, fontWeight: '600' },
-  audioRowSub: { color: reelStudioColors.textMuted, fontSize: 11, marginTop: 1 },
-  musicChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: reelStudioColors.surface,
-    borderRadius: 12,
-    padding: 10,
-  },
-  musicCover: { width: 40, height: 40, borderRadius: 8 },
-  musicCoverFallback: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
+  musicFloaterCover: { width: 22, height: 22, borderRadius: 6 },
+  musicFloaterFallback: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
     backgroundColor: reelStudioColors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  musicMeta: { flex: 1 },
-  musicTitle: { color: '#FFF', fontSize: 14, fontWeight: '700' },
-  musicArtist: { color: reelStudioColors.textMuted, fontSize: 12, marginTop: 2 },
-  changeMusicBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  changeMusicText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
-  addMusicBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: reelStudioColors.primary,
-    borderRadius: 12,
-    paddingVertical: 12,
-  },
-  addMusicText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+  musicFloaterText: { color: '#FFF', fontSize: 11, fontWeight: '600', flexShrink: 1 },
   uploadOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.78)',
@@ -500,37 +459,38 @@ const styles = StyleSheet.create({
     backgroundColor: '#0A0A0F',
     borderTopWidth: 1,
     borderTopColor: reelStudioColors.border,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    gap: 10,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    gap: 8,
   },
   captionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  captionLabel: { color: '#FFF', fontSize: 14, fontWeight: '700' },
-  captionCount: { color: reelStudioColors.textMuted, fontSize: 12, fontWeight: '600' },
+  captionLabel: { color: reelStudioColors.textMuted, fontSize: 11, fontWeight: '600' },
+  captionCount: { color: reelStudioColors.textSubtle, fontSize: 10, fontWeight: '600' },
   captionInput: {
     color: '#FFF',
-    fontSize: 15,
-    minHeight: 72,
-    maxHeight: 110,
+    fontSize: 14,
+    minHeight: 56,
+    maxHeight: 88,
     textAlignVertical: 'top',
     backgroundColor: reelStudioColors.surface,
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 12,
+    padding: 12,
     borderWidth: 1,
     borderColor: reelStudioColors.border,
   },
-  postBtn: { borderRadius: 14, overflow: 'hidden' },
+  postBtn: { borderRadius: 12, overflow: 'hidden', alignSelf: 'flex-end', minWidth: 108 },
   postBtnDisabled: { opacity: 0.55 },
   postBtnGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 15,
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
   },
-  postBtnText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
+  postBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
 });

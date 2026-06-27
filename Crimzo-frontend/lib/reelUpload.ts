@@ -40,11 +40,16 @@ export async function uploadReel({
   if (audio?.sound) {
     formData.append('audio_start_ms', String(audio.startMs || 0));
 
-    if (audio.sound.source === 'audius' || audio.sound.id.startsWith('audius:')) {
-      const extId = audio.sound.external_id || audio.sound.id.replace(/^audius:/, '');
-      formData.append('external_source', 'audius');
+    const licensedSources = new Set(['audius', 'epidemic', 'soundstripe']);
+    const source = audio.sound.source;
+    const prefixedId = audio.sound.id.includes(':') ? audio.sound.id.split(':')[0] : null;
+
+    if (licensedSources.has(source) || (prefixedId && licensedSources.has(prefixedId))) {
+      const resolvedSource = licensedSources.has(source) ? source : prefixedId!;
+      const extId = audio.sound.external_id || audio.sound.id.replace(/^[^:]+:/, '');
+      formData.append('external_source', resolvedSource);
       formData.append('external_id', extId);
-      formData.append('audio_url', audio.sound.audio_url);
+      if (audio.sound.audio_url) formData.append('audio_url', audio.sound.audio_url);
       formData.append('audio_title', audio.sound.title);
       formData.append('audio_artist', audio.sound.artist);
       formData.append('language', audio.sound.language || 'all');

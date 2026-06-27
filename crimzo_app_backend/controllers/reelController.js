@@ -34,11 +34,17 @@ function mapReelAudioFields(r) {
   };
 }
 
-async function resolveReelAudioPayload(body) {
+async function resolveReelAudioPayload(body, userId = null) {
   const audioStartMs = parseInt(body.audio_start_ms ?? body.audioStartMs ?? 0, 10) || 0;
   const externalSource = body.external_source || body.externalSource;
   const externalId = body.external_id || body.externalId;
-  const audioUrl = body.audio_url || body.audioUrl;
+  let audioUrl = body.audio_url || body.audioUrl;
+
+  if (externalSource && externalId && !audioUrl) {
+    const licensedMusic = require('../utils/licensedMusicClient');
+    const resolved = await licensedMusic.resolveStream(externalSource, externalId, userId);
+    audioUrl = resolved?.audio_url || null;
+  }
 
   if (externalSource && externalId && audioUrl) {
     return {
@@ -224,7 +230,7 @@ exports.confirmUpload = async (req, res) => {
       return res.status(400).json({ error: 'publicUrl is required' });
     }
 
-    const { audioFields, soundId } = await resolveReelAudioPayload(req.body);
+    const { audioFields, soundId } = await resolveReelAudioPayload(req.body, userId);
     const reel = await Reel.create({
       user_id: userId,
       video_url: publicUrl,
@@ -233,6 +239,10 @@ exports.confirmUpload = async (req, res) => {
     });
     if (soundId) {
       await ReelSound.findByIdAndUpdate(soundId, { $inc: { usage_count: 1 } });
+    }
+    if (audioFields.external_source && audioFields.external_id) {
+      const licensedMusic = require('../utils/licensedMusicClient');
+      void licensedMusic.reportUsage(audioFields.external_source, audioFields.external_id, userId, 'instagram');
     }
 
     const populated = await Reel.findById(reel._id).populate('user_id', 'username avatar').lean();
@@ -271,7 +281,7 @@ exports.uploadReel = async (req, res) => {
     const uploadResult = await uploadToCloudinary(req.file.buffer, 'reels', 'video');
     const videoUrl = normalizeMediaUrl(uploadResult.secure_url);
 
-    const { audioFields, soundId } = await resolveReelAudioPayload(req.body);
+    const { audioFields, soundId } = await resolveReelAudioPayload(req.body, userId);
 
     const reel = await Reel.create({
       user_id: new mongoose.Types.ObjectId(String(userId)),
@@ -282,6 +292,10 @@ exports.uploadReel = async (req, res) => {
 
     if (soundId) {
       await ReelSound.findByIdAndUpdate(soundId, { $inc: { usage_count: 1 } });
+    }
+    if (audioFields.external_source && audioFields.external_id) {
+      const licensedMusic = require('../utils/licensedMusicClient');
+      void licensedMusic.reportUsage(audioFields.external_source, audioFields.external_id, userId, 'instagram');
     }
 
     // Fetch with user info

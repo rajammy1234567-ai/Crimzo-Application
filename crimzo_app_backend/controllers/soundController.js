@@ -1,10 +1,9 @@
 const ReelSound = require('../models/ReelSound');
 const { uploadToCloudinary } = require('../config/cloudinary');
 const { SOUND_LANGUAGES } = require('../config/soundLanguages');
-const { getTrendingTracks, searchTracks, getTrackStreamUrl } = require('../utils/audiusClient');
 const { getAppTrendingSounds, getLocalSounds, mapLocalSound, dedupeSounds } = require('../utils/soundTrending');
-
-const AUDIUS_ENABLED = process.env.AUDIUS_ENABLED !== 'false';
+const { extractAudioFromVideo, hasFfmpeg } = require('../utils/extractAudioFromVideo');
+const licensedMusic = require('../utils/licensedMusicClient');
 
 function normalizeMediaUrl(url) {
   if (!url) return url;
@@ -30,36 +29,6 @@ function mapSound(doc, extra = {}) {
   };
 }
 
-async function fetchAudiusCatalog({ tab, language, q, limit }) {
-  if (!AUDIUS_ENABLED) return [];
-
-  try {
-    if (q && String(q).trim()) {
-      const { getLanguageConfig } = require('../config/soundLanguages');
-      const lang = getLanguageConfig(language);
-      const query = lang.code !== 'all' && !String(q).toLowerCase().includes(lang.code)
-        ? `${q} ${lang.searchQuery || lang.label}`
-        : q;
-      return await searchTracks(query, limit, lang.code);
-    }
-
-    if (tab === 'trending') {
-      return await getTrendingTracks(limit, language);
-    }
-
-    const { getLanguageConfig } = require('../config/soundLanguages');
-    const lang = getLanguageConfig(language);
-    if (lang.code !== 'all' && lang.searchQuery) {
-      return await searchTracks(lang.searchQuery, limit, lang.code);
-    }
-
-    return await getTrendingTracks(limit, 'all');
-  } catch (error) {
-    console.warn('Audius catalog fetch failed:', error.message);
-    return [];
-  }
-}
-
 /** Instagram-style browse: trending + languages + live search */
 exports.browseSounds = async (req, res) => {
   try {
@@ -74,22 +43,33 @@ exports.browseSounds = async (req, res) => {
     const lang = String(language).trim().toLowerCase();
     const search = q && String(q).trim() ? String(q).trim() : '';
 
-    const [appTrending, localSounds, audiusSounds] = await Promise.all([
+    const userId = req.user?.id || null;
+
+    const [appTrending, localSounds, licensedCatalog] = await Promise.all([
       tab === 'trending' && !search
         ? getAppTrendingSounds(Math.min(parsedLimit, 12), lang)
         : Promise.resolve([]),
       getLocalSounds({ language: lang, q: search, limit: Math.ceil(parsedLimit / 2) }),
-      fetchAudiusCatalog({ tab, language: lang, q: search, limit: parsedLimit }),
+      licensedMusic.fetchCatalog({
+        tab,
+        language: lang,
+        q: search,
+        limit: parsedLimit,
+        userId,
+      }),
     ]);
+
+    const licensedSounds = licensedCatalog.sounds || [];
+    const musicProvider = licensedCatalog.provider;
 
     let merged = [];
 
     if (search) {
-      merged = dedupeSounds([...localSounds, ...audiusSounds]);
+      merged = dedupeSounds([...licensedSounds, ...localSounds]);
     } else if (tab === 'trending') {
-      merged = dedupeSounds([...appTrending, ...localSounds, ...audiusSounds]);
+      merged = dedupeSounds([...appTrending, ...licensedSounds, ...localSounds]);
     } else {
-      merged = dedupeSounds([...localSounds, ...audiusSounds]);
+      merged = dedupeSounds([...licensedSounds, ...localSounds]);
     }
 
     merged = merged.slice(0, parsedLimit);
@@ -98,7 +78,8 @@ exports.browseSounds = async (req, res) => {
       success: true,
       tab,
       language: lang,
-      source: AUDIUS_ENABLED ? 'hybrid' : 'local',
+      source: musicProvider ? `licensed:${musicProvider}` : 'local',
+      music_provider: musicProvider,
       sounds: merged,
       languages: SOUND_LANGUAGES,
     });
@@ -126,23 +107,81 @@ exports.getTrendingSounds = async (req, res) => {
   return exports.browseSounds(req, res);
 };
 
-/** Refresh expired stream URLs (Audius signatures expire) */
+/** Refresh expired stream URLs (licensed + Audius URLs expire) */
 exports.resolveStream = async (req, res) => {
   try {
     const { source, id } = req.params;
+    const userId = req.user?.id || null;
 
-    if (source === 'audius' && id) {
-      const stream = await getTrackStreamUrl(id);
-      if (!stream?.audio_url) {
-        return res.status(404).json({ error: 'Stream not available' });
-      }
-      return res.json({ success: true, ...stream, source: 'audius', external_id: String(id) });
+    if (!source || !id) {
+      return res.status(400).json({ error: 'Source and track id required' });
     }
 
-    return res.status(400).json({ error: 'Unsupported source' });
+    const stream = await licensedMusic.resolveStream(source, id, userId);
+    if (!stream?.audio_url) {
+      return res.status(404).json({ error: 'Stream not available' });
+    }
+
+    return res.json({ success: true, ...stream, source, external_id: String(id) });
   } catch (error) {
     console.error('Resolve stream error:', error);
     res.status(500).json({ error: 'Failed to resolve stream' });
+  }
+};
+
+/** Pick a gallery video → extract audio → save as reusable sound */
+exports.importFromVideo = async (req, res) => {
+  try {
+    if (!hasFfmpeg) {
+      return res.status(503).json({ error: 'Audio extraction is not available on this server' });
+    }
+
+    if (!req.file?.buffer?.length) {
+      return res.status(400).json({ error: 'Video file required (field: video)' });
+    }
+
+    const mime = req.file.mimetype || '';
+    if (!mime.startsWith('video/') && mime !== 'application/octet-stream') {
+      return res.status(400).json({ error: 'Please upload a video file' });
+    }
+
+    const titleRaw = req.body.title || req.body.name;
+    const title = titleRaw && String(titleRaw).trim()
+      ? String(titleRaw).trim().slice(0, 120)
+      : 'Imported Sound';
+
+    const durationMs = Math.max(0, parseInt(req.body.duration_ms ?? req.body.durationMs ?? 0, 10) || 0);
+    const username = req.user?.username || 'You';
+
+    let audioBuffer;
+    try {
+      audioBuffer = await extractAudioFromVideo(req.file.buffer);
+    } catch (err) {
+      const msg = String(err.message || '');
+      if (/no audio|does not contain|invalid data/i.test(msg)) {
+        return res.status(400).json({ error: 'This video has no audio track to extract' });
+      }
+      console.error('Extract audio error:', err);
+      return res.status(500).json({ error: 'Could not extract audio from video' });
+    }
+
+    const uploadResult = await uploadToCloudinary(audioBuffer, 'sounds', 'video');
+    const audioUrl = normalizeMediaUrl(uploadResult.secure_url);
+
+    const sound = await ReelSound.create({
+      title,
+      artist: username,
+      category: 'imported',
+      language: 'all',
+      duration_ms: durationMs,
+      audio_url: audioUrl,
+      source: 'imported',
+    });
+
+    res.json({ success: true, sound: mapSound(sound) });
+  } catch (error) {
+    console.error('Import sound from video error:', error);
+    res.status(500).json({ error: 'Failed to import sound from video' });
   }
 };
 

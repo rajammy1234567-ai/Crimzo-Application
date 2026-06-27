@@ -37,49 +37,40 @@ export default function ReelPermissionGate({
 
       {onClose && (
         <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-          <Ionicons name="close" size={26} color="#FFF" />
+          <Ionicons name="close" size={22} color="#FFF" />
         </TouchableOpacity>
       )}
 
       <View style={styles.iconCircle}>
         <Ionicons
           name={isWeb ? 'phone-portrait-outline' : 'camera-outline'}
-          size={42}
+          size={32}
           color={reelStudioColors.primary}
         />
       </View>
 
       <Text style={styles.title}>
-        {isWeb ? 'Record on your phone' : 'Camera access required'}
+        {isWeb ? 'Use mobile app' : 'Camera access'}
       </Text>
       <Text style={styles.subtitle}>
         {isWeb
-          ? 'Reel recording works best on the Crimzo mobile app. You can still upload a video from gallery here.'
-          : 'Allow camera and microphone to record professional 9:16 reels with music.'}
+          ? 'Record on phone · upload here'
+          : 'Allow camera & mic for reels'}
       </Text>
 
-      <View style={styles.steps}>
-        {['Pick or record video', 'Add trending music', 'Write caption & share'].map((step, i) => (
-          <View key={step} style={styles.stepRow}>
-            <View style={styles.stepNum}><Text style={styles.stepNumText}>{i + 1}</Text></View>
-            <Text style={styles.stepText}>{step}</Text>
-          </View>
-        ))}
+      <View style={styles.actionRow}>
+        {!isWeb && onGrantPermissions && (
+          <TouchableOpacity style={styles.iconAction} onPress={onGrantPermissions} activeOpacity={0.8}>
+            <Ionicons name="shield-checkmark" size={22} color="#FFF" />
+          </TouchableOpacity>
+        )}
+
+        {onOpenGallery && (
+          <TouchableOpacity style={styles.iconAction} onPress={onOpenGallery} activeOpacity={0.8}>
+            <Ionicons name="images" size={22} color="#FFF" />
+          </TouchableOpacity>
+        )}
       </View>
-
-      {!isWeb && onGrantPermissions && (
-        <TouchableOpacity style={styles.primaryBtn} onPress={onGrantPermissions} activeOpacity={0.85}>
-          <Ionicons name="shield-checkmark-outline" size={18} color="#FFF" />
-          <Text style={styles.primaryBtnText}>Enable Camera & Mic</Text>
-        </TouchableOpacity>
-      )}
-
-      {onOpenGallery && (
-        <TouchableOpacity style={styles.secondaryBtn} onPress={onOpenGallery} activeOpacity={0.85}>
-          <Ionicons name="images-outline" size={18} color="#FFF" />
-          <Text style={styles.secondaryBtnText}>Upload from Gallery</Text>
-        </TouchableOpacity>
-      )}
     </View>
   );
 }
@@ -96,69 +87,41 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 52,
     left: 16,
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: reelStudioColors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconCircle: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: reelStudioColors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
-  title: { color: '#FFF', fontSize: 22, fontWeight: '800', textAlign: 'center' },
+  title: { color: '#FFF', fontSize: 18, fontWeight: '700', textAlign: 'center' },
   subtitle: {
     color: reelStudioColors.textMuted,
-    fontSize: 14,
+    fontSize: 13,
     textAlign: 'center',
-    marginTop: 10,
-    lineHeight: 21,
+    marginTop: 6,
   },
-  steps: { marginTop: 28, width: '100%', gap: 12 },
-  stepRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  stepNum: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: reelStudioColors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepNumText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
-  stepText: { color: 'rgba(255,255,255,0.75)', fontSize: 14, fontWeight: '500' },
-  primaryBtn: {
+  actionRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 28,
+    gap: 14,
+    marginTop: 24,
+  },
+  iconAction: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: reelStudioColors.primary,
-    paddingHorizontal: 22,
-    paddingVertical: 14,
-    borderRadius: 14,
-    width: '100%',
-    justifyContent: 'center',
-  },
-  primaryBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
-  secondaryBtn: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 12,
-    backgroundColor: reelStudioColors.surface,
-    borderWidth: 1,
-    borderColor: reelStudioColors.border,
-    paddingHorizontal: 22,
-    paddingVertical: 14,
-    borderRadius: 14,
-    width: '100%',
     justifyContent: 'center',
   },
-  secondaryBtnText: { color: '#FFF', fontSize: 15, fontWeight: '600' },
-  loadingText: { color: reelStudioColors.textMuted, marginTop: 14, fontSize: 14 },
+  loadingText: { color: reelStudioColors.textMuted, marginTop: 12, fontSize: 13 },
 });
