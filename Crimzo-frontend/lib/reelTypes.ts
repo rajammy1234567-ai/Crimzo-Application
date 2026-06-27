@@ -1,3 +1,9 @@
+export type SoundLanguage = {
+  code: string;
+  label: string;
+  emoji?: string;
+};
+
 export type ReelSound = {
   id: string;
   title: string;
@@ -6,7 +12,12 @@ export type ReelSound = {
   cover_url: string | null;
   duration_ms: number;
   category: string;
+  language: string;
   usage_count: number;
+  reels_count?: number;
+  is_trending?: boolean;
+  source: 'crimzo' | 'audius' | string;
+  external_id?: string | null;
 };
 
 export type ReelVideoAsset = {

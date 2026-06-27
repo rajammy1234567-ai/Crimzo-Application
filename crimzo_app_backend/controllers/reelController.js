@@ -28,13 +28,34 @@ function mapReelAudioFields(r) {
     audio_artist: r.audio_artist || null,
     audio_url: r.audio_url ? normalizeMediaUrl(r.audio_url) : null,
     audio_start_ms: r.audio_start_ms || 0,
+    audio_language: r.audio_language || null,
+    external_source: r.external_source || null,
+    external_id: r.external_id ? String(r.external_id) : null,
   };
 }
 
 async function resolveReelAudioPayload(body) {
-  const audioId = body.audio_id || body.audioId;
   const audioStartMs = parseInt(body.audio_start_ms ?? body.audioStartMs ?? 0, 10) || 0;
+  const externalSource = body.external_source || body.externalSource;
+  const externalId = body.external_id || body.externalId;
+  const audioUrl = body.audio_url || body.audioUrl;
 
+  if (externalSource && externalId && audioUrl) {
+    return {
+      soundId: null,
+      audioFields: {
+        audio_title: (body.audio_title || body.audioTitle || 'Sound').trim().slice(0, 200),
+        audio_artist: (body.audio_artist || body.audioArtist || 'Unknown').trim().slice(0, 120),
+        audio_url: audioUrl,
+        audio_start_ms: Math.max(0, audioStartMs),
+        audio_language: (body.language || body.audio_language || 'all').toLowerCase(),
+        external_source: String(externalSource),
+        external_id: String(externalId),
+      },
+    };
+  }
+
+  const audioId = body.audio_id || body.audioId;
   if (!audioId || !mongoose.Types.ObjectId.isValid(audioId)) {
     return { audioFields: {}, soundId: null };
   }
@@ -52,6 +73,9 @@ async function resolveReelAudioPayload(body) {
       audio_artist: sound.artist,
       audio_url: sound.audio_url,
       audio_start_ms: Math.max(0, audioStartMs),
+      audio_language: sound.language || 'all',
+      external_source: sound.source || 'crimzo',
+      external_id: sound.external_id || null,
     },
   };
 }

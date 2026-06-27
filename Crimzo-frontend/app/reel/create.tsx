@@ -1,17 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
-  TouchableOpacity,
   Platform,
-  ActivityIndicator,
   StatusBar,
+  Animated,
+  Easing,
 } from 'react-native';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
 import { appAlert } from '../../lib/appAlert';
@@ -19,8 +18,12 @@ import { uploadReel } from '../../lib/reelUpload';
 import type { ReelAudioSelection, ReelSound, ReelVideoAsset } from '../../lib/reelTypes';
 import ReelEditor from '../../components/reel/ReelEditor';
 import MusicPicker from '../../components/reel/MusicPicker';
-
-const MAX_DURATION_SEC = 60;
+import ReelCaptureOverlay from '../../components/reel/ReelCaptureOverlay';
+import ReelPermissionGate from '../../components/reel/ReelPermissionGate';
+import {
+  REEL_MAX_DURATION_SEC,
+  REEL_MIN_DURATION_SEC,
+} from '../../components/reel/reelStudioTheme';
 
 export default function ReelCreateScreen() {
   const router = useRouter();
@@ -32,9 +35,13 @@ export default function ReelCreateScreen() {
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
 
   const [facing, setFacing] = useState<'front' | 'back'>('back');
+  const [torchOn, setTorchOn] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
+  const recordSecondsRef = useRef(0);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordProgress = useRef(new Animated.Value(0)).current;
+  const isBusyRef = useRef(false);
 
   const [selectedSound, setSelectedSound] = useState<ReelSound | null>(null);
   const [showMusicPicker, setShowMusicPicker] = useState(false);
@@ -56,6 +63,9 @@ export default function ReelCreateScreen() {
   }, [token, isGuest, router]);
 
   useEffect(() => {
+    if (!isWeb) {
+      void ensurePermissions();
+    }
     return () => {
       if (recordTimerRef.current) clearInterval(recordTimerRef.current);
     };
@@ -76,23 +86,38 @@ export default function ReelCreateScreen() {
     }
 
     if (!cam || !mic) {
-      appAlert('Permission Required', 'Camera and microphone access are needed to record reels.');
       return false;
     }
     return true;
   }, [cameraPermission, micPermission, requestCameraPermission, requestMicPermission, isWeb]);
 
+  const resetRecordProgress = () => {
+    recordProgress.stopAnimation();
+    recordProgress.setValue(0);
+  };
+
+  const animateRecordProgress = () => {
+    resetRecordProgress();
+    Animated.timing(recordProgress, {
+      toValue: 1,
+      duration: REEL_MAX_DURATION_SEC * 1000,
+      easing: Easing.linear,
+      useNativeDriver: false,
+    }).start();
+  };
+
   const startRecordTimer = () => {
+    recordSecondsRef.current = 0;
     setRecordSeconds(0);
     if (recordTimerRef.current) clearInterval(recordTimerRef.current);
     recordTimerRef.current = setInterval(() => {
-      setRecordSeconds((s) => {
-        if (s + 1 >= MAX_DURATION_SEC) {
-          void stopRecording();
-        }
-        return s + 1;
-      });
+      recordSecondsRef.current += 1;
+      setRecordSeconds(recordSecondsRef.current);
+      if (recordSecondsRef.current >= REEL_MAX_DURATION_SEC) {
+        void stopRecording();
+      }
     }, 1000);
+    animateRecordProgress();
   };
 
   const stopRecordTimer = () => {
@@ -100,6 +125,7 @@ export default function ReelCreateScreen() {
       clearInterval(recordTimerRef.current);
       recordTimerRef.current = null;
     }
+    recordProgress.stopAnimation();
   };
 
   const openEditor = (asset: ReelVideoAsset) => {
@@ -108,30 +134,50 @@ export default function ReelCreateScreen() {
   };
 
   const startRecording = async () => {
-    if (recording) return;
+    if (recording || isBusyRef.current || isWeb) return;
     const ok = await ensurePermissions();
-    if (!ok || isWeb) return;
+    if (!ok) {
+      appAlert('Permission Required', 'Camera and microphone access are needed to record reels.');
+      return;
+    }
 
+    isBusyRef.current = true;
     try {
       setRecording(true);
       startRecordTimer();
-      const result = await cameraRef.current?.recordAsync({ maxDuration: MAX_DURATION_SEC });
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      const result = await cameraRef.current?.recordAsync({ maxDuration: REEL_MAX_DURATION_SEC });
+      const elapsed = recordSecondsRef.current;
+
       stopRecordTimer();
       setRecording(false);
 
-      if (result?.uri) {
-        openEditor({
-          uri: result.uri,
-          mimeType: 'video/mp4',
-          fileName: `reel_${Date.now()}.mp4`,
-          duration: recordSeconds * 1000,
-        });
+      if (!result?.uri) return;
+
+      if (elapsed < REEL_MIN_DURATION_SEC) {
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        appAlert(
+          'Clip too short',
+          `Record at least ${REEL_MIN_DURATION_SEC} seconds for a reel.`,
+        );
+        return;
       }
+
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      openEditor({
+        uri: result.uri,
+        mimeType: 'video/mp4',
+        fileName: `reel_${Date.now()}.mp4`,
+        duration: elapsed * 1000,
+      });
     } catch (e) {
       console.error('Record error:', e);
       stopRecordTimer();
       setRecording(false);
       appAlert('Recording Failed', 'Could not record video. Please try again.');
+    } finally {
+      isBusyRef.current = false;
     }
   };
 
@@ -145,6 +191,7 @@ export default function ReelCreateScreen() {
   };
 
   const pickFromGallery = async () => {
+    if (recording) return;
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
@@ -156,17 +203,28 @@ export default function ReelCreateScreen() {
         mediaTypes: ['videos'],
         allowsEditing: false,
         quality: 1,
-        videoMaxDuration: MAX_DURATION_SEC,
+        videoMaxDuration: REEL_MAX_DURATION_SEC,
       });
 
       if (result.canceled || !result.assets?.length) return;
 
       const asset = result.assets[0];
+      const durationMs = asset.duration || 0;
+
+      if (durationMs > 0 && durationMs < REEL_MIN_DURATION_SEC * 1000) {
+        appAlert(
+          'Video too short',
+          `Please pick a video at least ${REEL_MIN_DURATION_SEC} seconds long.`,
+        );
+        return;
+      }
+
+      void Haptics.selectionAsync();
       openEditor({
         uri: asset.uri,
         fileName: asset.fileName,
         mimeType: asset.mimeType,
-        duration: asset.duration,
+        duration: durationMs,
       });
     } catch (e) {
       console.error('Gallery pick error:', e);
@@ -192,125 +250,99 @@ export default function ReelCreateScreen() {
       if (response.success) {
         setUploadProgress(100);
         setUploadDone(true);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setTimeout(() => {
           setUploading(false);
           setUploadDone(false);
           setShowEditor(false);
           setEditorAsset(null);
-          appAlert('Reel Posted!', 'Your reel is now live for everyone to see.');
           router.replace('/(tabs)/reels' as any);
-        }, 1200);
+        }, 1400);
       } else {
         throw new Error('Failed to save reel');
       }
     } catch (e: any) {
       console.error('Upload error:', e);
       setUploading(false);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       appAlert('Upload Failed', e?.message || 'Something went wrong. Please try again.');
     }
   };
 
-  const formatTimer = (sec: number) => {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${m}:${s.toString().padStart(2, '0')}`;
+  const handleClose = () => {
+    if (recording) {
+      appAlert('Stop recording?', 'Going back will discard your current clip.', [
+        { text: 'Keep Recording', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => {
+            void stopRecording();
+            router.back();
+          },
+        },
+      ]);
+      return;
+    }
+    router.back();
   };
 
   const permissionsReady = isWeb || (cameraPermission?.granted && micPermission?.granted);
   const permissionsDenied = !isWeb && cameraPermission && !cameraPermission.granted && !cameraPermission.canAskAgain;
+  const showCamera = !isWeb && permissionsReady;
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {!isWeb && permissionsReady ? (
+      {showCamera ? (
         <CameraView
           ref={cameraRef}
           style={StyleSheet.absoluteFill}
           facing={facing}
           mode="video"
-          videoQuality="720p"
+          videoQuality="1080p"
+          enableTorch={torchOn && facing === 'back'}
         />
-      ) : (
-        <View style={styles.fallbackBg}>
-          <Ionicons name="videocam-outline" size={72} color="rgba(255,255,255,0.2)" />
-          <Text style={styles.fallbackTitle}>
-            {isWeb ? 'Record on mobile app' : 'Camera access needed'}
-          </Text>
-          <Text style={styles.fallbackSub}>
-            {isWeb
-              ? 'Use gallery upload here, or open Crimzo on your phone to record reels.'
-              : 'Allow camera access to record, or pick a video from gallery.'}
-          </Text>
-          {permissionsDenied && (
-            <TouchableOpacity style={styles.permBtn} onPress={() => void ensurePermissions()}>
-              <Text style={styles.permBtnText}>Grant Permissions</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
+      ) : isWeb ? (
+        <ReelPermissionGate
+          variant="web"
+          onOpenGallery={pickFromGallery}
+          onClose={handleClose}
+        />
+      ) : permissionsDenied ? (
+        <ReelPermissionGate
+          variant="permission"
+          onGrantPermissions={() => void ensurePermissions()}
+          onOpenGallery={pickFromGallery}
+          onClose={handleClose}
+        />
+      ) : !permissionsReady ? (
+        <ReelPermissionGate variant="loading" />
+      ) : null}
 
-      <View style={[styles.topBar, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity style={styles.topBtn} onPress={() => router.back()}>
-          <Ionicons name="close" size={28} color="#FFF" />
-        </TouchableOpacity>
-
-        {recording && (
-          <View style={styles.recordingBadge}>
-            <View style={styles.recDot} />
-            <Text style={styles.recText}>{formatTimer(recordSeconds)}</Text>
-          </View>
-        )}
-
-        {!isWeb && permissionsReady && (
-          <TouchableOpacity
-            style={styles.topBtn}
-            onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))}
-          >
-            <Ionicons name="camera-reverse" size={26} color="#FFF" />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      <TouchableOpacity
-        style={[styles.musicPill, { top: insets.top + 60 }]}
-        onPress={() => setShowMusicPicker(true)}
-        activeOpacity={0.85}
-      >
-        <Ionicons name="musical-notes" size={16} color="#FFF" />
-        <Text style={styles.musicPillText} numberOfLines={1}>
-          {selectedSound ? `${selectedSound.title}` : 'Add a song'}
-        </Text>
-      </TouchableOpacity>
-
-      <View style={[styles.bottomControls, { paddingBottom: insets.bottom + 24 }]}>
-        <TouchableOpacity style={styles.sideBtn} onPress={pickFromGallery}>
-          <Ionicons name="images" size={28} color="#FFF" />
-          <Text style={styles.sideBtnText}>Gallery</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.recordBtn, recording && styles.recordBtnActive]}
-          onPress={recording ? () => void stopRecording() : () => void startRecording()}
-          disabled={isWeb}
-        >
-          {recording ? (
-            <View style={styles.recordStop} />
-          ) : (
-            <View style={styles.recordInner} />
-          )}
-        </TouchableOpacity>
-
-        <View style={styles.sideBtn}>
-          <Text style={styles.maxDurText}>Max {MAX_DURATION_SEC}s</Text>
-        </View>
-      </View>
-
-      {!permissionsReady && !isWeb && !permissionsDenied && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#9333EA" />
-          <Text style={styles.loadingText}>Preparing camera...</Text>
-        </View>
+      {showCamera && (
+        <ReelCaptureOverlay
+          insets={insets}
+          recording={recording}
+          recordSeconds={recordSeconds}
+          recordProgress={recordProgress}
+          selectedSound={selectedSound}
+          torchOn={torchOn}
+          canUseTorch={facing === 'back'}
+          canFlipCamera
+          onClose={handleClose}
+          onFlipCamera={() => {
+            setFacing((f) => (f === 'back' ? 'front' : 'back'));
+            setTorchOn(false);
+          }}
+          onToggleTorch={() => setTorchOn((v) => !v)}
+          onOpenMusic={() => setShowMusicPicker(true)}
+          onOpenGallery={pickFromGallery}
+          onRecordPress={() => void (recording ? stopRecording() : startRecording())}
+          galleryDisabled={recording}
+          recordDisabled={isWeb}
+        />
       )}
 
       <MusicPicker
@@ -343,115 +375,4 @@ export default function ReelCreateScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-  fallbackBg: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#0A0A0F',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-  },
-  fallbackTitle: { color: '#FFF', fontSize: 20, fontWeight: '700', marginTop: 20 },
-  fallbackSub: {
-    color: 'rgba(255,255,255,0.45)',
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 20,
-  },
-  permBtn: {
-    marginTop: 20,
-    backgroundColor: '#9333EA',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  permBtnText: { color: '#FFF', fontWeight: '700' },
-  topBar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    zIndex: 10,
-  },
-  topBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recordingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(255,45,85,0.9)',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFF' },
-  recText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
-  musicPill: {
-    position: 'absolute',
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 24,
-    maxWidth: '80%',
-    zIndex: 10,
-  },
-  musicPillText: { color: '#FFF', fontSize: 13, fontWeight: '600', flexShrink: 1 },
-  bottomControls: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: 24,
-    zIndex: 10,
-  },
-  sideBtn: { alignItems: 'center', width: 72 },
-  sideBtnText: { color: '#FFF', fontSize: 11, marginTop: 4, fontWeight: '600' },
-  maxDurText: { color: 'rgba(255,255,255,0.45)', fontSize: 11, fontWeight: '600' },
-  recordBtn: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    borderWidth: 4,
-    borderColor: '#FFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recordBtnActive: { borderColor: '#FF2D55' },
-  recordInner: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#FF2D55',
-  },
-  recordStop: {
-    width: 32,
-    height: 32,
-    borderRadius: 6,
-    backgroundColor: '#FF2D55',
-  },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  loadingText: { color: '#FFF', fontSize: 14 },
 });

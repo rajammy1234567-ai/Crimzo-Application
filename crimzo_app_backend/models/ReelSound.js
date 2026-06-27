@@ -7,12 +7,16 @@ const reelSoundSchema = new mongoose.Schema({
   cover_url: { type: String },
   duration_ms: { type: Number, default: 0 },
   category: { type: String, default: 'trending', trim: true },
+  language: { type: String, default: 'all', trim: true, lowercase: true },
+  source: { type: String, default: 'crimzo', trim: true },
+  external_id: { type: String },
   usage_count: { type: Number, default: 0 },
   is_active: { type: Boolean, default: true },
   created_at: { type: Date, default: Date.now },
 }, { timestamps: false });
 
 reelSoundSchema.index({ is_active: 1, category: 1 });
+reelSoundSchema.index({ is_active: 1, language: 1, usage_count: -1 });
 reelSoundSchema.index({ title: 'text', artist: 'text' });
 
 reelSoundSchema.virtual('id').get(function () { return this._id.toString(); });

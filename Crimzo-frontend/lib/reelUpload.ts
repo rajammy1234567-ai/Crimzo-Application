@@ -37,9 +37,20 @@ export async function uploadReel({
 
   formData.append('caption', caption || '');
 
-  if (audio?.sound?.id) {
-    formData.append('audio_id', audio.sound.id);
+  if (audio?.sound) {
     formData.append('audio_start_ms', String(audio.startMs || 0));
+
+    if (audio.sound.source === 'audius' || audio.sound.id.startsWith('audius:')) {
+      const extId = audio.sound.external_id || audio.sound.id.replace(/^audius:/, '');
+      formData.append('external_source', 'audius');
+      formData.append('external_id', extId);
+      formData.append('audio_url', audio.sound.audio_url);
+      formData.append('audio_title', audio.sound.title);
+      formData.append('audio_artist', audio.sound.artist);
+      formData.append('language', audio.sound.language || 'all');
+    } else if (audio.sound.id && !audio.sound.id.includes(':')) {
+      formData.append('audio_id', audio.sound.id);
+    }
   }
 
   onProgress?.(30);

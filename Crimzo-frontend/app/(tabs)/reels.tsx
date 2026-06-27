@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { apiFetch, apiGet, apiPost, apiDelete, resolveMediaUrl } from '../../lib/apiClient';
+import { resolveReelAudioUrl } from '../../lib/reelAudio';
 import { subscribe } from '../../lib/realtimeSync';
 import { parseFollowResponse } from '../../lib/followHelpers';
 import { getTabBarHeight } from '../../lib/theme';
@@ -37,6 +38,9 @@ type Reel = {
   audio_artist?: string | null;
   audio_url?: string | null;
   audio_start_ms?: number;
+  audio_language?: string | null;
+  external_source?: string | null;
+  external_id?: string | null;
 };
 
 function normalizeReelFromApi(raw: any): Reel {
@@ -60,6 +64,9 @@ function normalizeReelFromApi(raw: any): Reel {
     audio_artist: raw?.audio_artist ?? null,
     audio_url: raw?.audio_url ? resolveMediaUrl(raw.audio_url) : null,
     audio_start_ms: raw?.audio_start_ms ?? 0,
+    audio_language: raw?.audio_language ?? null,
+    external_source: raw?.external_source ?? null,
+    external_id: raw?.external_id ?? null,
   };
 }
 
@@ -95,6 +102,7 @@ function ReelItem({
   reelHeight,
   tabBarHeight,
   currentUserId,
+  token,
   onLike,
   onFollow,
   onOpenComments,
@@ -107,6 +115,7 @@ function ReelItem({
   reelHeight: number;
   tabBarHeight: number;
   currentUserId: string | undefined;
+  token?: string | null;
   onLike: (reelId: string) => void;
   onFollow: (userId: string) => Promise<void>;
   onOpenComments: (reelId: string) => void;
@@ -161,9 +170,15 @@ function ReelItem({
       if (!isActive || !hasOverlayAudio || !item.audio_url) return;
 
       try {
+        const streamUrl = await resolveReelAudioUrl(
+          item.audio_url,
+          item.external_source,
+          item.external_id,
+          token,
+        );
         await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
         const { sound } = await Audio.Sound.createAsync(
-          { uri: resolveMediaUrl(item.audio_url) },
+          { uri: streamUrl },
           {
             shouldPlay: true,
             isLooping: true,
@@ -189,7 +204,7 @@ function ReelItem({
         overlaySoundRef.current = null;
       }
     };
-  }, [isActive, hasOverlayAudio, item.audio_url, item.audio_start_ms]);
+  }, [isActive, hasOverlayAudio, item.audio_url, item.audio_start_ms, item.external_source, item.external_id, token]);
 
   useEffect(() => {
     setLiked(item.is_liked);
@@ -1008,6 +1023,7 @@ export default function ReelsScreen() {
             reelHeight={reelHeight}
             tabBarHeight={tabBarHeight}
             currentUserId={user?.id != null ? String(user.id) : undefined}
+            token={token}
             onLike={handleLike}
             onFollow={handleFollow}
             onOpenComments={onOpenComments}

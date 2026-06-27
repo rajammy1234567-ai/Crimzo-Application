@@ -4,6 +4,9 @@ const { authenticateAdmin } = require('../middleware/adminAuth');
 const { flexibleSingle } = require('../middleware/uploadFlexible');
 const sound = require('../controllers/soundController');
 
+router.get('/browse', authenticateToken, sound.browseSounds);
+router.get('/languages', authenticateToken, sound.getLanguages);
+router.get('/resolve/:source/:id', authenticateToken, sound.resolveStream);
 router.get('/', authenticateToken, sound.listSounds);
 router.get('/trending', authenticateToken, sound.getTrendingSounds);
 router.post('/admin/upload', authenticateAdmin, flexibleSingle(), sound.adminUploadSound);
