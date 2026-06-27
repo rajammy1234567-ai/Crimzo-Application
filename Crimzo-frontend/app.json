@@ -16,9 +16,10 @@
         "applinks:crimzo.live"
       ],
       "infoPlist": {
-        "NSCameraUsageDescription": "Broadcast live video to viewers",
-        "NSMicrophoneUsageDescription": "Share audio in your streams",
-        "NSPhotoLibraryUsageDescription": "Upload reels from gallery",
+        "NSCameraUsageDescription": "Record reels and broadcast live video",
+        "NSMicrophoneUsageDescription": "Record audio for reels and live streams",
+        "NSPhotoLibraryUsageDescription": "Create reels from gallery and add music",
+        "NSPhotoLibraryAddUsageDescription": "Save your created reels",
         "NSLocationWhenInUseUsageDescription": "Show nearby live streams and people"
       }
     },
@@ -28,7 +29,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.livestreamhub",
-      "versionCode": 29,
+      "versionCode": 30,
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",
@@ -93,13 +94,13 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Broadcast live video to viewers"
+          "cameraPermission": "Record reels and broadcast live video"
         }
       ],
       [
         "expo-media-library",
         {
-          "photosPermission": "Upload reels from gallery"
+          "photosPermission": "Create reels from gallery and add music"
         }
       ],
       [

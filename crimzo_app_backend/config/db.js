@@ -47,6 +47,7 @@ async function initDatabase() {
     require('../models/PkMonthlyStats');
     require('../models/PkMonthlyReward');
     require('../models/Reel');
+    require('../models/ReelSound');
     require('../models/ReelLike');
     require('../models/ReelComment');
     require('../models/Story');
@@ -61,6 +62,9 @@ async function initDatabase() {
 
     const { seedDefaultTasks } = require('../utils/taskSeed');
     await seedDefaultTasks();
+
+    const { seedDefaultSounds } = require('../utils/soundSeed');
+    await seedDefaultSounds();
 
     console.log('✅ Database (MongoDB) initialized successfully');
   } catch (error) {

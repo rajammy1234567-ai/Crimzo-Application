@@ -56,6 +56,7 @@ app.use("/api/user", require("./routes/userRoutes"));
 app.use("/api/pk", require("./routes/pkRoutes"));
 app.use("/api/stories", require("./routes/storyRoutes"));
 app.use("/api/reels", require("./routes/reelRoutes"));
+app.use("/api/sounds", require("./routes/soundRoutes"));
 app.use("/api/messages", require("./routes/messageRoutes"));
 app.use("/api/notifications", require("./routes/notificationRoutes"));
 app.use("/api/payments", require("./routes/paymentRoutes"));

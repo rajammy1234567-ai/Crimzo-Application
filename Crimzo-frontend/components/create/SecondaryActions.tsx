@@ -5,12 +5,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 interface Props {
     onPKBattle: () => void;
-    onUploadReel: () => void;
+    onCreateReel: () => void;
     fadeAnims: Animated.Value[];
     slideAnims: Animated.Value[];
 }
 
-const SecondaryActions: React.FC<Props> = ({ onPKBattle, onUploadReel, fadeAnims, slideAnims }) => (
+const SecondaryActions: React.FC<Props> = ({ onPKBattle, onCreateReel, fadeAnims, slideAnims }) => (
     <View style={styles.secondaryRow}>
         {/* PK Battle */}
         <Animated.View style={[styles.secondaryCardWrap, { opacity: fadeAnims[0], transform: [{ translateY: slideAnims[0] }] }]}>
@@ -38,9 +38,9 @@ const SecondaryActions: React.FC<Props> = ({ onPKBattle, onUploadReel, fadeAnims
             </TouchableOpacity>
         </Animated.View>
 
-        {/* Upload Reel */}
+        {/* Create Reel */}
         <Animated.View style={[styles.secondaryCardWrap, { opacity: fadeAnims[1], transform: [{ translateY: slideAnims[1] }] }]}>
-            <TouchableOpacity activeOpacity={0.85} onPress={onUploadReel} style={styles.secondaryCardTouch}>
+            <TouchableOpacity activeOpacity={0.85} onPress={onCreateReel} style={styles.secondaryCardTouch}>
                 <View style={styles.secondaryCard}>
                     <LinearGradient
                         colors={['rgba(48,209,88,0.15)', 'rgba(48,209,88,0.05)']}
@@ -54,10 +54,10 @@ const SecondaryActions: React.FC<Props> = ({ onPKBattle, onUploadReel, fadeAnims
                             <Ionicons name="film" size={22} color="#FFF" />
                         </LinearGradient>
                     </View>
-                    <Text style={styles.secondaryTitle}>Upload Reel</Text>
-                    <Text style={styles.secondarySubtitle}>Share a short video</Text>
+                    <Text style={styles.secondaryTitle}>Create Reel</Text>
+                    <Text style={styles.secondarySubtitle}>Record, add music & share</Text>
                     <View style={styles.secondaryArrowRow}>
-                        <Text style={[styles.secondaryAction, { color: '#30D158' }]}>Upload</Text>
+                        <Text style={[styles.secondaryAction, { color: '#30D158' }]}>Create</Text>
                         <Ionicons name="arrow-forward" size={14} color="#30D158" />
                     </View>
                 </View>

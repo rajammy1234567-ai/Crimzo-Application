@@ -1,15 +1,14 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { appAlert } from '../../lib/appAlert';
-import { View, Text, StyleSheet, ScrollView, Animated, Easing, StatusBar, Platform, Modal, TextInput, TouchableOpacity, KeyboardAvoidingView, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Animated, Easing, StatusBar, Platform, Modal, TouchableOpacity, Image } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import * as ImagePicker from 'expo-image-picker';
-import { apiFetch, apiUpload } from '../../lib/apiClient';
+import { apiUpload } from '../../lib/apiClient';
 import { useTabFocus } from '../../lib/useTabFocus';
-import { KEYBOARD_BEHAVIOR } from '../../components/KeyboardAware';
 
 import {
   GoLiveCard,
@@ -32,14 +31,10 @@ export default function CreateScreen() {
   const resetOverlays = useCallback(() => {
     setUploading(false);
     setUploadDone(false);
-    setShowReelPreview(false);
     setShowStoryPreview(false);
   }, []);
 
   const { pointerEvents } = useTabFocus(resetOverlays);
-
-  // ── Reel preview state ──
-  const [showReelPreview, setShowReelPreview] = useState(false);
 
   // ── Story preview state ──
   const [showStoryPreview, setShowStoryPreview] = useState(false);
@@ -86,87 +81,12 @@ export default function CreateScreen() {
   };
   const handlePKBattle = () => router.push('/(tabs)/home?tab=gaming' as any);
 
-  const handleUploadReel = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        appAlert('Permission Required', 'Please grant access to your media library to upload reels.');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['videos'],
-        allowsEditing: false,
-        quality: 1,
-        videoMaxDuration: 60,
-      });
-
-      if (result.canceled || !result.assets || result.assets.length === 0) return;
-
-      // Show Instagram-style preview modal
-      setSelectedReelAsset(result.assets[0]);
-      setReelCaption('');
-      setShowReelPreview(true);
-    } catch (error: any) {
-      console.error('Reel picker error:', error);
-      appAlert('Error', 'Failed to pick video');
+  const handleCreateReel = () => {
+    if (!token || isGuest) {
+      appAlert('Login Required', 'Please log in with your account to create reels.');
+      return;
     }
-  };
-
-  const [reelCaption, setReelCaption] = useState('');
-  const [selectedReelAsset, setSelectedReelAsset] = useState<any>(null);
-
-  const uploadReelFile = async (asset: any, caption: string) => {
-    setUploading(true);
-    setUploadProgress(10);
-    setUploadDone(false);
-    try {
-      const formData = new FormData();
-
-      // Cross-platform file append (native RN uses {uri,type,name} object; web needs real File/Blob)
-      if (Platform.OS === 'web') {
-        const resp = await fetch(asset.uri);
-        const blob = await resp.blob();
-        const file = new File([blob], asset.fileName || 'reel.mp4', {
-          type: asset.mimeType || 'video/mp4',
-        });
-        formData.append('video', file);
-      } else {
-        const filename = asset.fileName || asset.uri.split('/').pop() || `reel_${Date.now()}.mp4`;
-        formData.append('video', {
-          uri: asset.uri,
-          type: asset.mimeType || 'video/mp4',
-          name: filename,
-        } as any);
-      }
-
-      formData.append('caption', caption || '');
-      setUploadProgress(30);
-
-      const response = await apiFetch<{ success?: boolean; error?: string }>('/api/reels/upload', {
-        method: 'POST',
-        token,
-        body: formData,
-        timeoutMs: 5 * 60 * 1000,
-      });
-
-      if (response.success) {
-        setUploadProgress(100);
-        setUploadDone(true);
-        setTimeout(() => {
-          setUploading(false);
-          setUploadDone(false);
-          setShowReelPreview(false);
-          appAlert('🎬 Reel Uploaded!', 'Your reel is now live for everyone to see.');
-        }, 1200);
-      } else {
-        throw new Error('Failed to save reel');
-      }
-    } catch (error: any) {
-      console.error('Reel upload error:', error?.message || error);
-      setUploading(false);
-      appAlert('Upload Failed', error?.message || 'Something went wrong. Please try again.');
-    }
+    router.push('/reel/create' as any);
   };
 
   // Step 1: Just pick the media and show preview
@@ -303,7 +223,7 @@ export default function CreateScreen() {
         {/* PK Battle & Upload Reel */}
         <SecondaryActions
           onPKBattle={handlePKBattle}
-          onUploadReel={handleUploadReel}
+          onCreateReel={handleCreateReel}
           fadeAnims={[fadeAnims[2], fadeAnims[3]]}
           slideAnims={[slideAnims[2], slideAnims[3]]}
         />
@@ -329,18 +249,6 @@ export default function CreateScreen() {
         onUpload={doUploadStory}
       />
 
-      {/* Reel Preview Modal (Instagram-style) */}
-      <ReelPreviewModal
-        visible={showReelPreview}
-        asset={selectedReelAsset}
-        uploading={uploading}
-        uploadProgress={uploadProgress}
-        uploadDone={uploadDone}
-        onClose={() => { if (!uploading) setShowReelPreview(false); }}
-        onPost={(caption) => {
-          if (selectedReelAsset) uploadReelFile(selectedReelAsset, caption);
-        }}
-      />
     </View>
   );
 }
@@ -464,142 +372,6 @@ function ReelVideoPreview({ uri }: { uri: string }) {
     />
   );
 }
-
-// ─────────────────────────────────────────────────────────
-// Reel Preview Modal (Instagram-style full-screen)
-// ─────────────────────────────────────────────────────────
-function ReelPreviewModal({
-  visible,
-  asset,
-  uploading,
-  uploadProgress,
-  uploadDone,
-  onClose,
-  onPost,
-}: {
-  visible: boolean;
-  asset: any;
-  uploading: boolean;
-  uploadProgress: number;
-  uploadDone: boolean;
-  onClose: () => void;
-  onPost: (caption: string) => void;
-}) {
-  const [caption, setCaption] = useState('');
-
-  useEffect(() => {
-    if (!visible) setCaption('');
-  }, [visible]);
-
-  if (!visible || !asset?.uri) return null;
-
-  return (
-    <Modal visible={visible} animationType="slide" statusBarTranslucent>
-      <View style={rpmStyles.container}>
-        <StatusBar barStyle="light-content" />
-
-        {/* Header */}
-        <View style={rpmStyles.header}>
-          <TouchableOpacity onPress={onClose} style={rpmStyles.closeBtn} disabled={uploading}>
-            <Ionicons name="arrow-back" size={24} color="#FFF" />
-          </TouchableOpacity>
-          <Text style={rpmStyles.title}>New Reel</Text>
-          <View style={{ width: 40 }} />
-        </View>
-
-        {/* Video preview fills the screen */}
-        <View style={rpmStyles.videoWrapper}>
-          <ReelVideoPreview key={asset.uri} uri={asset.uri} />
-
-          {/* Upload progress overlay */}
-          {uploading && (
-            <View style={rpmStyles.uploadOverlay}>
-              {uploadDone ? (
-                <View style={rpmStyles.doneContainer}>
-                  <Ionicons name="checkmark-circle" size={70} color="#4CAF50" />
-                  <Text style={rpmStyles.doneText}>Posted!</Text>
-                </View>
-              ) : (
-                <View style={rpmStyles.progressContainer}>
-                  <ActivityIndicator size="large" color="#9333EA" />
-                  <Text style={rpmStyles.progressPct}>{uploadProgress}%</Text>
-                  <Text style={rpmStyles.progressLabel}>Uploading your reel...</Text>
-                </View>
-              )}
-            </View>
-          )}
-        </View>
-
-        {/* Caption + Post button at bottom (Instagram style) */}
-        <KeyboardAvoidingView
-          behavior={KEYBOARD_BEHAVIOR}
-          style={rpmStyles.bottomBar}
-        >
-          <TextInput
-            style={rpmStyles.captionInput}
-            placeholder="Write a caption...  #hashtag @mention"
-            placeholderTextColor="rgba(255,255,255,0.35)"
-            value={caption}
-            onChangeText={setCaption}
-            multiline
-            maxLength={300}
-          />
-          <TouchableOpacity
-            style={[rpmStyles.postBtn, uploading && rpmStyles.postBtnDisabled]}
-            onPress={() => onPost(caption)}
-            disabled={uploading}
-          >
-            <Ionicons name="checkmark-circle" size={20} color="#FFF" />
-            <Text style={rpmStyles.postBtnText}>Done & Post Reel</Text>
-          </TouchableOpacity>
-        </KeyboardAvoidingView>
-      </View>
-    </Modal>
-  );
-}
-
-const rpmStyles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  header: {
-    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingTop: 52, paddingHorizontal: 16, paddingBottom: 14,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  closeBtn: { padding: 4 },
-  title: { color: '#FFF', fontSize: 17, fontWeight: '700' },
-  videoWrapper: { flex: 1, backgroundColor: '#111' },
-  uploadOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  doneContainer: { alignItems: 'center' },
-  doneText: { color: '#FFF', fontSize: 22, fontWeight: '700', marginTop: 12 },
-  progressContainer: { alignItems: 'center', gap: 12 },
-  progressPct: { color: '#FFF', fontSize: 32, fontWeight: '800' },
-  progressLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 14 },
-  bottomBar: {
-    backgroundColor: '#0A0A0F',
-    padding: 16, paddingBottom: 36,
-    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)',
-    gap: 12,
-  },
-  captionInput: {
-    color: '#FFF', fontSize: 15,
-    paddingVertical: 8, paddingHorizontal: 4,
-    minHeight: 44, maxHeight: 96,
-    textAlignVertical: 'top',
-    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.12)',
-  },
-  postBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: '#9333EA', borderRadius: 12,
-    paddingVertical: 14,
-  },
-  postBtnDisabled: { opacity: 0.5 },
-  postBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
-});
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0A0A0F' },

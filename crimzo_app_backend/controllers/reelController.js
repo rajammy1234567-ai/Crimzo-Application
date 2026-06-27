@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const Reel = require('../models/Reel');
+const ReelSound = require('../models/ReelSound');
 const ReelLike = require('../models/ReelLike');
 const ReelView = require('../models/ReelView');
 const ReelComment = require('../models/ReelComment');
@@ -17,6 +18,42 @@ function normalizeMediaUrl(url) {
   if (!url) return url;
   const publicBase = (process.env.PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 5001}`).replace(/\/$/, '');
   return url.replace(/https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i, publicBase);
+}
+
+function mapReelAudioFields(r) {
+  if (!r?.audio_url && !r?.audio_id) return {};
+  return {
+    audio_id: r.audio_id ? String(r.audio_id) : null,
+    audio_title: r.audio_title || null,
+    audio_artist: r.audio_artist || null,
+    audio_url: r.audio_url ? normalizeMediaUrl(r.audio_url) : null,
+    audio_start_ms: r.audio_start_ms || 0,
+  };
+}
+
+async function resolveReelAudioPayload(body) {
+  const audioId = body.audio_id || body.audioId;
+  const audioStartMs = parseInt(body.audio_start_ms ?? body.audioStartMs ?? 0, 10) || 0;
+
+  if (!audioId || !mongoose.Types.ObjectId.isValid(audioId)) {
+    return { audioFields: {}, soundId: null };
+  }
+
+  const sound = await ReelSound.findOne({ _id: audioId, is_active: true }).lean();
+  if (!sound) {
+    return { audioFields: {}, soundId: null };
+  }
+
+  return {
+    soundId: sound._id,
+    audioFields: {
+      audio_id: sound._id,
+      audio_title: sound.title,
+      audio_artist: sound.artist,
+      audio_url: sound.audio_url,
+      audio_start_ms: Math.max(0, audioStartMs),
+    },
+  };
 }
 
 function reelCreatorId(reel) {
@@ -134,6 +171,7 @@ async function enrichReels(reels, ctx) {
       is_liked: !!isLiked,
       is_following: !!isFollowing,
       is_requested: isRequested,
+      ...mapReelAudioFields(r),
     };
   }));
 }
@@ -162,7 +200,16 @@ exports.confirmUpload = async (req, res) => {
       return res.status(400).json({ error: 'publicUrl is required' });
     }
 
-    const reel = await Reel.create({ user_id: userId, video_url: publicUrl, caption: caption || '' });
+    const { audioFields, soundId } = await resolveReelAudioPayload(req.body);
+    const reel = await Reel.create({
+      user_id: userId,
+      video_url: publicUrl,
+      caption: caption || '',
+      ...audioFields,
+    });
+    if (soundId) {
+      await ReelSound.findByIdAndUpdate(soundId, { $inc: { usage_count: 1 } });
+    }
 
     const populated = await Reel.findById(reel._id).populate('user_id', 'username avatar').lean();
     const reelWithUser = {
@@ -200,11 +247,18 @@ exports.uploadReel = async (req, res) => {
     const uploadResult = await uploadToCloudinary(req.file.buffer, 'reels', 'video');
     const videoUrl = normalizeMediaUrl(uploadResult.secure_url);
 
+    const { audioFields, soundId } = await resolveReelAudioPayload(req.body);
+
     const reel = await Reel.create({
       user_id: new mongoose.Types.ObjectId(String(userId)),
       video_url: videoUrl,
       caption: caption || '',
+      ...audioFields,
     });
+
+    if (soundId) {
+      await ReelSound.findByIdAndUpdate(soundId, { $inc: { usage_count: 1 } });
+    }
 
     // Fetch with user info
     const populated = await Reel.findById(reel._id).populate('user_id', 'username avatar').lean();
@@ -460,7 +514,8 @@ exports.getUserReels = async (req, res) => {
         created_at: r.created_at,
         username: u.username,
         avatar: u.avatar,
-        is_liked: !!isLiked
+        is_liked: !!isLiked,
+        ...mapReelAudioFields(r),
       };
     }));
 

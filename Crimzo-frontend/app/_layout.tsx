@@ -60,6 +60,10 @@ export default function RootLayout() {
           name="call/index"
           options={{ presentation: 'fullScreenModal' }}
         />
+        <Stack.Screen
+          name="reel/create"
+          options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+        />
       </Stack>
       </VideoCallProvider>
       </RealtimeProvider>

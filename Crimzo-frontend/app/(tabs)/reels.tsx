@@ -2,12 +2,12 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { appAlert } from '../../lib/appAlert';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Image, FlatList, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Animated, StatusBar, Share, RefreshControl, Modal } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
 import { apiFetch, apiGet, apiPost, apiDelete, resolveMediaUrl } from '../../lib/apiClient';
 import { subscribe } from '../../lib/realtimeSync';
 import { parseFollowResponse } from '../../lib/followHelpers';
@@ -32,6 +32,11 @@ type Reel = {
   is_following: boolean;
   is_requested?: boolean;
   created_at: string;
+  audio_id?: string | null;
+  audio_title?: string | null;
+  audio_artist?: string | null;
+  audio_url?: string | null;
+  audio_start_ms?: number;
 };
 
 function normalizeReelFromApi(raw: any): Reel {
@@ -50,6 +55,11 @@ function normalizeReelFromApi(raw: any): Reel {
     is_following: !!raw?.is_following,
     is_requested: !!raw?.is_requested,
     created_at: raw?.created_at ?? '',
+    audio_id: raw?.audio_id ?? null,
+    audio_title: raw?.audio_title ?? null,
+    audio_artist: raw?.audio_artist ?? null,
+    audio_url: raw?.audio_url ? resolveMediaUrl(raw.audio_url) : null,
+    audio_start_ms: raw?.audio_start_ms ?? 0,
   };
 }
 
@@ -117,11 +127,14 @@ function ReelItem({
   const bigHeartOpacity = useRef(new Animated.Value(0)).current;
   const bigHeartScale = useRef(new Animated.Value(0.5)).current;
 
+  const hasOverlayAudio = !!item.audio_url;
   const videoSource = resolveMediaUrl(item.video_url);
   const player = useVideoPlayer(videoSource, (p) => {
     p.loop = true;
-    p.volume = 1;
+    p.muted = hasOverlayAudio;
+    p.volume = hasOverlayAudio ? 0 : 1;
   });
+  const overlaySoundRef = useRef<Audio.Sound | null>(null);
 
   useEffect(() => {
     if (isActive) {
@@ -129,7 +142,54 @@ function ReelItem({
     } else {
       player.pause();
     }
-  }, [isActive]);
+  }, [isActive, player]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      if (overlaySoundRef.current) {
+        try {
+          await overlaySoundRef.current.stopAsync();
+          await overlaySoundRef.current.unloadAsync();
+        } catch {
+          // ignore
+        }
+        overlaySoundRef.current = null;
+      }
+
+      if (!isActive || !hasOverlayAudio || !item.audio_url) return;
+
+      try {
+        await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: resolveMediaUrl(item.audio_url) },
+          {
+            shouldPlay: true,
+            isLooping: true,
+            volume: 1,
+            positionMillis: item.audio_start_ms || 0,
+          },
+        );
+        if (cancelled) {
+          await sound.unloadAsync();
+          return;
+        }
+        overlaySoundRef.current = sound;
+      } catch (e) {
+        console.error('Reel overlay audio error:', e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (overlaySoundRef.current) {
+        void overlaySoundRef.current.stopAsync().catch(() => {});
+        void overlaySoundRef.current.unloadAsync().catch(() => {});
+        overlaySoundRef.current = null;
+      }
+    };
+  }, [isActive, hasOverlayAudio, item.audio_url, item.audio_start_ms]);
 
   useEffect(() => {
     setLiked(item.is_liked);
@@ -356,6 +416,15 @@ function ReelItem({
             </TouchableOpacity>
           )}
         </View>
+
+        {item.audio_title ? (
+          <View style={styles.audioRow}>
+            <Ionicons name="musical-notes" size={14} color="#FFF" />
+            <Text style={styles.audioText} numberOfLines={1}>
+              {item.audio_title}{item.audio_artist ? ` · ${item.audio_artist}` : ''}
+            </Text>
+          </View>
+        ) : null}
 
         {item.caption ? (
           <Text style={styles.captionText} numberOfLines={2}>
@@ -604,13 +673,6 @@ export default function ReelsScreen() {
   const [commentReelId, setCommentReelId] = useState<string | null>(null);
   const [screenFocused, setScreenFocused] = useState(true);
 
-  // ── Reel upload state ──
-  const [showReelUpload, setShowReelUpload] = useState(false);
-  const [uploadAsset, setUploadAsset] = useState<any>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadDone, setUploadDone] = useState(false);
-
   // ── Edit own reel state ──
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingReelId, setEditingReelId] = useState<string | null>(null);
@@ -679,10 +741,7 @@ export default function ReelsScreen() {
         setScreenFocused(false);
         setCommentsVisible(false);
         setCommentReelId(null);
-        setShowReelUpload(false);
         setShowEditModal(false);
-        setUploading(false);
-        setUploadAsset(null);
       };
     }, [fetchReels, feedMode])
   );
@@ -852,80 +911,8 @@ export default function ReelsScreen() {
     fetchReels(feedMode);
   };
 
-  // ── Reel upload from reels tab ──
-  const handlePickReel = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['videos'],
-        allowsEditing: false,
-        quality: 1,
-        videoMaxDuration: 60,
-      });
-      if (result.canceled || !result.assets?.length) return;
-      setUploadAsset(result.assets[0]);
-      setShowReelUpload(true);
-    } catch (e) {
-      console.error('Pick reel error:', e);
-    }
-  };
-
-  const uploadReelFile = async (caption: string) => {
-    if (!uploadAsset || !token) return;
-    setUploading(true);
-    setUploadProgress(10);
-    setUploadDone(false);
-    try {
-      const formData = new FormData();
-
-      // Cross-platform file append (native RN uses {uri,type,name} object; web needs real File/Blob)
-      if (Platform.OS === 'web') {
-        const resp = await fetch(uploadAsset.uri);
-        const blob = await resp.blob();
-        const file = new File([blob], uploadAsset.fileName || 'reel.mp4', {
-          type: uploadAsset.mimeType || 'video/mp4',
-        });
-        formData.append('video', file);
-      } else {
-        const filename = uploadAsset.fileName || uploadAsset.uri.split('/').pop() || `reel_${Date.now()}.mp4`;
-        formData.append('video', {
-          uri: uploadAsset.uri,
-          type: uploadAsset.mimeType || 'video/mp4',
-          name: filename,
-        } as any);
-      }
-
-      formData.append('caption', caption || '');
-      setUploadProgress(30);
-
-      const response = await apiFetch<{ success?: boolean; error?: string }>('/api/reels/upload', {
-        method: 'POST',
-        token,
-        body: formData,
-        timeoutMs: 5 * 60 * 1000,
-      });
-
-      if (response.success) {
-        setUploadProgress(100);
-        setUploadDone(true);
-        setTimeout(() => {
-          setUploading(false);
-          setUploadDone(false);
-          setShowReelUpload(false);
-          setUploadAsset(null);
-          fetchReels(feedMode);
-        }, 1200);
-      } else {
-        throw new Error('Failed to save reel');
-      }
-    } catch (error: any) {
-      console.error('Reel upload error:', error?.message || error);
-      setUploading(false);
-      alert(error.response?.data?.error || error.message || 'Upload failed');
-    }
+  const handleCreateReel = () => {
+    router.push('/reel/create' as any);
   };
 
   const tabPointerEvents = screenFocused ? 'auto' : 'none';
@@ -963,7 +950,7 @@ export default function ReelsScreen() {
         <StatusBar barStyle="light-content" />
         <View style={styles.emptyHeader}>
           <FeedTabs />
-          <TouchableOpacity style={styles.uploadHeaderBtn} onPress={handlePickReel}>
+          <TouchableOpacity style={styles.uploadHeaderBtn} onPress={handleCreateReel}>
             <Ionicons name="add-circle-outline" size={26} color="#FF2D55" />
           </TouchableOpacity>
         </View>
@@ -977,24 +964,15 @@ export default function ReelsScreen() {
               ? 'Follow creators to see their reels here, or switch to For You.'
               : 'Be the first to share a reel!'}
           </Text>
-          <TouchableOpacity style={[styles.emptyBtn, { backgroundColor: '#FF2D55', marginBottom: 12 }]} onPress={handlePickReel}>
+          <TouchableOpacity style={[styles.emptyBtn, { backgroundColor: '#FF2D55', marginBottom: 12 }]} onPress={handleCreateReel}>
             <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
-            <Text style={styles.emptyBtnText}>Upload Reel</Text>
+            <Text style={styles.emptyBtnText}>Create Reel</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.emptyBtn} onPress={onRefresh}>
             <Ionicons name="refresh" size={18} color="#FFF" />
             <Text style={styles.emptyBtnText}>Refresh</Text>
           </TouchableOpacity>
         </View>
-        <ReelUploadModal
-          visible={showReelUpload}
-          asset={uploadAsset}
-          uploading={uploading}
-          uploadProgress={uploadProgress}
-          uploadDone={uploadDone}
-          onClose={() => { if (!uploading) { setShowReelUpload(false); setUploadAsset(null); } }}
-          onPost={uploadReelFile}
-        />
       </View>
     );
   }
@@ -1015,7 +993,7 @@ export default function ReelsScreen() {
       {/* Header overlay */}
       <View style={styles.headerOverlay}>
         <FeedTabs />
-        <TouchableOpacity style={styles.uploadHeaderBtn} onPress={handlePickReel}>
+        <TouchableOpacity style={styles.uploadHeaderBtn} onPress={handleCreateReel}>
           <Ionicons name="add-circle-outline" size={26} color="#FFF" />
         </TouchableOpacity>
       </View>
@@ -1116,16 +1094,6 @@ export default function ReelsScreen() {
         </KeyboardModalFrame>
       </Modal>
 
-      {/* Reel Upload Modal */}
-      <ReelUploadModal
-        visible={showReelUpload}
-        asset={uploadAsset}
-        uploading={uploading}
-        uploadProgress={uploadProgress}
-        uploadDone={uploadDone}
-        onClose={() => { if (!uploading) { setShowReelUpload(false); setUploadAsset(null); } }}
-        onPost={uploadReelFile}
-      />
     </View>
   );
 }
@@ -1373,6 +1341,18 @@ const styles = StyleSheet.create({
   requestedBtnText: {
     color: 'rgba(255,255,255,0.65)',
   },
+  audioRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  audioText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
   captionText: {
     color: 'rgba(255,255,255,0.92)',
     fontSize: 13,
@@ -1617,151 +1597,3 @@ const styles = StyleSheet.create({
   },
 });
 
-// ─────────────────────────────────────────────────────────
-// Reel Upload Modal (Instagram-style)
-// ─────────────────────────────────────────────────────────
-function ReelUploadModal({
-  visible,
-  asset,
-  uploading,
-  uploadProgress,
-  uploadDone,
-  onClose,
-  onPost,
-}: {
-  visible: boolean;
-  asset: any;
-  uploading: boolean;
-  uploadProgress: number;
-  uploadDone: boolean;
-  onClose: () => void;
-  onPost: (caption: string) => void;
-}) {
-  const [caption, setCaption] = useState('');
-  const player = useVideoPlayer(asset?.uri ?? null, (p) => {
-    p.loop = true;
-    p.muted = false;
-  });
-
-  useEffect(() => {
-    if (visible && asset?.uri) {
-      try { player.play(); } catch (_) { }
-    } else {
-      try { player.pause(); } catch (_) { }
-    }
-  }, [visible, asset?.uri]);
-
-  if (!visible) return null;
-
-  return (
-    <Modal visible={visible} animationType="slide" statusBarTranslucent>
-      <View style={rumStyles.container}>
-        <StatusBar barStyle="light-content" />
-
-        {/* Header */}
-        <View style={rumStyles.header}>
-          <TouchableOpacity onPress={onClose} disabled={uploading} style={rumStyles.closeBtn}>
-            <Ionicons name="arrow-back" size={24} color="#FFF" />
-          </TouchableOpacity>
-          <Text style={rumStyles.title}>New Reel</Text>
-          <View style={{ width: 40 }} />
-        </View>
-
-        {/* Video preview */}
-        <View style={rumStyles.videoWrapper}>
-          {asset?.uri ? (
-            <VideoView
-              player={player}
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-              nativeControls={false}
-            />
-          ) : null}
-
-          {/* Upload overlay */}
-          {uploading && (
-            <View style={rumStyles.uploadOverlay}>
-              {uploadDone ? (
-                <View style={rumStyles.doneBox}>
-                  <Ionicons name="checkmark-circle" size={70} color="#4CAF50" />
-                  <Text style={rumStyles.doneText}>Posted!</Text>
-                </View>
-              ) : (
-                <View style={rumStyles.progressBox}>
-                  <ActivityIndicator size="large" color="#FF2D55" />
-                  <Text style={rumStyles.progressPct}>{uploadProgress}%</Text>
-                  <Text style={rumStyles.progressLabel}>Uploading your reel...</Text>
-                </View>
-              )}
-            </View>
-          )}
-        </View>
-
-        {/* Caption + Post button */}
-        <KeyboardAvoidingView
-          behavior={KEYBOARD_BEHAVIOR}
-          style={rumStyles.bottomBar}
-        >
-          <TextInput
-            style={rumStyles.captionInput}
-            placeholder="Write a caption...  #hashtag @mention"
-            placeholderTextColor="rgba(255,255,255,0.35)"
-            value={caption}
-            onChangeText={setCaption}
-            multiline
-            maxLength={300}
-          />
-          <TouchableOpacity
-            style={[rumStyles.postBtn, uploading && { opacity: 0.5 }]}
-            onPress={() => onPost(caption)}
-            disabled={uploading}
-          >
-            <Ionicons name="checkmark-circle" size={20} color="#FFF" />
-            <Text style={rumStyles.postBtnText}>Done & Post Reel</Text>
-          </TouchableOpacity>
-        </KeyboardAvoidingView>
-      </View>
-    </Modal>
-  );
-}
-
-const rumStyles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  header: {
-    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingTop: 52, paddingHorizontal: 16, paddingBottom: 14,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  closeBtn: { padding: 4 },
-  title: { color: '#FFF', fontSize: 17, fontWeight: '700' },
-  videoWrapper: { flex: 1, backgroundColor: '#111' },
-  uploadOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.72)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  doneBox: { alignItems: 'center' },
-  doneText: { color: '#FFF', fontSize: 22, fontWeight: '700', marginTop: 12 },
-  progressBox: { alignItems: 'center', gap: 12 },
-  progressPct: { color: '#FFF', fontSize: 36, fontWeight: '800' },
-  progressLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 14 },
-  bottomBar: {
-    backgroundColor: '#0A0A0F',
-    padding: 16, paddingBottom: 40,
-    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)',
-    gap: 12,
-  },
-  captionInput: {
-    color: '#FFF', fontSize: 15,
-    paddingVertical: 8, paddingHorizontal: 4,
-    minHeight: 44, maxHeight: 96,
-    textAlignVertical: 'top',
-    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.12)',
-  },
-  postBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: '#FF2D55', borderRadius: 12, paddingVertical: 14,
-  },
-  postBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
-});
