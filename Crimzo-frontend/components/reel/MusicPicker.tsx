@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { apiGet, resolveMediaUrl } from '../../lib/apiClient';
+import { apiGet, resolveMediaUrl, ApiError } from '../../lib/apiClient';
 import { appAlert } from '../../lib/appAlert';
 import { playReelMusic, stopReelMusic } from '../../lib/reelMusicPlayer';
 import { importSoundFromGalleryVideo } from '../../lib/reelSoundImport';
@@ -229,7 +229,14 @@ export default function MusicPicker({
       onSelect(sound);
       onClose();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Could not extract sound from this video.';
+      let msg = 'Could not extract sound from this video.';
+      if (e instanceof ApiError) {
+        msg = e.message;
+        const hint = (e.data as { hint?: string } | undefined)?.hint;
+        if (hint) msg = `${msg}\n\n${hint}`;
+      } else if (e instanceof Error && e.message) {
+        msg = e.message;
+      }
       appAlert('Import Failed', msg);
     } finally {
       setImporting(false);

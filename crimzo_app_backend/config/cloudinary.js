@@ -35,13 +35,13 @@ const storage = multer.memoryStorage();
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB videos ok
-    fieldSize: 100 * 1024 * 1024,
+    fileSize: 200 * 1024 * 1024, // 200MB reels/stories
+    fieldSize: 200 * 1024 * 1024,
   },
 });
 
 // Helper: upload buffer (works for both Cloudinary and local dev)
-const uploadToCloudinary = async (buffer, folder = 'misc', resourceType = 'auto', publicId = null) => {
+const uploadToCloudinary = async (buffer, folder = 'misc', resourceType = 'auto', publicId = null, fileExt = null) => {
   if (hasRealCloudinary) {
     // Real Cloudinary
     return new Promise((resolve, reject) => {
@@ -61,13 +61,14 @@ const uploadToCloudinary = async (buffer, folder = 'misc', resourceType = 'auto'
 
   // === LOCAL DEV FALLBACK ===
   // Save file to disk and return fake "secure_url" that our server will serve
-  const ext = folder === 'reels'
-    ? '.mp4'
-    : folder === 'sounds'
-      ? '.m4a'
-      : folder === 'stories' && resourceType === 'video'
-        ? '.mp4'
-        : '.jpg';
+  const ext = fileExt
+    || (folder === 'reels'
+      ? '.mp4'
+      : folder === 'sounds'
+        ? (resourceType === 'raw' ? '.mp3' : '.m4a')
+        : folder === 'stories' && resourceType === 'video'
+          ? '.mp4'
+          : '.jpg');
   const filename = `${folder}_${Date.now()}${ext}`;
   const filepath = path.join(uploadsDir, filename);
 

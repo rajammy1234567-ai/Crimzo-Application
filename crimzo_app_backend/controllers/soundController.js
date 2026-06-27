@@ -136,14 +136,33 @@ exports.importFromVideo = async (req, res) => {
       return res.status(503).json({ error: 'Audio extraction is not available on this server' });
     }
 
-    if (!req.file?.buffer?.length) {
-      return res.status(400).json({ error: 'Video file required (field: video)' });
+    const fileSize = req.file?.buffer?.length || 0;
+    if (!fileSize) {
+      return res.status(400).json({
+        error: 'Video file required (field: video)',
+        hint: 'Gallery upload may have failed — try a shorter video or re-open the app.',
+      });
+    }
+    if (fileSize < 1024) {
+      return res.status(400).json({
+        error: 'Uploaded video file is empty or corrupted',
+        hint: 'Re-pick the video from gallery. If it keeps failing, update the app and try a shorter clip.',
+      });
     }
 
-    const mime = req.file.mimetype || '';
-    if (!mime.startsWith('video/') && mime !== 'application/octet-stream') {
+    const mime = (req.file.mimetype || '').toLowerCase();
+    const allowedMime =
+      mime.startsWith('video/')
+      || mime === 'application/octet-stream'
+      || mime === 'application/mp4'
+      || mime === '';
+    if (!allowedMime) {
       return res.status(400).json({ error: 'Please upload a video file' });
     }
+
+    console.log(
+      `[Import sound] user=${req.user?.id} size=${req.file.buffer.length} mime=${mime} name=${req.file.originalname || 'n/a'}`,
+    );
 
     const titleRaw = req.body.title || req.body.name;
     const title = titleRaw && String(titleRaw).trim()
@@ -155,17 +174,33 @@ exports.importFromVideo = async (req, res) => {
 
     let audioBuffer;
     try {
-      audioBuffer = await extractAudioFromVideo(req.file.buffer);
+      audioBuffer = await extractAudioFromVideo(req.file.buffer, {
+        mimeType: mime,
+        originalName: req.file.originalname,
+      });
     } catch (err) {
       const msg = String(err.message || '');
-      if (/no audio|does not contain|invalid data/i.test(msg)) {
+      if (/no audio|does not contain|invalid data|no stream/i.test(msg)) {
         return res.status(400).json({ error: 'This video has no audio track to extract' });
       }
       console.error('Extract audio error:', err);
-      return res.status(500).json({ error: 'Could not extract audio from video' });
+      return res.status(500).json({
+        error: 'Could not extract audio from video',
+        hint: 'Try another video with clear audio, or a shorter clip from gallery.',
+      });
     }
 
-    const uploadResult = await uploadToCloudinary(audioBuffer, 'sounds', 'video');
+    const isMp3 = audioBuffer.length >= 3
+      && audioBuffer[0] === 0x49
+      && audioBuffer[1] === 0x44
+      && audioBuffer[2] === 0x33;
+    const uploadResult = await uploadToCloudinary(
+      audioBuffer,
+      'sounds',
+      isMp3 ? 'raw' : 'video',
+      null,
+      isMp3 ? '.mp3' : '.m4a',
+    );
     const audioUrl = normalizeMediaUrl(uploadResult.secure_url);
 
     const sound = await ReelSound.create({

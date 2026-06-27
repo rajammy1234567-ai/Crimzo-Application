@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   Image,
   StatusBar,
 } from 'react-native';
-import { VideoView, useVideoPlayer } from 'expo-video';
+import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -47,28 +47,39 @@ function ReelVideoPreview({
   muted: boolean;
   playing: boolean;
 }) {
-  const player = useVideoPlayer(uri, (p) => {
-    p.loop = true;
-    p.muted = muted;
-    p.volume = muted ? 0 : 1;
-  });
+  const videoRef = useRef<Video>(null);
 
   useEffect(() => {
-    if (playing) player.play();
-    else player.pause();
-  }, [playing, player]);
+    const ref = videoRef.current;
+    if (!ref) return;
+    if (playing) {
+      void ref.playAsync().catch(() => {});
+    } else {
+      void ref.pauseAsync().catch(() => {});
+    }
+  }, [playing]);
 
   useEffect(() => {
-    player.muted = muted;
-    player.volume = muted ? 0 : 1;
-  }, [muted, player]);
+    void videoRef.current?.setIsMutedAsync(muted).catch(() => {});
+  }, [muted]);
+
+  useEffect(() => {
+    return () => {
+      void videoRef.current?.pauseAsync().catch(() => {});
+      void videoRef.current?.unloadAsync().catch(() => {});
+    };
+  }, []);
 
   return (
-    <VideoView
-      player={player}
+    <Video
+      ref={videoRef}
+      source={{ uri }}
       style={StyleSheet.absoluteFill}
-      contentFit="cover"
-      nativeControls={false}
+      resizeMode={ResizeMode.COVER}
+      isLooping
+      shouldPlay={playing}
+      isMuted={muted}
+      useNativeControls={false}
     />
   );
 }
@@ -101,6 +112,10 @@ export default function ReelEditor({
         sound.external_id,
         token,
       );
+      if (!streamUrl) {
+        console.warn('Editor music: no stream URL for', sound.id);
+        return;
+      }
       await playReelMusic({ url: streamUrl, loop: true, volume: 1 });
     } catch (e) {
       console.error('Editor music error:', e);
@@ -182,9 +197,9 @@ export default function ReelEditor({
 
         <View style={styles.videoStage}>
           <ReelVideoPreview
-            key={`${asset.uri}-${muteOriginalAudio}`}
+            key={asset.uri}
             uri={asset.uri}
-            muted={muteOriginalAudio}
+            muted={muteOriginalAudio || !!selectedSound}
             playing={!uploading && !showMusicPicker}
           />
 

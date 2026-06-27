@@ -113,10 +113,16 @@ app.get("/api/health", (req, res) => {
 app.use((err, req, res, next) => {
   if (err && err.name === 'MulterError') {
     console.error('Multer error:', err.code, err.field, err.message);
+    const isTooLarge = err.code === 'LIMIT_FILE_SIZE';
     return res.status(400).json({
-      error: `Upload failed: ${err.message}`,
+      error: isTooLarge
+        ? 'Video is too large (max 200MB). Record a shorter clip or pick a smaller video.'
+        : `Upload failed: ${err.message}`,
+      code: err.code,
       field: err.field,
-      hint: 'Reels use field "video", stories use field "media".',
+      hint: isTooLarge
+        ? 'Try recording under 60 seconds at 720p, or trim the video before uploading.'
+        : 'Reels use field "video", stories use field "media".',
     });
   }
   if (err) {

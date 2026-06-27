@@ -9,19 +9,17 @@ export async function resolveReelAudioUrl(
   externalId?: string | null,
   token?: string | null,
 ): Promise<string> {
-  const base = resolveMediaUrl(audioUrl);
-
-  if (!externalSource || !externalId || !RESOLVABLE_SOURCES.has(externalSource) || !token) {
-    return base;
+  if (externalSource && externalId && RESOLVABLE_SOURCES.has(externalSource) && token) {
+    try {
+      const data = await apiGet<{ audio_url?: string }>(
+        `/api/sounds/resolve/${externalSource}/${externalId}`,
+        token,
+      );
+      if (data.audio_url) return resolveMediaUrl(data.audio_url);
+    } catch {
+      // fall through to stored url
+    }
   }
 
-  try {
-    const data = await apiGet<{ audio_url?: string }>(
-      `/api/sounds/resolve/${externalSource}/${externalId}`,
-      token,
-    );
-    return data.audio_url ? resolveMediaUrl(data.audio_url) : base;
-  } catch {
-    return base;
-  }
+  return resolveMediaUrl(audioUrl);
 }

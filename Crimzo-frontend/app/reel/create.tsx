@@ -14,7 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
 import { appAlert } from '../../lib/appAlert';
-import { uploadReel } from '../../lib/reelUpload';
+import { uploadReel, reelUploadErrorMessage } from '../../lib/reelUpload';
 import { resolveReelAudioUrl } from '../../lib/reelAudio';
 import { playReelMusic, stopReelMusic } from '../../lib/reelMusicPlayer';
 import type { ReelAudioSelection, ReelSound, ReelVideoAsset } from '../../lib/reelTypes';
@@ -113,6 +113,10 @@ export default function ReelCreateScreen() {
         sound.external_id,
         token,
       );
+      if (!streamUrl) {
+        setMusicPlaying(false);
+        return;
+      }
       await playReelMusic({ url: streamUrl, loop: true, volume: 1 });
       setMusicPlaying(true);
     } catch (e) {
@@ -314,8 +318,11 @@ export default function ReelCreateScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['videos'],
         allowsEditing: false,
-        quality: 1,
+        quality: 0.85,
         videoMaxDuration: REEL_MAX_DURATION_SEC,
+        ...(Platform.OS === 'ios' && ImagePicker.VideoExportPreset
+          ? { videoExportPreset: ImagePicker.VideoExportPreset.MediumQuality }
+          : {}),
       });
 
       if (result.canceled || !result.assets?.length) return;
@@ -346,6 +353,8 @@ export default function ReelCreateScreen() {
 
   const handlePost = async (caption: string, audio: ReelAudioSelection | null) => {
     if (!editorAsset) return;
+    await stopReelMusic();
+    setMusicPlaying(false);
     setUploading(true);
     setUploadProgress(10);
     setUploadDone(false);
@@ -377,11 +386,11 @@ export default function ReelCreateScreen() {
       } else {
         throw new Error('Failed to save reel');
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Upload error:', e);
       setUploading(false);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      appAlert('Upload Failed', e?.message || 'Something went wrong. Please try again.');
+      appAlert('Upload Failed', reelUploadErrorMessage(e));
     }
   };
 
@@ -417,7 +426,7 @@ export default function ReelCreateScreen() {
           style={StyleSheet.absoluteFill}
           facing={facing}
           mode="video"
-          videoQuality="1080p"
+          videoQuality="720p"
           enableTorch={torchOn && facing === 'back'}
         />
       ) : isWeb ? (
