@@ -28,6 +28,7 @@ export type ReelVideoAsset = {
 };
 
 export type ReelAudioSelection = {
-  sound: ReelSound;
+  sound: ReelSound | null;
   startMs: number;
+  muteOriginalAudio: boolean;
 };

@@ -8,18 +8,21 @@ import {
   Easing,
 } from 'react-native';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
 import { appAlert } from '../../lib/appAlert';
 import { uploadReel } from '../../lib/reelUpload';
+import { resolveReelAudioUrl } from '../../lib/reelAudio';
+import { playReelMusic, stopReelMusic } from '../../lib/reelMusicPlayer';
 import type { ReelAudioSelection, ReelSound, ReelVideoAsset } from '../../lib/reelTypes';
 import ReelEditor from '../../components/reel/ReelEditor';
 import MusicPicker from '../../components/reel/MusicPicker';
 import ReelCaptureOverlay from '../../components/reel/ReelCaptureOverlay';
 import ReelPermissionGate from '../../components/reel/ReelPermissionGate';
+import type { ReelCreateMode } from '../../components/reel/ReelCreateModeBar';
 import {
   REEL_MAX_DURATION_SEC,
   REEL_MIN_DURATION_SEC,
@@ -27,6 +30,7 @@ import {
 
 export default function ReelCreateScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ mode?: string }>();
   const insets = useSafeAreaInsets();
   const { token, isGuest } = useAuth();
   const cameraRef = useRef<CameraView>(null);
@@ -34,14 +38,17 @@ export default function ReelCreateScreen() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
 
+  const [creationMode, setCreationMode] = useState<ReelCreateMode>('video_first');
   const [facing, setFacing] = useState<'front' | 'back'>('back');
   const [torchOn, setTorchOn] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
+  const [musicPlaying, setMusicPlaying] = useState(false);
   const recordSecondsRef = useRef(0);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordProgress = useRef(new Animated.Value(0)).current;
   const isBusyRef = useRef(false);
+  const didInitModeRef = useRef(false);
 
   const [selectedSound, setSelectedSound] = useState<ReelSound | null>(null);
   const [showMusicPicker, setShowMusicPicker] = useState(false);
@@ -63,11 +70,21 @@ export default function ReelCreateScreen() {
   }, [token, isGuest, router]);
 
   useEffect(() => {
+    if (didInitModeRef.current) return;
+    if (params.mode === 'music_first') {
+      didInitModeRef.current = true;
+      setCreationMode('music_first');
+      setShowMusicPicker(true);
+    }
+  }, [params.mode]);
+
+  useEffect(() => {
     if (!isWeb) {
       void ensurePermissions();
     }
     return () => {
       if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+      void stopReelMusic();
     };
   }, []);
 
@@ -85,11 +102,55 @@ export default function ReelCreateScreen() {
       mic = res.granted;
     }
 
-    if (!cam || !mic) {
-      return false;
-    }
-    return true;
+    return !!(cam && mic);
   }, [cameraPermission, micPermission, requestCameraPermission, requestMicPermission, isWeb]);
+
+  const playCameraMusic = useCallback(async (sound: ReelSound) => {
+    try {
+      const streamUrl = await resolveReelAudioUrl(
+        sound.audio_url,
+        sound.source,
+        sound.external_id,
+        token,
+      );
+      await playReelMusic({ url: streamUrl, loop: true, volume: 1 });
+      setMusicPlaying(true);
+    } catch (e) {
+      console.error('Camera music error:', e);
+      setMusicPlaying(false);
+    }
+  }, [token]);
+
+  const permissionsReady = isWeb || (cameraPermission?.granted && micPermission?.granted);
+  const permissionsDenied = !isWeb && cameraPermission && !cameraPermission.granted && !cameraPermission.canAskAgain;
+  const showCamera = !isWeb && permissionsReady;
+
+  useEffect(() => {
+    const shouldPlay =
+      showCamera &&
+      !showMusicPicker &&
+      !showEditor &&
+      creationMode === 'music_first' &&
+      !!selectedSound;
+
+    if (!shouldPlay) {
+      if (!recording) {
+        void stopReelMusic();
+        setMusicPlaying(false);
+      }
+      return;
+    }
+
+    void playCameraMusic(selectedSound!);
+  }, [
+    showCamera,
+    showMusicPicker,
+    showEditor,
+    creationMode,
+    selectedSound?.id,
+    recording,
+    playCameraMusic,
+  ]);
 
   const resetRecordProgress = () => {
     recordProgress.stopAnimation();
@@ -129,12 +190,45 @@ export default function ReelCreateScreen() {
   };
 
   const openEditor = (asset: ReelVideoAsset) => {
+    void stopReelMusic();
+    setMusicPlaying(false);
     setEditorAsset(asset);
     setShowEditor(true);
   };
 
+  const handleModeChange = (mode: ReelCreateMode) => {
+    if (recording) return;
+    setCreationMode(mode);
+    if (mode === 'music_first' && !selectedSound) {
+      setShowMusicPicker(true);
+    }
+  };
+
+  const handleSoundSelect = (sound: ReelSound | null) => {
+    setSelectedSound(sound);
+    if (sound && creationMode === 'music_first') {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+  };
+
+  const handleClearMusic = () => {
+    void stopReelMusic();
+    setMusicPlaying(false);
+    setSelectedSound(null);
+    if (creationMode === 'music_first') {
+      setShowMusicPicker(true);
+    }
+  };
+
   const startRecording = async () => {
     if (recording || isBusyRef.current || isWeb) return;
+
+    if (creationMode === 'music_first' && !selectedSound) {
+      appAlert('Pick music first', 'Choose a song, then record your reel to that track.');
+      setShowMusicPicker(true);
+      return;
+    }
+
     const ok = await ensurePermissions();
     if (!ok) {
       appAlert('Permission Required', 'Camera and microphone access are needed to record reels.');
@@ -143,6 +237,10 @@ export default function ReelCreateScreen() {
 
     isBusyRef.current = true;
     try {
+      if (creationMode === 'music_first' && selectedSound) {
+        await playCameraMusic(selectedSound);
+      }
+
       setRecording(true);
       startRecordTimer();
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -152,6 +250,8 @@ export default function ReelCreateScreen() {
 
       stopRecordTimer();
       setRecording(false);
+      await stopReelMusic();
+      setMusicPlaying(false);
 
       if (!result?.uri) return;
 
@@ -161,6 +261,9 @@ export default function ReelCreateScreen() {
           'Clip too short',
           `Record at least ${REEL_MIN_DURATION_SEC} seconds for a reel.`,
         );
+        if (creationMode === 'music_first' && selectedSound) {
+          void playCameraMusic(selectedSound);
+        }
         return;
       }
 
@@ -175,6 +278,8 @@ export default function ReelCreateScreen() {
       console.error('Record error:', e);
       stopRecordTimer();
       setRecording(false);
+      await stopReelMusic();
+      setMusicPlaying(false);
       appAlert('Recording Failed', 'Could not record video. Please try again.');
     } finally {
       isBusyRef.current = false;
@@ -192,6 +297,13 @@ export default function ReelCreateScreen() {
 
   const pickFromGallery = async () => {
     if (recording) return;
+
+    if (creationMode === 'music_first' && !selectedSound) {
+      appAlert('Pick music first', 'In Music First mode, choose a song before adding your video.');
+      setShowMusicPicker(true);
+      return;
+    }
+
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
@@ -238,12 +350,16 @@ export default function ReelCreateScreen() {
     setUploadProgress(10);
     setUploadDone(false);
 
+    const audioPayload = audio || (selectedSound
+      ? { sound: selectedSound, startMs: 0, muteOriginalAudio: true }
+      : null);
+
     try {
       const response = await uploadReel({
         asset: editorAsset,
         caption,
         token,
-        audio: audio || (selectedSound ? { sound: selectedSound, startMs: 0 } : null),
+        audio: audioPayload,
         onProgress: setUploadProgress,
       });
 
@@ -278,18 +394,18 @@ export default function ReelCreateScreen() {
           style: 'destructive',
           onPress: () => {
             void stopRecording();
+            void stopReelMusic();
             router.back();
           },
         },
       ]);
       return;
     }
+    void stopReelMusic();
     router.back();
   };
 
-  const permissionsReady = isWeb || (cameraPermission?.granted && micPermission?.granted);
-  const permissionsDenied = !isWeb && cameraPermission && !cameraPermission.granted && !cameraPermission.canAskAgain;
-  const showCamera = !isWeb && permissionsReady;
+  const recordBlocked = isWeb || (creationMode === 'music_first' && !selectedSound);
 
   return (
     <View style={styles.container}>
@@ -324,24 +440,28 @@ export default function ReelCreateScreen() {
       {showCamera && (
         <ReelCaptureOverlay
           insets={insets}
+          creationMode={creationMode}
           recording={recording}
           recordSeconds={recordSeconds}
           recordProgress={recordProgress}
           selectedSound={selectedSound}
+          musicPlaying={musicPlaying}
           torchOn={torchOn}
           canUseTorch={facing === 'back'}
           canFlipCamera
           onClose={handleClose}
+          onModeChange={handleModeChange}
           onFlipCamera={() => {
             setFacing((f) => (f === 'back' ? 'front' : 'back'));
             setTorchOn(false);
           }}
           onToggleTorch={() => setTorchOn((v) => !v)}
           onOpenMusic={() => setShowMusicPicker(true)}
+          onClearMusic={handleClearMusic}
           onOpenGallery={pickFromGallery}
           onRecordPress={() => void (recording ? stopRecording() : startRecording())}
           galleryDisabled={recording}
-          recordDisabled={isWeb}
+          recordDisabled={recordBlocked}
         />
       )}
 
@@ -349,8 +469,9 @@ export default function ReelCreateScreen() {
         visible={showMusicPicker}
         token={token}
         selectedId={selectedSound?.id}
+        musicFirstMode={creationMode === 'music_first'}
         onClose={() => setShowMusicPicker(false)}
-        onSelect={setSelectedSound}
+        onSelect={handleSoundSelect}
       />
 
       <ReelEditor

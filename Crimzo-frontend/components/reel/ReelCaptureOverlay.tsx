@@ -10,21 +10,26 @@ import {
   REEL_MAX_DURATION_SEC,
   formatReelTime,
 } from './reelStudioTheme';
+import ReelCreateModeBar, { type ReelCreateMode } from './ReelCreateModeBar';
 import type { ReelSound } from '../../lib/reelTypes';
 
 type Props = {
   insets: { top: number; bottom: number };
+  creationMode: ReelCreateMode;
   recording: boolean;
   recordSeconds: number;
   recordProgress: Animated.Value;
   selectedSound: ReelSound | null;
+  musicPlaying: boolean;
   torchOn: boolean;
   canUseTorch: boolean;
   canFlipCamera: boolean;
   onClose: () => void;
+  onModeChange: (mode: ReelCreateMode) => void;
   onFlipCamera: () => void;
   onToggleTorch: () => void;
   onOpenMusic: () => void;
+  onClearMusic: () => void;
   onOpenGallery: () => void;
   onRecordPress: () => void;
   galleryDisabled?: boolean;
@@ -37,23 +42,30 @@ function Corner({ style }: { style: object }) {
 
 export default function ReelCaptureOverlay({
   insets,
+  creationMode,
   recording,
   recordSeconds,
   recordProgress,
   selectedSound,
+  musicPlaying,
   torchOn,
   canUseTorch,
   canFlipCamera,
   onClose,
+  onModeChange,
   onFlipCamera,
   onToggleTorch,
   onOpenMusic,
+  onClearMusic,
   onOpenGallery,
   onRecordPress,
   galleryDisabled,
   recordDisabled,
 }: Props) {
   const remaining = Math.max(0, REEL_MAX_DURATION_SEC - recordSeconds);
+  const musicFirst = creationMode === 'music_first';
+  const needsMusicFirst = musicFirst && !selectedSound;
+  const musicReady = musicFirst && !!selectedSound;
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
@@ -100,7 +112,11 @@ export default function ReelCaptureOverlay({
               <Text style={styles.recordingText}>REC {formatReelTime(recordSeconds)}</Text>
             </View>
           ) : (
-            <Text style={styles.headerSub}>Up to {REEL_MAX_DURATION_SEC}s · 9:16</Text>
+            <Text style={styles.headerSub}>
+              {musicFirst
+                ? (selectedSound ? 'Step 2 · Record to song' : 'Step 1 · Pick a song')
+                : `Up to ${REEL_MAX_DURATION_SEC}s · 9:16`}
+            </Text>
           )}
         </View>
 
@@ -135,20 +151,66 @@ export default function ReelCaptureOverlay({
         </View>
       )}
 
-      {/* Music selector */}
-      <TouchableOpacity
-        style={[styles.musicPill, { top: insets.top + 72 }]}
-        onPress={onOpenMusic}
-        activeOpacity={0.85}
-      >
-        <View style={styles.musicIconWrap}>
-          <Ionicons name="musical-notes" size={15} color="#FFF" />
-        </View>
-        <Text style={styles.musicPillText} numberOfLines={1}>
-          {selectedSound ? `${selectedSound.title} · ${selectedSound.artist}` : 'Add music'}
-        </Text>
-        <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.5)" />
-      </TouchableOpacity>
+      {/* Mode switch */}
+      <View style={[styles.modeBarWrap, { top: insets.top + 68 }]}>
+        <ReelCreateModeBar
+          mode={creationMode}
+          disabled={recording}
+          onChange={onModeChange}
+        />
+      </View>
+
+      {/* Music-first CTA or selected song */}
+      {needsMusicFirst ? (
+        <TouchableOpacity
+          style={[styles.musicFirstCard, { top: insets.top + 118 }]}
+          onPress={onOpenMusic}
+          activeOpacity={0.9}
+        >
+          <View style={styles.musicFirstIcon}>
+            <Ionicons name="musical-notes" size={28} color="#FFF" />
+          </View>
+          <Text style={styles.musicFirstTitle}>Choose Music First</Text>
+          <Text style={styles.musicFirstSub}>
+            Pick a song, then record your reel to the beat
+          </Text>
+          <View style={styles.musicFirstBtn}>
+            <Text style={styles.musicFirstBtnText}>Browse Songs</Text>
+            <Ionicons name="arrow-forward" size={16} color="#FFF" />
+          </View>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          style={[
+            styles.musicPill,
+            { top: insets.top + 118 },
+            musicReady && styles.musicPillActive,
+          ]}
+          onPress={onOpenMusic}
+          activeOpacity={0.85}
+        >
+          <View style={[styles.musicIconWrap, musicPlaying && styles.musicIconPlaying]}>
+            <Ionicons name={musicPlaying ? 'volume-high' : 'musical-notes'} size={15} color="#FFF" />
+          </View>
+          <View style={styles.musicPillMeta}>
+            <Text style={styles.musicPillLabel}>
+              {musicReady ? 'Recording to' : 'Music'}
+            </Text>
+            <Text style={styles.musicPillText} numberOfLines={1}>
+              {selectedSound
+                ? `${selectedSound.title} · ${selectedSound.artist}`
+                : 'Add music (optional)'}
+            </Text>
+          </View>
+          {selectedSound ? (
+            <TouchableOpacity onPress={onClearMusic} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close-circle" size={20} color="rgba(255,255,255,0.65)" />
+            </TouchableOpacity>
+          ) : (
+            <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.5)" />
+          )}
+        </TouchableOpacity>
+      )}
 
       {/* Bottom controls */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 20 }]}>
@@ -166,7 +228,11 @@ export default function ReelCaptureOverlay({
 
         <View style={styles.recordWrap}>
           <TouchableOpacity
-            style={[styles.recordOuter, recording && styles.recordOuterActive]}
+            style={[
+              styles.recordOuter,
+              recording && styles.recordOuterActive,
+              recordDisabled && styles.recordOuterDisabled,
+            ]}
             onPress={onRecordPress}
             disabled={recordDisabled}
             activeOpacity={0.9}
@@ -178,7 +244,13 @@ export default function ReelCaptureOverlay({
             )}
           </TouchableOpacity>
           <Text style={styles.recordHint}>
-            {recording ? `Tap to stop · ${formatReelTime(remaining)} left` : 'Tap to record'}
+            {recording
+              ? `Tap to stop · ${formatReelTime(remaining)} left`
+              : needsMusicFirst
+                ? 'Pick music first'
+                : musicReady
+                  ? 'Record to this song'
+                  : 'Tap to record'}
           </Text>
         </View>
 
@@ -289,6 +361,52 @@ const styles = StyleSheet.create({
     backgroundColor: reelStudioColors.primary,
     borderRadius: 2,
   },
+  modeBarWrap: {
+    position: 'absolute',
+    alignSelf: 'center',
+    width: '88%',
+    zIndex: 15,
+  },
+  musicFirstCard: {
+    position: 'absolute',
+    alignSelf: 'center',
+    width: '84%',
+    backgroundColor: 'rgba(0,0,0,0.62)',
+    borderWidth: 1,
+    borderColor: reelStudioColors.primary,
+    borderRadius: 18,
+    padding: 18,
+    alignItems: 'center',
+    zIndex: 15,
+  },
+  musicFirstIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: reelStudioColors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  musicFirstTitle: { color: '#FFF', fontSize: 17, fontWeight: '800' },
+  musicFirstSub: {
+    color: reelStudioColors.textMuted,
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 18,
+  },
+  musicFirstBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 14,
+    backgroundColor: reelStudioColors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  musicFirstBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
   musicPill: {
     position: 'absolute',
     alignSelf: 'center',
@@ -300,19 +418,34 @@ const styles = StyleSheet.create({
     borderColor: reelStudioColors.border,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 26,
+    borderRadius: 16,
     maxWidth: '88%',
     zIndex: 15,
   },
+  musicPillActive: {
+    borderColor: reelStudioColors.primary,
+    backgroundColor: 'rgba(255,45,85,0.12)',
+  },
   musicIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     backgroundColor: reelStudioColors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  musicPillText: { flex: 1, color: '#FFF', fontSize: 13, fontWeight: '600' },
+  musicIconPlaying: {
+    backgroundColor: reelStudioColors.primary,
+  },
+  musicPillMeta: { flex: 1 },
+  musicPillLabel: {
+    color: reelStudioColors.textMuted,
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  musicPillText: { color: '#FFF', fontSize: 13, fontWeight: '600', marginTop: 1 },
   bottomBar: {
     position: 'absolute',
     bottom: 0,
@@ -348,6 +481,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   recordOuterActive: { borderColor: reelStudioColors.primary },
+  recordOuterDisabled: { opacity: 0.45 },
   recordInner: {
     width: 66,
     height: 66,

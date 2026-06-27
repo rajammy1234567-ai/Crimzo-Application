@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,14 +10,15 @@ import {
   KeyboardAvoidingView,
   Image,
   StatusBar,
+  Switch,
 } from 'react-native';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Audio } from 'expo-av';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { resolveMediaUrl } from '../../lib/apiClient';
 import { resolveReelAudioUrl } from '../../lib/reelAudio';
+import { playReelMusic, stopReelMusic } from '../../lib/reelMusicPlayer';
 import { appAlert } from '../../lib/appAlert';
 import { KEYBOARD_BEHAVIOR } from '../KeyboardAware';
 import MusicPicker from './MusicPicker';
@@ -50,6 +51,7 @@ function ReelVideoPreview({
   const player = useVideoPlayer(uri, (p) => {
     p.loop = true;
     p.muted = muted;
+    p.volume = muted ? 0 : 1;
   });
 
   useEffect(() => {
@@ -59,6 +61,7 @@ function ReelVideoPreview({
 
   useEffect(() => {
     player.muted = muted;
+    player.volume = muted ? 0 : 1;
   }, [muted, player]);
 
   return (
@@ -85,58 +88,66 @@ export default function ReelEditor({
   const insets = useSafeAreaInsets();
   const [caption, setCaption] = useState('');
   const [selectedSound, setSelectedSound] = useState<ReelSound | null>(null);
+  const [muteOriginalAudio, setMuteOriginalAudio] = useState(false);
   const [showMusicPicker, setShowMusicPicker] = useState(false);
-  const musicRef = useRef<Audio.Sound | null>(null);
 
-  const stopMusic = async () => {
-    if (musicRef.current) {
-      try {
-        await musicRef.current.stopAsync();
-        await musicRef.current.unloadAsync();
-      } catch {
-        // ignore
-      }
-      musicRef.current = null;
+  const syncMusicPlayback = useCallback(async (sound: ReelSound | null) => {
+    await stopReelMusic();
+    if (!sound) return;
+
+    try {
+      const streamUrl = await resolveReelAudioUrl(
+        sound.audio_url,
+        sound.source,
+        sound.external_id,
+        token,
+      );
+      await playReelMusic({ url: streamUrl, loop: true, volume: 1 });
+    } catch (e) {
+      console.error('Editor music error:', e);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     if (!visible) {
       setCaption('');
       setSelectedSound(null);
+      setMuteOriginalAudio(false);
       setShowMusicPicker(false);
-      void stopMusic();
+      void stopReelMusic();
       return;
     }
-    if (initialSound) setSelectedSound(initialSound);
+
+    if (initialSound) {
+      setSelectedSound(initialSound);
+      setMuteOriginalAudio(true);
+    }
   }, [visible, initialSound?.id]);
 
   useEffect(() => {
-    if (!visible || !asset?.uri) return;
+    if (!visible || showMusicPicker) {
+      void stopReelMusic();
+      return;
+    }
+    void syncMusicPlayback(selectedSound);
+  }, [visible, showMusicPicker, selectedSound?.id, syncMusicPlayback]);
 
-    void (async () => {
-      await stopMusic();
-      if (!selectedSound) return;
-      try {
-        const streamUrl = await resolveReelAudioUrl(
-          selectedSound.audio_url,
-          selectedSound.source,
-          selectedSound.external_id,
-          token,
-        );
-        await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: streamUrl },
-          { shouldPlay: true, isLooping: true, volume: 1 },
-        );
-        musicRef.current = sound;
-      } catch (e) {
-        console.error('Editor music error:', e);
-      }
-    })();
+  useEffect(() => {
+    return () => { void stopReelMusic(); };
+  }, []);
 
-    return () => { void stopMusic(); };
-  }, [visible, asset?.uri, selectedSound?.id, token]);
+  const handleSoundSelect = (sound: ReelSound | null) => {
+    setSelectedSound(sound);
+    if (sound) {
+      setMuteOriginalAudio(true);
+    }
+  };
+
+  const handleRemoveMusic = async () => {
+    await stopReelMusic();
+    setSelectedSound(null);
+    setMuteOriginalAudio(false);
+  };
 
   const handleClose = () => {
     if (uploading) return;
@@ -152,10 +163,18 @@ export default function ReelEditor({
 
   if (!visible || !asset?.uri) return null;
 
-  const hasMusic = !!selectedSound;
   const durationLabel = formatMs(
     typeof asset.duration === 'number' ? asset.duration : null,
   );
+
+  const buildAudioSelection = (): ReelAudioSelection | null => {
+    if (!selectedSound) return null;
+    return {
+      sound: selectedSound,
+      startMs: 0,
+      muteOriginalAudio,
+    };
+  };
 
   return (
     <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={handleClose}>
@@ -164,10 +183,10 @@ export default function ReelEditor({
 
         <View style={styles.videoStage}>
           <ReelVideoPreview
-            key={asset.uri}
+            key={`${asset.uri}-${muteOriginalAudio}`}
             uri={asset.uri}
-            muted={hasMusic}
-            playing={!uploading}
+            muted={muteOriginalAudio}
+            playing={!uploading && !showMusicPicker}
           />
 
           <LinearGradient
@@ -177,14 +196,15 @@ export default function ReelEditor({
             pointerEvents="none"
           />
 
-          {/* Header */}
           <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
             <TouchableOpacity onPress={handleClose} disabled={uploading} style={styles.headerBtn}>
               <Ionicons name="chevron-back" size={24} color="#FFF" />
             </TouchableOpacity>
             <View style={styles.headerCenter}>
               <Text style={styles.headerTitle}>Preview & Share</Text>
-              <Text style={styles.headerStep}>Step 2 of 2</Text>
+              <Text style={styles.headerStep}>
+                {initialSound ? 'Music First · Preview' : 'Step 2 of 2'}
+              </Text>
             </View>
             <View style={styles.durationBadge}>
               <Ionicons name="time-outline" size={13} color="#FFF" />
@@ -192,15 +212,35 @@ export default function ReelEditor({
             </View>
           </View>
 
-          {/* Music strip */}
-          <View style={[styles.musicStrip, { top: insets.top + 64 }]}>
-            {selectedSound ? (
-              <TouchableOpacity
-                style={styles.musicChip}
-                onPress={() => setShowMusicPicker(true)}
+          {/* Audio controls */}
+          <View style={[styles.audioPanel, { top: insets.top + 62 }]}>
+            <View style={styles.audioPanelHeader}>
+              <Ionicons name="options-outline" size={16} color="#FFF" />
+              <Text style={styles.audioPanelTitle}>Audio</Text>
+            </View>
+
+            <View style={styles.audioRow}>
+              <View style={styles.audioRowLeft}>
+                <Ionicons name="videocam-outline" size={18} color="#FFF" />
+                <View>
+                  <Text style={styles.audioRowTitle}>Original video sound</Text>
+                  <Text style={styles.audioRowSub}>
+                    {muteOriginalAudio ? 'Muted' : 'Playing'}
+                  </Text>
+                </View>
+              </View>
+              <Switch
+                value={!muteOriginalAudio}
+                onValueChange={(on) => setMuteOriginalAudio(!on)}
                 disabled={uploading}
-                activeOpacity={0.85}
-              >
+                trackColor={{ false: 'rgba(255,255,255,0.2)', true: reelStudioColors.primarySoft }}
+                thumbColor={!muteOriginalAudio ? reelStudioColors.primary : '#f4f4f4'}
+                ios_backgroundColor="rgba(255,255,255,0.2)"
+              />
+            </View>
+
+            {selectedSound ? (
+              <View style={styles.musicChip}>
                 {selectedSound.cover_url ? (
                   <Image
                     source={{ uri: resolveMediaUrl(selectedSound.cover_url) }}
@@ -216,13 +256,20 @@ export default function ReelEditor({
                   <Text style={styles.musicArtist} numberOfLines={1}>{selectedSound.artist}</Text>
                 </View>
                 <TouchableOpacity
-                  onPress={() => setSelectedSound(null)}
+                  style={styles.changeMusicBtn}
+                  onPress={() => setShowMusicPicker(true)}
+                  disabled={uploading}
+                >
+                  <Text style={styles.changeMusicText}>Change</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void handleRemoveMusic()}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   disabled={uploading}
                 >
-                  <Ionicons name="close-circle" size={20} color="rgba(255,255,255,0.65)" />
+                  <Ionicons name="close-circle" size={22} color="rgba(255,255,255,0.65)" />
                 </TouchableOpacity>
-              </TouchableOpacity>
+              </View>
             ) : (
               <TouchableOpacity
                 style={styles.addMusicBtn}
@@ -281,7 +328,7 @@ export default function ReelEditor({
 
           <TouchableOpacity
             style={[styles.postBtn, uploading && styles.postBtnDisabled]}
-            onPress={() => onPost(caption, selectedSound ? { sound: selectedSound, startMs: 0 } : null)}
+            onPress={() => onPost(caption, buildAudioSelection())}
             disabled={uploading}
             activeOpacity={0.85}
           >
@@ -303,7 +350,7 @@ export default function ReelEditor({
         token={token}
         selectedId={selectedSound?.id}
         onClose={() => setShowMusicPicker(false)}
-        onSelect={setSelectedSound}
+        onSelect={handleSoundSelect}
       />
     </Modal>
   );
@@ -344,20 +391,38 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   durationText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
-  musicStrip: {
+  audioPanel: {
     position: 'absolute',
-    left: 16,
-    right: 16,
+    left: 14,
+    right: 14,
     zIndex: 15,
+    backgroundColor: 'rgba(0,0,0,0.62)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: reelStudioColors.border,
+    padding: 12,
+    gap: 10,
   },
+  audioPanelHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  audioPanelTitle: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  audioRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: reelStudioColors.surface,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  audioRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  audioRowTitle: { color: '#FFF', fontSize: 13, fontWeight: '600' },
+  audioRowSub: { color: reelStudioColors.textMuted, fontSize: 11, marginTop: 1 },
   musicChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderWidth: 1,
-    borderColor: reelStudioColors.border,
-    borderRadius: 16,
+    backgroundColor: reelStudioColors.surface,
+    borderRadius: 12,
     padding: 10,
   },
   musicCover: { width: 40, height: 40, borderRadius: 8 },
@@ -372,15 +437,21 @@ const styles = StyleSheet.create({
   musicMeta: { flex: 1 },
   musicTitle: { color: '#FFF', fontSize: 14, fontWeight: '700' },
   musicArtist: { color: reelStudioColors.textMuted, fontSize: 12, marginTop: 2 },
+  changeMusicBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  changeMusicText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
   addMusicBtn: {
-    alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
     backgroundColor: reelStudioColors.primary,
-    borderRadius: 24,
-    paddingHorizontal: 20,
-    paddingVertical: 11,
+    borderRadius: 12,
+    paddingVertical: 12,
   },
   addMusicText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
   uploadOverlay: {
