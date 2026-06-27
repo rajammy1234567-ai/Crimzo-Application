@@ -24,6 +24,13 @@ const { attachSocketAuth } = require('../middleware/socketAuth');
 const { transferGift } = require('../utils/diamondTransfer');
 const { assertCanInteract } = require('../utils/followPermissions');
 
+const LIVE_CHAT_MIN_INTERVAL_MS = 1200;
+const liveChatLastSent = new Map();
+
+function liveChatRateKey(sessionId, userId) {
+  return `${String(sessionId)}:${String(userId)}`;
+}
+
 function isValidStickerObjectId(id) {
   if (id == null || id === '') return false;
   const str = String(id);
@@ -580,14 +587,28 @@ module.exports = (io) => {
     socket.on('live_chat_message', async (data) => {
       const { sessionId, username, message } = data || {};
       const userId = socket.authenticatedUserId || data?.userId;
-      if (!sessionId || !userId || !message?.trim()) return;
+      const trimmed = message?.trim();
+      if (!sessionId || !userId || !trimmed) return;
+
+      if (trimmed.length > 200) {
+        socket.emit('live_chat_error', { code: 'MESSAGE_TOO_LONG', message: 'Message is too long (max 200 characters)' });
+        return;
+      }
+
+      const rateKey = liveChatRateKey(sessionId, userId);
+      const now = Date.now();
+      const lastSent = liveChatLastSent.get(rateKey) || 0;
+      if (now - lastSent < LIVE_CHAT_MIN_INTERVAL_MS) {
+        socket.emit('live_chat_error', { code: 'RATE_LIMIT', message: 'Slow down — wait a moment before sending again' });
+        return;
+      }
 
       try {
         const allowed = await userCanChatOnLive(sessionId, userId);
         if (!allowed) {
           socket.emit('live_chat_error', {
-            code: 'TALK_NOT_ACTIVE',
-            message: 'Public chat is for the host only. Request a private chat with the host to talk 1-on-1.',
+            code: 'CHAT_NOT_ALLOWED',
+            message: 'Chat is not available on this live right now.',
           });
           return;
         }
@@ -597,7 +618,9 @@ module.exports = (io) => {
         return;
       }
 
-      console.log(`[Live Chat] ${username}: ${message}`);
+      liveChatLastSent.set(rateKey, now);
+
+      console.log(`[Live Chat] ${username}: ${trimmed}`);
       try {
         const { recordTaskAction } = require('../utils/taskProgress');
         void recordTaskAction(userId, 'live_message', 1).catch(() => {});
@@ -607,7 +630,7 @@ module.exports = (io) => {
         type: 'text',
         userId: String(userId),
         username: username || socket.authenticatedUsername || 'User',
-        message: message.trim(),
+        message: trimmed,
         timestamp: Date.now()
       });
     });

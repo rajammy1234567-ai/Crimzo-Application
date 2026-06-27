@@ -1215,8 +1215,8 @@ export default function LiveWatchRoom({
         </TouchableOpacity>
       )}
 
-      {/* ═══ PUBLIC LIVE CHAT (read-only for viewers; host broadcast only) ═══ */}
-      {sessionId && user && token && !canChat && (
+      {/* ═══ PUBLIC LIVE CHAT (all viewers + host) ═══ */}
+      {sessionId && user && token && (
         <LiveChat
           sessionId={sessionId as string}
           userId={user.id}
@@ -1224,7 +1224,7 @@ export default function LiveWatchRoom({
           token={token}
           isHost={false}
           hostUserId={streamData?.hostId ? String(streamData.hostId) : undefined}
-          canChat={false}
+          canChat
           talkRatePerMin={hostRates.chatRatePerMin}
           sharedSocket={viewerSocket}
           onStickerPress={() => setShowStickers(true)}

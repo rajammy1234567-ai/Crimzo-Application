@@ -602,9 +602,15 @@ exports.endTalkBilling = async (req, res) => {
   }
 };
 
-/** Public live chat: host broadcast only. Paid viewers use private talk room. */
+/** Public live chat: host + all viewers in an active session (private 1-on-1 uses separate room). */
 exports.userCanChatOnLive = async (sessionId, userId) => {
-  const session = await LiveSession.findById(sessionId).select('user_id status');
+  if (!sessionId || !userId) return false;
+
+  const session = await LiveSession.findById(sessionId).select('user_id status').lean();
   if (!session || session.status !== 'active') return false;
-  return String(session.user_id) === String(userId);
+
+  const user = await User.findById(userId).select('is_banned').lean();
+  if (!user || user.is_banned) return false;
+
+  return true;
 };

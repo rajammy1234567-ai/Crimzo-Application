@@ -359,9 +359,7 @@ export default function LiveChat({
                 ListEmptyComponent={
                     <View style={cs.empty}>
                         <Text style={cs.emptyText}>
-                            {isHost
-                                ? 'Welcome to your stream! 🎬'
-                                : (canChat ? 'Say hi to the streamer! 👋' : `Send a request to chat with the host — ₹${talkRatePerMin}/min`)}
+                            {isHost ? 'Welcome to your stream! 🎬' : 'Say hi in the chat! 👋'}
                         </Text>
                     </View>
                 }
@@ -374,7 +372,7 @@ export default function LiveChat({
                     <View style={cs.inputField}>
                         <TextInput
                             style={[cs.textInput, !isHost && !canChat && cs.textInputDisabled]}
-                            placeholder={isHost || canChat ? 'Add comment...' : `Chat after your request is accepted — ₹${talkRatePerMin}/min`}
+                            placeholder={isHost || canChat ? 'Add comment...' : 'Login to comment'}
                             placeholderTextColor="rgba(255,255,255,0.35)"
                             value={inputText}
                             onChangeText={setInputText}
