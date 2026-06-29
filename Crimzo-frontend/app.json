@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.livestreamhub",
+      "bundleIdentifier": "com.crimzolive",
       "associatedDomains": [
         "applinks:www.crimzo.live",
         "applinks:crimzo.live"
@@ -28,8 +28,8 @@
         "foregroundImage": "./assets/images/CRIMZO_ICON.png",
         "backgroundColor": "#000000"
       },
-      "package": "com.livestreamhub",
-      "versionCode": 30,
+      "package": "com.crimzolive",
+      "versionCode": 31,
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",

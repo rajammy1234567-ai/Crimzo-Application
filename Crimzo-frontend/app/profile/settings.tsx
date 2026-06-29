@@ -18,7 +18,7 @@ import { APP_VERSION, getBuildLabel } from '../../lib/buildInfo';
 import { inrToBeans } from '../../lib/diamondPackages';
 import { MIN_RATE_INR, MAX_RATE_INR, receiverBeansFromCallInr } from '../../lib/userRates';
 const SUPPORT_EMAIL = 'support@crimzo.app';
-const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.livestreamhub';
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.crimzolive';
 
 const DEVELOPERS = [
   { name: 'Divyanshu Chauhan', role: 'Lead Developer' },
@@ -297,7 +297,7 @@ export default function SettingsScreen() {
   const handleRate = async () => {
     try {
       const url = Platform.OS === 'android'
-        ? `market://details?id=com.livestreamhub`
+        ? `market://details?id=com.crimzolive`
         : PLAY_STORE_URL;
       const can = await Linking.canOpenURL(url);
       if (can) {

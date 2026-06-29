@@ -16,7 +16,7 @@ const REFERRAL_WEB_BASE_URL = process.env.REFERRAL_WEB_BASE_URL || 'https://www.
 const APP_DOWNLOAD_URL = process.env.APP_DOWNLOAD_URL || REFERRAL_WEB_BASE_URL;
 
 const PLAY_STORE_URL =
-  process.env.PLAY_STORE_URL || 'https://play.google.com/store/apps/details?id=com.livestreamhub';
+  process.env.PLAY_STORE_URL || 'https://play.google.com/store/apps/details?id=com.crimzolive';
 
 module.exports = {
   REFERRAL_REWARD_INR,

@@ -1,5 +1,5 @@
 /** Android App Links — release upload keystore fingerprint */
-const ANDROID_PACKAGE_NAME = process.env.ANDROID_PACKAGE_NAME || 'com.livestreamhub';
+const ANDROID_PACKAGE_NAME = process.env.ANDROID_PACKAGE_NAME || 'com.crimzolive';
 
 const ANDROID_RELEASE_SHA256 =
   process.env.ANDROID_RELEASE_SHA256 ||

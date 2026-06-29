@@ -10,7 +10,7 @@ export const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
 export const GOOGLE_ANDROID_RELEASE_SHA1 =
   '96:D4:98:56:64:40:D3:7F:C6:42:F1:96:00:05:A0:86:F6:61:B6:C9';
 
-export const ANDROID_PACKAGE = 'com.livestreamhub';
+export const ANDROID_PACKAGE = 'com.crimzolive';
 export const APP_SCHEME = Constants.expoConfig?.scheme || 'crimzo';
 
 const expoOwner = Constants.expoConfig?.owner || 'dev_eas_office_viz001';

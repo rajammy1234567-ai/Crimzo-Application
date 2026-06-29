@@ -2,7 +2,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const base = require('./app.json').expo;
 
-const ANDROID_PACKAGE = base.android?.package || 'com.livestreamhub';
+const ANDROID_PACKAGE = base.android?.package || 'com.crimzolive';
 
 function clientIdToReverseScheme(clientId) {
   const match = String(clientId || '').match(/^([\w-]+)\.apps\.googleusercontent\.com$/);
