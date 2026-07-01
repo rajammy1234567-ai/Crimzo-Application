@@ -59,6 +59,12 @@ const userSchema = new mongoose.Schema({
   referred_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   /** Successful referrals — each awards owner-funded diamonds to this user */
   referral_count: { type: Number, default: 0 },
+  /** Highest owned level (sequential ladder) */
+  user_level: { type: Number, default: 1, min: 1 },
+  /** Level shown on profile / showcase garage */
+  equipped_level: { type: Number, default: 1, min: 1 },
+  /** All purchased level numbers (Level 1 free on register) */
+  owned_levels: { type: [Number], default: [1] },
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
 
 // Virtual for frontend-friendly id

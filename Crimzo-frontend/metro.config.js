@@ -6,8 +6,10 @@ const { FileStore } = require('metro-cache');
 const config = getDefaultConfig(__dirname);
 
 // Ensure audio assets resolve on all platforms
-if (!config.resolver.assetExts.includes('wav')) {
-  config.resolver.assetExts.push('wav');
+for (const ext of ['wav', 'glb', 'gltf', 'bin']) {
+  if (!config.resolver.assetExts.includes(ext)) {
+    config.resolver.assetExts.push(ext);
+  }
 }
 
 // Use a stable on-disk store (shared across web/android)

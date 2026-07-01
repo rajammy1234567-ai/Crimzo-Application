@@ -200,6 +200,23 @@ export interface Reel {
     created_at: string;
 }
 
+export interface Level {
+    id: string;
+    _id?: string;
+    level_number: number;
+    name: string;
+    description?: string;
+    price_diamonds: number;
+    showcase_type: string;
+    showcase_emoji: string;
+    showcase_image_url?: string | null;
+    showcase_model_key?: string | null;
+    badge_color: string;
+    is_default?: boolean;
+    sort_order?: number;
+    is_active?: boolean;
+}
+
 export interface Sticker {
     id: string;
     _id?: string;

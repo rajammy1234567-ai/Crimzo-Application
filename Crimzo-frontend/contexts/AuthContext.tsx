@@ -60,6 +60,10 @@ interface User {
   is_online: boolean;
   status: string;
   is_private?: boolean;
+  user_level?: number;
+  equipped_level?: number;
+  level_name?: string;
+  level_badge_color?: string;
 }
 
 interface AuthContextType {

@@ -7,6 +7,7 @@ export type LiveFeedStream = {
   followers_count?: number;
   location?: string;
   country?: string;
+  daily_beans_earned?: number;
 };
 
 export function sortLiveStreams(streams: LiveFeedStream[]): LiveFeedStream[] {

@@ -51,6 +51,7 @@ app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/agora", require("./routes/agoraRoutes"));
 app.use("/api/live", require("./routes/liveRoutes")(io)); // pass io for stream_ended event
 app.use("/api/stickers", require("./routes/stickerRoutes"));
+app.use("/api/levels", require("./routes/levelRoutes"));
 app.use("/api/gifts", require("./routes/giftRoutes"));
 app.use("/api/user", require("./routes/userRoutes"));
 app.use("/api/pk", require("./routes/pkRoutes"));

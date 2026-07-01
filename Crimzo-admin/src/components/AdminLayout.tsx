@@ -27,6 +27,7 @@ const navSections = [
         items: [
             { to: '/billing', icon: IndianRupee, label: 'Billing & Rates', desc: 'Video call + live talk ₹/min' },
             { to: '/tasks', icon: ListChecks, label: 'My Tasks', desc: 'User tasks + rewards' },
+            { to: '/levels', icon: Crown, label: 'User Levels', desc: 'Level ladder + showcase' },
         ]
     },
     {
@@ -48,6 +49,7 @@ const pageMeta: Record<string, { title: string; section: string }> = {
     '/billing': { title: 'Billing & Rates', section: 'Monetization' },
     '/withdrawals': { title: 'Withdrawals', section: 'Overview' },
     '/tasks': { title: 'My Tasks', section: 'Monetization' },
+    '/levels': { title: 'User Levels', section: 'Monetization' },
 };
 
 const AdminLayout = () => {

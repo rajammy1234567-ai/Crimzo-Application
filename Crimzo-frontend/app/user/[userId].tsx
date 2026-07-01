@@ -13,6 +13,7 @@ import FollowListModal, { FollowUser } from '../../components/profile/FollowList
 import ReelProfileGrid from '../../components/profile/ReelProfileGrid';
 import { subscribe, publish } from '../../lib/realtimeSync';
 import { parseFollowResponse } from '../../lib/followHelpers';
+import LevelBadge from '../../components/levels/LevelBadge';
 
 function formatNumber(n?: number) {
   if (!n) return '0';
@@ -364,6 +365,16 @@ export default function UserProfileScreen() {
             <Ionicons name="lock-closed" size={16} color="rgba(255,255,255,0.55)" />
           ) : null}
         </View>
+        {profile.level_name ? (
+          <View style={s.levelBadgeWrap}>
+            <LevelBadge
+              levelNumber={profile.equipped_level || profile.user_level || 1}
+              name={profile.level_name}
+              badgeColor={profile.level_badge_color || '#6B7280'}
+              compact
+            />
+          </View>
+        ) : null}
         {profile.crimzo_id ? (
           <Text style={s.crimzoId}>ID: {profile.crimzo_id}</Text>
         ) : null}
@@ -581,6 +592,11 @@ const s = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     textAlign: 'center',
+  },
+  levelBadgeWrap: {
+    alignItems: 'center',
+    marginTop: 6,
+    marginBottom: 2,
   },
   privateBanner: {
     alignItems: 'center',

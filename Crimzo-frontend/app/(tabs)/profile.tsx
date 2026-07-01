@@ -19,6 +19,7 @@ import { getDisplayBeans } from '../../lib/beanBalance';
 import { formatCount } from '../../lib/diamondPackages';
 import { BeanIcon, DiamondIcon } from '../../lib/currencyIcons';
 import { shareReferralInvite } from '../../lib/referral';
+import LevelBadge from '../../components/levels/LevelBadge';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const REEL_THUMB_W = (SW - 6) / 3;
@@ -111,6 +112,10 @@ export default function ProfileScreen() {
           bio?: string;
           country?: string;
           username?: string;
+          user_level?: number;
+          equipped_level?: number;
+          level_name?: string;
+          level_badge_color?: string;
         };
       }>(
         '/api/user/profile/full',
@@ -136,6 +141,10 @@ export default function ProfileScreen() {
           bio: p.bio,
           country: p.country,
           username: p.username,
+          user_level: p.user_level,
+          equipped_level: p.equipped_level,
+          level_name: p.level_name,
+          level_badge_color: p.level_badge_color,
         });
       }
     } catch (e) {
@@ -386,6 +395,7 @@ export default function ProfileScreen() {
         case 'Wallet': router.push('/profile/wallet' as any); break;
         case 'My Tasks': router.push('/profile/tasks' as any); break;
         case 'Collected Stickers': router.push('/profile/stickers' as any); break;
+        case 'My Levels & Garage': router.push('/profile/levels' as any); break;
         case 'My Invitation':
           shareInvite();
           break;
@@ -469,6 +479,13 @@ export default function ProfileScreen() {
           {/* ── Name, ID & Bio ── */}
           <View style={s.nameSection}>
             <Text style={s.displayName}>{user?.username || 'User'}</Text>
+            <TouchableOpacity onPress={() => router.push('/profile/levels' as any)} activeOpacity={0.8}>
+              <LevelBadge
+                levelNumber={user?.equipped_level || user?.user_level || 1}
+                name={user?.level_name || 'Rookie'}
+                badgeColor={user?.level_badge_color || '#6B7280'}
+              />
+            </TouchableOpacity>
             <View style={s.crimzoIdRow}>
               <TouchableOpacity
                 onPress={() => {
@@ -761,6 +778,7 @@ export default function ProfileScreen() {
                 { icon: 'wallet-outline', label: 'Wallet', color: '#4CD964' },
                 { icon: 'checkmark-circle-outline', label: 'My Tasks', color: '#9333EA' },
                 { icon: 'star-outline', label: 'Collected Stickers', color: '#FFB347' },
+                { icon: 'car-sport-outline', label: 'My Levels & Garage', color: '#FF2D55' },
                 { icon: 'people-outline', label: 'My Invitation', color: '#9333EA' },
                 { icon: 'settings-outline', label: 'Settings', color: '#9333EA' },
                 { icon: 'help-circle-outline', label: 'Help & Support', color: '#9333EA' },
@@ -1092,8 +1110,9 @@ const s = StyleSheet.create({
   nameSection: {
     alignItems: 'center',
     paddingHorizontal: 20,
+    gap: 8,
   },
-  displayName: { color: '#FFF', fontSize: 20, fontWeight: '800', letterSpacing: -0.3, marginBottom: 8 },
+  displayName: { color: '#FFF', fontSize: 20, fontWeight: '800', letterSpacing: -0.3 },
   crimzoIdRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   crimzoIdBadge: {
     paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12,

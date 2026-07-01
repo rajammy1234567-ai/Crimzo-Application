@@ -893,6 +893,60 @@ exports.deleteSticker = async (req, res) => {
   }
 };
 
+// ====================== LEVELS ======================
+const Level = require('../models/Level');
+
+exports.getLevels = async (req, res) => {
+  try {
+    const levels = await Level.find().sort({ sort_order: 1, level_number: 1 }).lean();
+    res.json({ levels });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.createLevel = async (req, res) => {
+  try {
+    const body = req.body || {};
+    if (!body.level_number || !body.name) {
+      return res.status(400).json({ error: 'level_number and name are required' });
+    }
+    const exists = await Level.findOne({ level_number: body.level_number });
+    if (exists) return res.status(400).json({ error: 'Level number already exists' });
+    await Level.create(body);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.updateLevel = async (req, res) => {
+  try {
+    const levelId = req.params.id;
+    const updates = { ...req.body };
+    delete updates._id;
+    delete updates.id;
+    await Level.findByIdAndUpdate(levelId, updates);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.deleteLevel = async (req, res) => {
+  try {
+    const level = await Level.findById(req.params.id).lean();
+    if (!level) return res.status(404).json({ error: 'Level not found' });
+    if (level.is_default || level.level_number === 1) {
+      return res.status(400).json({ error: 'Cannot delete default Level 1' });
+    }
+    await Level.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 // ====================== TASKS ======================
 const Task = require('../models/Task');
 

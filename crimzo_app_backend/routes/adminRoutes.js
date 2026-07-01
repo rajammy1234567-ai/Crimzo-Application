@@ -43,6 +43,12 @@ router.post('/stickers', adminController.createSticker);
 router.put('/stickers/:id', adminController.updateSticker);
 router.delete('/stickers/:id', adminController.deleteSticker);
 
+// Levels (user level ladder)
+router.get('/levels', adminController.getLevels);
+router.post('/levels', adminController.createLevel);
+router.put('/levels/:id', adminController.updateLevel);
+router.delete('/levels/:id', adminController.deleteLevel);
+
 // Tasks (My Tasks — user rewards)
 router.get('/tasks', adminController.getTasks);
 router.post('/tasks', adminController.createTask);

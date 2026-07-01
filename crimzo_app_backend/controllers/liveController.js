@@ -12,6 +12,7 @@ const { getHostBusyState } = require('../utils/liveHostBusy');
 const { deriveAgoraUid } = require('../utils/agoraUid');
 const { APP_DOWNLOAD_URL, REFERRAL_WEB_BASE_URL } = require('../config/referralConfig');
 const { ANDROID_PACKAGE_NAME } = require('../config/deepLinkConfig');
+const { getDailyBeansEarnedMap } = require('../utils/dailyEarnings');
 
 const STALE_LIVE_MS = 6 * 60 * 60 * 1000; // 6 hours max live session
 const LIVE_JOIN_GRACE_MS = 30 * 1000; // allow brief window after go-live before socket joins
@@ -98,12 +99,13 @@ exports.cleanupStaleLiveSessions = async (io) => {
   return ended;
 };
 
-function mapActiveSession(ls, billingSettings) {
+function mapActiveSession(ls, billingSettings, dailyEarningsMap = null) {
   const u = ls.user_id || {};
   const rates = resolveUserRates(u, billingSettings);
+  const userId = u._id ? u._id.toString() : (u.id || ls.user_id);
   return {
     id: ls._id ? ls._id.toString() : null,
-    user_id: u._id ? u._id.toString() : (u.id || ls.user_id),
+    user_id: userId,
     channel_name: ls.channel_name,
     session_type: ls.session_type,
     status: ls.status,
@@ -122,7 +124,15 @@ function mapActiveSession(ls, billingSettings) {
     chat_beans_per_min: rates.chatBeansPerMin,
     talk_billing_enabled: billingSettings.liveTalkBillingEnabled,
     voice_billing_enabled: billingSettings.videoCallBillingEnabled,
+    daily_beans_earned: dailyEarningsMap?.get(String(userId)) || 0,
   };
+}
+
+function collectLiveHostIds(sessions) {
+  return sessions.map((ls) => {
+    const u = ls.user_id || {};
+    return u._id ? u._id.toString() : (u.id || ls.user_id);
+  }).filter(Boolean);
 }
 
 function filterCurrentlyLiveSessions(sessions) {
@@ -234,7 +244,8 @@ exports.getActiveStreams = async (req, res) => {
       loadActiveLiveSessions(),
     ]);
     const liveNow = filterCurrentlyLiveSessions(sessions);
-    const streams = liveNow.map((ls) => mapActiveSession(ls, billingSettings));
+    const dailyEarningsMap = await getDailyBeansEarnedMap(collectLiveHostIds(liveNow));
+    const streams = liveNow.map((ls) => mapActiveSession(ls, billingSettings, dailyEarningsMap));
 
     res.json({ success: true, streams, billing: billingSettings });
   } catch (error) {
@@ -255,14 +266,16 @@ exports.getLiveUsers = async (req, res) => {
     ]);
 
     const liveNow = filterCurrentlyLiveSessions(sessions);
+    const dailyEarningsMap = await getDailyBeansEarnedMap(collectLiveHostIds(liveNow));
     const liveUsers = liveNow.map((ls) => {
         const u = ls.user_id || {};
         const rates = resolveUserRates(u, billingSettings);
+        const userId = u._id ? u._id.toString() : u.id;
         return {
           session_id: ls._id ? ls._id.toString() : null,
           viewers_count: ls.viewers_count,
           started_at: ls.started_at,
-          user_id: u._id ? u._id.toString() : u.id,
+          user_id: userId,
           username: u.username,
           avatar: u.avatar,
           country: u.country,
@@ -273,6 +286,7 @@ exports.getLiveUsers = async (req, res) => {
           chat_beans_per_min: rates.chatBeansPerMin,
           talk_billing_enabled: billingSettings.liveTalkBillingEnabled,
           voice_billing_enabled: billingSettings.videoCallBillingEnabled,
+          daily_beans_earned: dailyEarningsMap.get(String(userId)) || 0,
         };
       });
 

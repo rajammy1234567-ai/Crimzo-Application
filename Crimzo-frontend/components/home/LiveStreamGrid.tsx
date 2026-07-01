@@ -7,6 +7,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BeanIcon } from '../../lib/currencyIcons';
 
 const { width: SW } = Dimensions.get('window');
 const CARD_W = (SW - 22) / 2;
@@ -23,6 +24,7 @@ interface LiveStream {
     talk_rate_per_min?: number;
     voice_rate_per_min?: number;
     chat_rate_per_min?: number;
+    daily_beans_earned?: number;
 }
 
 interface Props {
@@ -101,6 +103,17 @@ const LiveStreamCard: React.FC<{ stream: LiveStream; onPress: () => void }> = ({
                 <View style={s.viewerBadge}>
                     <Ionicons name="eye" size={10} color="rgba(255,255,255,0.7)" />
                     <Text style={s.viewerText}>{formatViewers(stream.viewers_count || 0)}</Text>
+                </View>
+
+                {/* Daily earnings */}
+                <View style={s.dailyEarningBox}>
+                    <Text style={s.dailyEarningLabel}>Today</Text>
+                    <View style={s.dailyEarningRow}>
+                        <BeanIcon size={11} />
+                        <Text style={s.dailyEarningValue}>
+                            {(stream.daily_beans_earned || 0).toLocaleString('en-IN')}
+                        </Text>
+                    </View>
                 </View>
 
                 {/* Bottom: profile avatar + name + followers */}
@@ -259,6 +272,39 @@ const s = StyleSheet.create({
         borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
     },
     viewerText: { color: 'rgba(255,255,255,0.85)', fontSize: 10, fontWeight: '700' },
+
+    dailyEarningBox: {
+        position: 'absolute',
+        left: 10,
+        right: 10,
+        top: '42%',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: 'rgba(255,149,0,0.18)',
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderWidth: 1,
+        borderColor: 'rgba(255,149,0,0.35)',
+    },
+    dailyEarningLabel: {
+        color: 'rgba(255,255,255,0.75)',
+        fontSize: 9,
+        fontWeight: '700',
+        letterSpacing: 0.4,
+        textTransform: 'uppercase',
+    },
+    dailyEarningRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    dailyEarningValue: {
+        color: '#FF9500',
+        fontSize: 12,
+        fontWeight: '800',
+    },
 
     // Card bottom – profile avatar + name
     cardBottom: {

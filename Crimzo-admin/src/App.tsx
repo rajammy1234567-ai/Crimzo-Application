@@ -14,6 +14,7 @@ import Stickers from './pages/Stickers';
 import Billing from './pages/Billing';
 import Withdrawals from './pages/Withdrawals';
 import Tasks from './pages/Tasks';
+import Levels from './pages/Levels';
 
 function App() {
   return (
@@ -33,6 +34,7 @@ function App() {
               <Route path="billing" element={<Billing />} />
               <Route path="withdrawals" element={<Withdrawals />} />
               <Route path="tasks" element={<Tasks />} />
+              <Route path="levels" element={<Levels />} />
             </Route>
           </Routes>
         </ToastProvider>

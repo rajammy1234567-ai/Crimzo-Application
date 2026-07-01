@@ -56,9 +56,13 @@ async function initDatabase() {
     require('../models/UserSticker');
     require('../models/GiftHistory');
     require('../models/Message');
+    require('../models/Level');
 
     const { seedPremiumStickers } = require('../utils/stickerSeed');
     await seedPremiumStickers();
+
+    const { seedDefaultLevels } = require('../utils/levelSeed');
+    await seedDefaultLevels();
 
     const { seedDefaultTasks } = require('../utils/taskSeed');
     await seedDefaultTasks();
