@@ -3,7 +3,7 @@ pid: 12432
 cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
 command: "taskkill /PID 20052 /F; Start-Sleep -Seconds 2; node \"D:/Programming/Viz_Official_01/Crimzo/crimzo/crimzo_app_backend/server.js\""
 started_at: 2026-07-01T06:58:15.415Z
-running_for_ms: 204996   
+running_for_ms: 5589992  
 ---
 SUCCESS: The process with PID 20052 has been terminated.
 ✅ Cloudinary configured (production media hosting)
@@ -19,3 +19,33 @@ SUCCESS: The process with PID 20052 has been terminated.
 ✅ Billing: video call ₹1/min, live talk ₹1/min
 [PK Ranking] Backfilled stats for 4 battle(s)
 🧹 Reset 4 stale is_online user(s)
+=== LOGIN ATTEMPT ===
+Email: divyanshuuser22@gmail.com
+Users found: 1
+User found: {
+  id: '6a3101a6925f441286d93d1e',
+  email: 'divyanshuuser22@gmail.com',
+  username: 'divyanshu000',
+  hasPasswordHash: true
+}
+Password valid: true
+Login successful for user: 6a3101a6925f441286d93d1e
+User connected: NSrwW3JNwEkUGa7bAAAC
+User connected: rUu9NX9uEWfTFTfKAAAD
+User 6a3101a6925f441286d93d1e joined personal room
+User 6a3101a6925f441286d93d1e joined personal room
+User 6a3101a6925f441286d93d1e app presence (1 active)
+User disconnected: rUu9NX9uEWfTFTfKAAAD
+User 6a3101a6925f441286d93d1e left app presence (0 active)
+User disconnected: NSrwW3JNwEkUGa7bAAAC
+User 6a3101a6925f441286d93d1e left app presence (0 active)
+User connected: _Wf1xCJ3hHrmOIXWAAAF
+User 6a3101a6925f441286d93d1e joined personal room
+User connected: F4fFs6Td5ZuiJS6UAAAH
+User 6a3101a6925f441286d93d1e joined personal room
+User 6a3101a6925f441286d93d1e app presence (1 active)
+User disconnected: _Wf1xCJ3hHrmOIXWAAAF
+User 6a3101a6925f441286d93d1e left app presence (1 active)
+User disconnected: F4fFs6Td5ZuiJS6UAAAH
+User 6a3101a6925f441286d93d1e left app presence (0 active)
+🧹 Cleaned up 1 stale live session(s)

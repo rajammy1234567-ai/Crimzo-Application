@@ -1,0 +1,102 @@
+---
+pid: 8344
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "$dir = \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\\assets\\models\\golf_gti\"; $out = \"$dir\\_compress_tmp\"; New-Item -ItemType Directory -Force -Path $out | Out-Null; npx --yes @gltf-transform/cli optimize \"$dir\\scene-v1.glb\" \"$out\\scene-v1.glb\" --texture-compress webp --texture-size 1024 2>&1; npx --yes @gltf-transform/cli optimize \"$dir\\scene-v2.glb\" \"$out\\scene-v2.glb\" --texture-compress webp --texture-size 1024 2>&1; npx --yes @gltf-transform/cli optimize \"$dir\\scene-v3.glb\" \"$out\\scene-v3.glb\" --texture-compress webp --texture-size 1024 --simplify-ratio 0.35 2>&1; Get-ChildItem $out | Select-Object Name, @{N='MB';E={[math]::Round($_.Length/1MB,2)}}"
+started_at: 2026-07-01T08:13:54.791Z
+running_for_ms: 1050011  
+---
+❯ dedup
+✔ dedup                74ms
+❯ instance
+✔ instance             5ms
+❯ palette
+✔ palette              49ms
+❯ flatten
+✔ flatten              35ms
+❯ join
+✔ join                 270ms
+❯ weld
+✔ weld                 79ms
+❯ simplify
+✔ simplify             184ms
+❯ resample
+✔ resample             1ms
+❯ prune
+✔ prune                123ms
+❯ sparse
+✔ sparse               44ms
+❯ textureCompress
+✔ textureCompress      535ms
+❯ meshopt
+warn: quantize: Skipping TEXCOORD_0; out of [0,1] range.
+warn: quantize: Skipping TEXCOORD_0; out of [0,1] range.
+warn: quantize: Skipping TEXCOORD_0; out of [0,1] range.
+warn: quantize: Skipping TEXCOORD_0; out of [0,1] range.
+warn: quantize: Skipping TEXCOORD_0; out of [0,1] range.
+warn: quantize: Skipping TEXCOORD_0; out of [0,1] range.
+warn: quantize: Skipping TEXCOORD_0; out of [0,1] range.
+✔ meshopt              228ms
+
+info: scene-v1.glb (7.14 MB) → scene-v1.glb (1.37 MB)
+❯ dedup
+✔ dedup                16ms
+❯ instance
+✔ instance             2ms
+❯ palette
+✔ palette              29ms
+❯ flatten
+✔ flatten              7ms
+❯ join
+✔ join                 404ms
+❯ weld
+✔ weld                 345ms
+❯ simplify
+✔ simplify             1,210ms
+❯ resample
+✔ resample             1ms
+❯ prune
+✔ prune                215ms
+❯ sparse
+✔ sparse               60ms
+❯ textureCompress
+✔ textureCompress      912ms
+❯ meshopt
+warn: quantize: Skipping TEXCOORD_0; out of [0,1] range.
+warn: quantize: Skipping TEXCOORD_0; out of [0,1] range.
+✔ meshopt              330ms
+
+info: scene-v2.glb (25.35 MB) → scene-v2.glb (1.67 MB)
+❯ dedup
+✔ dedup                156ms
+❯ instance
+✔ instance             16ms
+❯ palette
+✔ palette              13ms
+❯ flatten
+✔ flatten              16ms
+❯ join
+✔ join                 1,553ms
+❯ weld
+✔ weld                 2,038ms
+❯ simplify
+✔ simplify             3,205ms
+❯ resample
+✔ resample             0ms
+❯ prune
+✔ prune                5ms
+❯ sparse
+✔ sparse               683ms
+❯ textureCompress
+✔ textureCompress      1ms
+❯ meshopt
+✔ meshopt              5,234ms
+
+info: scene-v3.glb (130.92 MB) → scene-v3.glb (16.04 MB)
+
+Name           MB
+----           --
+scene-v1.glb 1.31
+scene-v2.glb 1.59
+scene-v3.glb 15.3
+
+

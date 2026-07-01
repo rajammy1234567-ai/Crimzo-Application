@@ -1,13 +1,14 @@
-import React, { useCallback, useRef } from 'react';
-import { View, StyleSheet, PanResponder, Text, ActivityIndicator } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, StyleSheet, PanResponder, Text, ActivityIndicator, LayoutChangeEvent, Dimensions } from 'react-native';
 import { GLView, type ExpoWebGLRenderingContext } from 'expo-gl';
 import { Renderer } from 'expo-three';
 import * as THREE from 'three';
-import { loadGltfFromAsset } from '../../lib/loadGltfModelNative';
+import { createFallbackCarGroup, loadShowroomCarGroup, preloadShowroomModel } from '../../lib/loadGltfModelNative';
 
 type Props = {
   modelAsset: number;
   height?: number;
+  width?: number;
   autoRotate?: boolean;
 };
 
@@ -18,56 +19,21 @@ type SceneRefs = {
   autoRotate: boolean;
 };
 
-/** expo-gl does not implement renderbufferStorageMultisample — strip transmission/clearcoat. */
-function makeExpoSafeMaterial(mat: THREE.Material): THREE.Material {
-  if (mat instanceof THREE.MeshPhysicalMaterial) {
-    const safe = new THREE.MeshStandardMaterial({
-      color: mat.color,
-      metalness: Math.min(mat.metalness, 1),
-      roughness: Math.max(mat.roughness, 0.04),
-      map: mat.map,
-      normalMap: mat.normalMap,
-      emissive: mat.emissive,
-      emissiveMap: mat.emissiveMap,
-      aoMap: mat.aoMap,
-      transparent: mat.transparent,
-      opacity: mat.opacity,
-      side: mat.side,
-    });
-    mat.dispose();
-    return safe;
-  }
-  if (mat instanceof THREE.MeshStandardMaterial) {
-    return mat;
-  }
-  if (mat instanceof THREE.MeshBasicMaterial || mat instanceof THREE.MeshLambertMaterial) {
-    return mat;
-  }
-  const anyMat = mat as THREE.MeshStandardMaterial & { color?: THREE.Color; map?: THREE.Texture };
-  const fallback = new THREE.MeshStandardMaterial({
-    color: anyMat.color?.clone?.() ?? new THREE.Color(0xaaaaaa),
-    map: anyMat.map ?? null,
-    metalness: 0.3,
-    roughness: 0.6,
-  });
-  mat.dispose();
-  return fallback;
-}
+const { width: SCREEN_W } = Dimensions.get('window');
 
-function sanitizeModelForExpoGL(root: THREE.Object3D) {
-  root.traverse((child) => {
+function disposeGroup(group: THREE.Group) {
+  group.traverse((child) => {
     if (!(child instanceof THREE.Mesh)) return;
-    if (Array.isArray(child.material)) {
-      child.material = child.material.map(makeExpoSafeMaterial);
-    } else {
-      child.material = makeExpoSafeMaterial(child.material);
-    }
+    child.geometry?.dispose();
+    const mats = Array.isArray(child.material) ? child.material : [child.material];
+    mats.forEach((m) => m.dispose?.());
   });
 }
 
 export default function CarShowroomViewer({
   modelAsset,
-  height = 240,
+  height = 260,
+  width,
   autoRotate = true,
 }: Props) {
   const backgroundColor = 0x14141c;
@@ -79,13 +45,36 @@ export default function CarShowroomViewer({
   });
   const dragStartX = useRef(0);
   const dragBaseRotation = useRef(0);
-  const [loading, setLoading] = React.useState(true);
-  const [loadError, setLoadError] = React.useState<string | null>(null);
-  const glRef = useRef<ExpoWebGLRenderingContext | null>(null);
-  const rendererRef = useRef<Renderer | null>(null);
+  const lastFrameMs = useRef(0);
   const frameRef = useRef<number | null>(null);
+  const scene3d = useRef<THREE.Scene | null>(null);
+  const rendererRef = useRef<Renderer | null>(null);
+  const glRef = useRef<ExpoWebGLRenderingContext | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const mountedRef = useRef(true);
+
+  const [layoutW, setLayoutW] = useState(width ?? 0);
+  const [loadingGlb, setLoadingGlb] = useState(true);
+  const [glReady, setGlReady] = useState(false);
+
+  const effectiveW = Math.round(width ?? layoutW ?? SCREEN_W - 56);
 
   sceneRef.current.autoRotate = autoRotate;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    preloadShowroomModel(modelAsset);
+    return () => { mountedRef.current = false; };
+  }, [modelAsset]);
+
+  useEffect(() => {
+    if (width && width > 0) setLayoutW(width);
+  }, [width]);
+
+  const onLayout = useCallback((e: LayoutChangeEvent) => {
+    const w = Math.round(e.nativeEvent.layout.width);
+    if (w > 0) setLayoutW((prev) => (prev === w ? prev : w));
+  }, []);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -99,200 +88,181 @@ export default function CarShowroomViewer({
       onPanResponderMove: (evt) => {
         const deltaX = evt.nativeEvent.pageX - dragStartX.current;
         sceneRef.current.rotationY = dragBaseRotation.current + deltaX * 0.012;
-        if (sceneRef.current.carGroup) {
-          sceneRef.current.carGroup.rotation.y = sceneRef.current.rotationY;
-        }
+        sceneRef.current.carGroup?.rotation.set(0, sceneRef.current.rotationY, 0);
       },
-      onPanResponderRelease: (evt) => {
-        const deltaX = evt.nativeEvent.pageX - dragStartX.current;
-        sceneRef.current.rotationY = dragBaseRotation.current + deltaX * 0.012;
-        sceneRef.current.dragging = false;
-      },
-      onPanResponderTerminate: () => {
-        sceneRef.current.dragging = false;
-      },
+      onPanResponderRelease: () => { sceneRef.current.dragging = false; },
+      onPanResponderTerminate: () => { sceneRef.current.dragging = false; },
     }),
   ).current;
 
-  const disposeScene = useCallback(() => {
-    if (frameRef.current != null) {
-      cancelAnimationFrame(frameRef.current);
-      frameRef.current = null;
+  const startRenderLoop = useCallback((gl: ExpoWebGLRenderingContext, renderer: Renderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) => {
+    lastFrameMs.current = performance.now();
+    const tick = (now: number) => {
+      if (!mountedRef.current) return;
+      frameRef.current = requestAnimationFrame(tick);
+      const delta = Math.min((now - lastFrameMs.current) / 1000, 0.05);
+      lastFrameMs.current = now;
+      const refs = sceneRef.current;
+      if (refs.carGroup && refs.autoRotate && !refs.dragging) {
+        refs.rotationY += delta * 0.5;
+        refs.carGroup.rotation.y = refs.rotationY;
+      }
+      renderer.render(scene, camera);
+      gl.endFrameEXP();
+    };
+    requestAnimationFrame(tick);
+  }, []);
+
+  const swapCarGroup = useCallback((scene: THREE.Scene, next: THREE.Group) => {
+    const prev = sceneRef.current.carGroup;
+    if (prev) {
+      scene.remove(prev);
+      disposeGroup(prev);
     }
-    sceneRef.current.carGroup = null;
-    rendererRef.current = null;
-    glRef.current = null;
+    next.rotation.y = sceneRef.current.rotationY;
+    sceneRef.current.carGroup = next;
+    scene.add(next);
   }, []);
 
   const onContextCreate = useCallback(async (gl: ExpoWebGLRenderingContext) => {
-    disposeScene();
+    if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
     glRef.current = gl;
-    setLoading(true);
-    setLoadError(null);
+    setGlReady(true);
+    setLoadingGlb(true);
 
-    const { drawingBufferWidth: width, drawingBufferHeight: heightPx } = gl;
-    const renderer = new Renderer({
-      gl,
-      antialias: false,
-      alpha: false,
-      powerPreference: 'default',
-    });
-    renderer.setSize(width, heightPx);
+    const w = gl.drawingBufferWidth || effectiveW;
+    const h = gl.drawingBufferHeight || height;
+    const renderer = new Renderer({ gl, antialias: false, alpha: false });
+    renderer.setSize(w, h);
     renderer.setPixelRatio(1);
     renderer.setClearColor(backgroundColor);
-    renderer.shadowMap.enabled = false;
     rendererRef.current = renderer;
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(backgroundColor, 8, 18);
+    scene3d.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(42, width / heightPx, 0.1, 1000);
-    camera.position.set(0, 1.2, 5.4);
-    camera.lookAt(0, 0.5, 0);
+    const camera = new THREE.PerspectiveCamera(42, w / Math.max(h, 1), 0.1, 200);
+    camera.position.set(0, 1.35, 5.4);
+    camera.lookAt(0, 0.75, 0);
+    cameraRef.current = camera;
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.55);
-    scene.add(ambient);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+    const key = new THREE.DirectionalLight(0xffffff, 1.5);
+    key.position.set(4, 8, 6);
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(0x99bbff, 0.65);
+    fill.position.set(-5, 3, -4);
+    scene.add(fill);
 
-    const keyLight = new THREE.DirectionalLight(0xffffff, 1.35);
-    keyLight.position.set(5, 9, 6);
-    scene.add(keyLight);
+    const floor = new THREE.Mesh(
+      new THREE.CircleGeometry(2.8, 48),
+      new THREE.MeshStandardMaterial({ color: 0x2a2a38, metalness: 0.35, roughness: 0.55 }),
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = 0;
+    scene.add(floor);
 
-    const fillLight = new THREE.DirectionalLight(0x88aaff, 0.45);
-    fillLight.position.set(-6, 4, -4);
-    scene.add(fillLight);
-
-    const rimLight = new THREE.DirectionalLight(0xffd6a0, 0.65);
-    rimLight.position.set(0, 6, -9);
-    scene.add(rimLight);
-
-    const spot = new THREE.SpotLight(0xffffff, 1.1, 20, Math.PI / 5, 0.35, 1);
-    spot.position.set(0, 8, 2);
-    spot.target.position.set(0, 0, 0);
-    scene.add(spot);
-    scene.add(spot.target);
-
-    const groundGeo = new THREE.CircleGeometry(5.5, 48);
-    const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x23232f,
-      metalness: 0.55,
-      roughness: 0.38,
-    });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.02;
-    scene.add(ground);
-
-    const ringGeo = new THREE.RingGeometry(1.35, 1.55, 64);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0xff2d55,
-      transparent: true,
-      opacity: 0.35,
-      side: THREE.DoubleSide,
-    });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(1.35, 1.55, 48),
+      new THREE.MeshBasicMaterial({ color: 0xff2d55, transparent: true, opacity: 0.45, side: THREE.DoubleSide }),
+    );
     ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.01;
+    ring.position.y = 0.015;
     scene.add(ring);
 
+    const shadow = new THREE.Mesh(
+      new THREE.CircleGeometry(1.1, 32),
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22 }),
+    );
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = 0.02;
+    scene.add(shadow);
+
+    swapCarGroup(scene, createFallbackCarGroup());
+    startRenderLoop(gl, renderer, scene, camera);
+
     try {
-      const gltf = await loadGltfFromAsset(modelAsset);
-      sanitizeModelForExpoGL(gltf.scene);
-
-      const carGroup = new THREE.Group();
-      carGroup.add(gltf.scene);
-
-      const box = new THREE.Box3().setFromObject(gltf.scene);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-
-      gltf.scene.position.sub(center);
-      const maxDim = Math.max(size.x, size.y, size.z) || 1;
-      const scale = 3.15 / maxDim;
-      carGroup.scale.set(scale, scale, scale);
-      carGroup.position.y = 0.05;
-
-      scene.add(carGroup);
-      sceneRef.current.carGroup = carGroup;
-      sceneRef.current.rotationY = 0;
-      carGroup.rotation.y = 0;
-      setLoading(false);
+      const carGroup = await loadShowroomCarGroup(modelAsset);
+      if (!mountedRef.current || scene3d.current !== scene) return;
+      swapCarGroup(scene, carGroup);
     } catch (err) {
-      console.error('Showroom model load error:', err);
-      setLoadError('Could not load 3D model');
-      setLoading(false);
+      console.error('CarShowroomViewer load:', err);
+    } finally {
+      if (mountedRef.current) setLoadingGlb(false);
     }
+  }, [effectiveW, height, modelAsset, startRenderLoop, swapCarGroup]);
 
-    const render = () => {
-      frameRef.current = requestAnimationFrame(render);
-      const refs = sceneRef.current;
-      if (refs.carGroup && refs.autoRotate && !refs.dragging) {
-        refs.rotationY += 0.006;
-        refs.carGroup.rotation.y = refs.rotationY;
-      }
-      try {
-        renderer.render(scene, camera);
-        gl.endFrameEXP();
-      } catch (renderErr) {
-        console.error('Showroom render error:', renderErr);
-        setLoadError('3D preview not supported on this device');
-        if (frameRef.current != null) {
-          cancelAnimationFrame(frameRef.current);
-          frameRef.current = null;
-        }
-      }
-    };
-    render();
-  }, [disposeScene, modelAsset]);
+  useEffect(() => () => {
+    if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
+  }, []);
+
+  const canMountGl = effectiveW > 0;
 
   return (
-    <View style={[s.container, { height }]} {...panResponder.panHandlers}>
-      <GLView
-        key={String(modelAsset)}
-        style={s.glView}
-        onContextCreate={onContextCreate}
-      />
-      {loading && !loadError ? (
-        <View style={s.overlay}>
+    <View
+      style={[s.wrap, { height, width: canMountGl ? effectiveW : '100%' }]}
+      collapsable={false}
+      onLayout={onLayout}
+      {...panResponder.panHandlers}
+    >
+      {canMountGl ? (
+        <GLView
+          key={`gl-${effectiveW}x${height}`}
+          collapsable={false}
+          style={{ width: effectiveW, height }}
+          onContextCreate={onContextCreate}
+        />
+      ) : (
+        <View style={[s.placeholder, { height }]}>
           <ActivityIndicator color="#FF2D55" />
-          <Text style={s.overlayText}>Loading showroom…</Text>
+        </View>
+      )}
+
+      {loadingGlb ? (
+        <View style={s.badge} pointerEvents="none">
+          <ActivityIndicator size="small" color="#FF2D55" />
+          <Text style={s.badgeText}>Loading car…</Text>
         </View>
       ) : null}
-      {loadError ? (
-        <View style={s.overlay}>
-          <Text style={s.errorText}>{loadError}</Text>
-        </View>
+
+      {glReady && !loadingGlb ? (
+        <Text style={s.hint} pointerEvents="none">Drag to rotate</Text>
       ) : null}
-      <Text style={s.dragHint}>Drag to rotate</Text>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  container: {
-    width: '100%',
+  wrap: {
     backgroundColor: '#14141c',
-    borderRadius: 16,
     overflow: 'hidden',
+    alignSelf: 'center',
   },
-  glView: { flex: 1 },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
+  placeholder: {
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(10,10,15,0.55)',
-    gap: 8,
+    backgroundColor: '#14141c',
   },
-  overlayText: { color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '600' },
-  errorText: { color: '#FF6B8A', fontSize: 12, fontWeight: '700' },
-  dragHint: {
+  badge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  badgeText: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '700' },
+  hint: {
     position: 'absolute',
     bottom: 8,
     alignSelf: 'center',
-    color: 'rgba(255,255,255,0.28)',
+    color: 'rgba(255,255,255,0.3)',
     fontSize: 9,
     fontWeight: '700',
-    letterSpacing: 0.6,
   },
 });

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { appAlert } from '../../lib/appAlert';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Image, FlatList, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Animated, StatusBar, Share, RefreshControl, Modal } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { Audio } from 'expo-av';
+import { playReelMusic, stopReelMusic } from '../../lib/reelMusicPlayer';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -95,8 +95,82 @@ function normalizeComment(raw: any): Comment {
   };
 }
 
+/** Only one native video decoder — mounts for the active reel only. */
+function ReelVideoLayer({
+  item,
+  token,
+}: {
+  item: Reel;
+  token?: string | null;
+}) {
+  const hasOverlayAudio = !!item.audio_url;
+  const videoSource = resolveMediaUrl(item.video_url);
+  const player = useVideoPlayer(videoSource, (p) => {
+    p.loop = true;
+    p.muted = hasOverlayAudio;
+    p.volume = hasOverlayAudio ? 0 : 1;
+  });
+
+  useEffect(() => {
+    try {
+      player.play();
+    } catch {
+      // player may still be initializing
+    }
+    return () => {
+      try {
+        player.pause();
+      } catch {
+        // ignore released player
+      }
+      void stopReelMusic();
+    };
+  }, [player]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      if (!hasOverlayAudio || !item.audio_url) {
+        await stopReelMusic();
+        return;
+      }
+
+      try {
+        const streamUrl = await resolveReelAudioUrl(
+          item.audio_url,
+          item.external_source,
+          item.external_id,
+          token,
+        );
+        if (cancelled) return;
+        await playReelMusic({
+          url: streamUrl,
+          positionMillis: item.audio_start_ms || 0,
+        });
+      } catch (e) {
+        console.error('Reel overlay audio error:', e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasOverlayAudio, item.audio_url, item.audio_start_ms, item.external_source, item.external_id, token]);
+
+  return (
+    <VideoView
+      player={player}
+      style={StyleSheet.absoluteFill}
+      contentFit="cover"
+      nativeControls={false}
+      {...(Platform.OS === 'android' ? { surfaceType: 'textureView' as const } : {})}
+    />
+  );
+}
+
 // ── Single Reel Item Component ──
-function ReelItem({
+const ReelItem = React.memo(function ReelItem({
   item,
   isActive,
   reelHeight,
@@ -135,76 +209,6 @@ function ReelItem({
   const doubleTapRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bigHeartOpacity = useRef(new Animated.Value(0)).current;
   const bigHeartScale = useRef(new Animated.Value(0.5)).current;
-
-  const hasOverlayAudio = !!item.audio_url;
-  const videoSource = resolveMediaUrl(item.video_url);
-  const player = useVideoPlayer(videoSource, (p) => {
-    p.loop = true;
-    p.muted = hasOverlayAudio;
-    p.volume = hasOverlayAudio ? 0 : 1;
-  });
-  const overlaySoundRef = useRef<Audio.Sound | null>(null);
-
-  useEffect(() => {
-    if (isActive) {
-      player.play();
-    } else {
-      player.pause();
-    }
-  }, [isActive, player]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      if (overlaySoundRef.current) {
-        try {
-          await overlaySoundRef.current.stopAsync();
-          await overlaySoundRef.current.unloadAsync();
-        } catch {
-          // ignore
-        }
-        overlaySoundRef.current = null;
-      }
-
-      if (!isActive || !hasOverlayAudio || !item.audio_url) return;
-
-      try {
-        const streamUrl = await resolveReelAudioUrl(
-          item.audio_url,
-          item.external_source,
-          item.external_id,
-          token,
-        );
-        await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: streamUrl },
-          {
-            shouldPlay: true,
-            isLooping: true,
-            volume: 1,
-            positionMillis: item.audio_start_ms || 0,
-          },
-        );
-        if (cancelled) {
-          await sound.unloadAsync();
-          return;
-        }
-        overlaySoundRef.current = sound;
-      } catch (e) {
-        console.error('Reel overlay audio error:', e);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (overlaySoundRef.current) {
-        void overlaySoundRef.current.stopAsync().catch(() => {});
-        void overlaySoundRef.current.unloadAsync().catch(() => {});
-        overlaySoundRef.current = null;
-      }
-    };
-  }, [isActive, hasOverlayAudio, item.audio_url, item.audio_start_ms, item.external_source, item.external_id, token]);
 
   useEffect(() => {
     setLiked(item.is_liked);
@@ -302,12 +306,11 @@ function ReelItem({
         onPress={handleDoubleTap}
         style={styles.videoTouchable}
       >
-        <VideoView
-          player={player}
-          style={StyleSheet.absoluteFill}
-          contentFit="cover"
-          nativeControls={false}
-        />
+        {isActive ? (
+          <ReelVideoLayer item={item} token={token} />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, styles.reelPoster]} />
+        )}
       </TouchableOpacity>
 
       {/* Bottom gradient */}
@@ -450,7 +453,7 @@ function ReelItem({
       </View>
     </View>
   );
-}
+});
 
 // ── Comments Bottom Sheet ──
 function CommentsSheet({
@@ -694,7 +697,7 @@ export default function ReelsScreen() {
   const [editingCaption, setEditingCaption] = useState('');
   const recordedViewsRef = useRef<Set<string>>(new Set());
 
-  const fetchReels = useCallback(async (mode: FeedMode) => {
+  const fetchReels = useCallback(async (mode: FeedMode, options?: { resetIndex?: boolean }) => {
     if (!token) { setLoading(false); setRefreshing(false); return; }
     try {
       const data = await apiGet<{ success?: boolean; reels?: Reel[] }>(
@@ -703,7 +706,7 @@ export default function ReelsScreen() {
       );
       if (data.success && Array.isArray(data.reels)) {
         setReels(data.reels.map(normalizeReelFromApi));
-        setActiveIndex(0);
+        if (options?.resetIndex !== false) setActiveIndex(0);
       }
     } catch (e) {
       console.error('Fetch reels error:', e);
@@ -747,18 +750,17 @@ export default function ReelsScreen() {
     });
   }, []);
 
-  // Refetch when screen comes back into focus (picks up newly uploaded reels)
   useFocusEffect(
     useCallback(() => {
       setScreenFocused(true);
-      fetchReels(feedMode);
       return () => {
         setScreenFocused(false);
+        void stopReelMusic();
         setCommentsVisible(false);
         setCommentReelId(null);
         setShowEditModal(false);
       };
-    }, [fetchReels, feedMode])
+    }, [])
   );
 
   const handleLike = async (reelId: string) => {
@@ -923,7 +925,7 @@ export default function ReelsScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchReels(feedMode);
+    fetchReels(feedMode, { resetIndex: false });
   };
 
   const handleCreateReel = () => {
@@ -1048,9 +1050,9 @@ export default function ReelsScreen() {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FF2D55" progressViewOffset={60} />
         }
-        removeClippedSubviews={false}
-        maxToRenderPerBatch={2}
-        windowSize={3}
+        removeClippedSubviews={Platform.OS === 'android'}
+        maxToRenderPerBatch={1}
+        windowSize={2}
         initialNumToRender={1}
         extraData={`${activeIndex}-${reelHeight}`}
       />
@@ -1237,6 +1239,9 @@ const styles = StyleSheet.create({
   videoTouchable: {
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
+  },
+  reelPoster: {
+    backgroundColor: '#0a0a0a',
   },
   bottomGradient: {
     position: 'absolute',

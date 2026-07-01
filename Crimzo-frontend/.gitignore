@@ -1,6 +1,8 @@
 node_modules
 .expo
 .metro-cache
+assets/models/**/_originals/
+assets/models/**/_compress_tmp/
 
 .env
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files

@@ -1,0 +1,88 @@
+---
+pid: 8584
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "$dir = \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\\assets\\models\\golf_gti\"; $out = \"$dir\\_compress_tmp\"; $orig = \"$dir\\_originals\"; New-Item -ItemType Directory -Force -Path $out,$orig | Out-Null; foreach ($f in @('scene-v1.glb','scene-v2.glb','scene-v3.glb')) { if (-not (Test-Path \"$orig\\$f\")) { Copy-Item \"$dir\\$f\" \"$orig\\$f\" -Force } }; npx --yes @gltf-transform/cli optimize \"$orig\\scene-v1.glb\" \"$out\\scene-v1.glb\" --texture-compress webp --texture-size 1024 --compress false 2>&1; npx --yes @gltf-transform/cli optimize \"$orig\\scene-v2.glb\" \"$out\\scene-v2.glb\" --texture-compress webp --texture-size 1024 --compress false 2>&1; npx --yes @gltf-transform/cli optimize \"$orig\\scene-v3.glb\" \"$out\\scene-v3.glb\" --texture-compress webp --texture-size 512 --compress false --simplify-ratio 0.15 --simplify-error 0.05 2>&1; Get-ChildItem $out -Filter \"scene-v*.glb\" | Select-Object Name, @{N='MB';E={[math]::Round($_.Length/1MB,2)}}"
+started_at: 2026-07-01T08:15:39.135Z
+running_for_ms: 945000   
+---
+❯ dedup
+✔ dedup                207ms
+❯ instance
+✔ instance             12ms
+❯ palette
+✔ palette              161ms
+❯ flatten
+✔ flatten              80ms
+❯ join
+✔ join                 865ms
+❯ weld
+✔ weld                 170ms
+❯ simplify
+✔ simplify             328ms
+❯ resample
+✔ resample             1ms
+❯ prune
+✔ prune                236ms
+❯ sparse
+✔ sparse               165ms
+❯ textureCompress
+✔ textureCompress      1,003ms
+
+info: scene-v1.glb (7.14 MB) → scene-v1.glb (4.11 MB)
+❯ dedup
+✔ dedup                33ms
+❯ instance
+✔ instance             3ms
+❯ palette
+✔ palette              66ms
+❯ flatten
+✔ flatten              19ms
+❯ join
+✔ join                 938ms
+❯ weld
+✔ weld                 703ms
+❯ simplify
+✔ simplify             2,239ms
+❯ resample
+✔ resample             1ms
+❯ prune
+✔ prune                348ms
+❯ sparse
+✔ sparse               166ms
+❯ textureCompress
+✔ textureCompress      1,462ms
+
+info: scene-v2.glb (25.35 MB) → scene-v2.glb (6 MB)
+❯ dedup
+✔ dedup                281ms
+❯ instance
+✔ instance             30ms
+❯ palette
+✔ palette              15ms
+❯ flatten
+✔ flatten              23ms
+❯ join
+✔ join                 2,562ms
+❯ weld
+✔ weld                 2,959ms
+❯ simplify
+✔ simplify             5,028ms
+❯ resample
+✔ resample             1ms
+❯ prune
+✔ prune                3ms
+❯ sparse
+✔ sparse               1,232ms
+❯ textureCompress
+✔ textureCompress      1ms
+
+info: scene-v3.glb (130.92 MB) → scene-v3.glb (107.95 MB)
+
+Name                   MB
+----                   --
+scene-v1.glb         3.92
+scene-v2.glb         5.73
+scene-v3-small.glb  11.38
+scene-v3.glb       102.95
+
+

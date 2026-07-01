@@ -1,0 +1,40 @@
+---
+pid: 15584
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "$dir = \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\\assets\\models\\golf_gti\"; $tmp = \"$dir\\_compress_tmp\"; npx --yes @gltf-transform/cli optimize \"$tmp\\scene-v3.glb\" \"$tmp\\scene-v3-small.glb\" --texture-compress webp --texture-size 512 --simplify-ratio 0.2 2>&1; Get-Item \"$tmp\\scene-v3-small.glb\" | Select-Object Name, @{N='MB';E={[math]::Round($_.Length/1MB,2)}}"
+started_at: 2026-07-01T08:14:43.185Z
+running_for_ms: 1000007  
+---
+warn: Decoded EXT_meshopt_compression. Further compression will be lossy.
+❯ dedup
+✔ dedup                6ms
+❯ instance
+✔ instance             2ms
+❯ palette
+✔ palette              5ms
+❯ flatten
+✔ flatten              1ms
+❯ join
+✔ join                 743ms
+❯ weld
+✔ weld                 2,307ms
+❯ simplify
+✔ simplify             3,560ms
+❯ resample
+✔ resample             2ms
+❯ prune
+✔ prune                3ms
+❯ sparse
+✔ sparse               374ms
+❯ textureCompress
+✔ textureCompress      1ms
+❯ meshopt
+✔ meshopt              3,947ms
+
+info: scene-v3.glb (16.04 MB) → scene-v3-small.glb (11.93 MB)
+
+Name                  MB
+----                  --
+scene-v3-small.glb 11.38
+
+

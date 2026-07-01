@@ -1,0 +1,17 @@
+---
+pid: 20124
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "cd \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\"; npx tsc --noEmit 2>&1 | Select-String -Pattern \"levels|CarShowroom|loadGltf|LevelShowcase\""
+started_at: 2026-07-01T07:36:33.662Z
+running_for_ms: 3289994  
+---
+
+components/levels/LevelShowcaseRoom.tsx(9,31): error TS2307: Cannot find module './CarShowroomViewer' or its 
+corresponding type declarations.
+lib/loadGltfModelNative.ts(108,35): error TS2790: The operand of a 'delete' operator must be optional.
+lib/loadGltfModelNative.ts(124,3): error TS2322: Type '(blob: ReactNativeBlob) => string' is not assignable to type 
+'(obj: Blob | MediaSource) => string'.
+lib/loadGltfModelNative.ts(150,64): error TS2345: Argument of type '((error: Error) => void) | undefined' is not 
+assignable to parameter of type '((err: unknown) => void) | undefined'.
+
+

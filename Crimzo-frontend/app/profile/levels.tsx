@@ -14,8 +14,7 @@ import { appAlert } from '../../lib/appAlert';
 import { DiamondIcon } from '../../lib/currencyIcons';
 import LevelShowcaseRoom, { type ShowcaseLevel } from '../../components/levels/LevelShowcaseRoom';
 import LevelBadge from '../../components/levels/LevelBadge';
-import { hasShowcaseModel, resolveShowcaseModelAsset } from '../../lib/levelShowcaseModels';
-import CarShowroomViewer from '../../components/levels/CarShowroomViewer';
+import { hasShowcaseModel, resolveShowcaseModelAsset, resolveShowcaseModelLabel } from '../../lib/levelShowcaseModels';
 
 type LevelRow = ShowcaseLevel & {
   description: string;
@@ -41,7 +40,6 @@ export default function LevelsScreen() {
   const [offlineMode, setOfflineMode] = useState(false);
 
   const nextLevelData = levels.find((l) => l.is_next);
-  const nextModelAsset = nextLevelData ? resolveShowcaseModelAsset(nextLevelData) : null;
 
   const applyFallbackLevels = useCallback(() => {
     const ul = user?.user_level ?? 1;
@@ -81,22 +79,20 @@ export default function LevelsScreen() {
           throw firstErr;
         }
       }
-      if (res.success) {
+      if (res.success && res.levels?.length) {
         setOfflineMode(false);
-        setLevels(res.levels || []);
+        setLevels(res.levels);
         setEquippedLevel(res.equipped_level || 1);
         setUserLevel(res.user_level || 1);
         setDiamonds(res.diamonds ?? user?.diamonds ?? 0);
         setNextLevel(res.next_level || (res.user_level || 1) + 1);
+      } else {
+        applyFallbackLevels();
       }
     } catch (e) {
       const status = getApiErrorStatus(e);
-      const msg = (getApiErrorMessage(e) || '').toLowerCase();
-      if (status === 404 || msg === 'not found' || msg === 'user not found') {
-        applyFallbackLevels();
-      } else {
-        console.error('Fetch levels error:', e, { api: API_URL, status });
-      }
+      console.error('Fetch levels error:', e, { api: API_URL, status });
+      applyFallbackLevels();
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -200,6 +196,8 @@ export default function LevelsScreen() {
         </View>
       ) : (
         <ScrollView
+          removeClippedSubviews={false}
+          nestedScrollEnabled
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void fetchLevels(); }} tintColor="#FF2D55" />}
           contentContainerStyle={{ paddingBottom: 40 }}
         >
@@ -213,18 +211,13 @@ export default function LevelsScreen() {
             ) : null}
           </View>
 
-          {nextLevelData && nextModelAsset && !nextLevelData.owned ? (
+          {nextLevelData && !nextLevelData.owned && resolveShowcaseModelAsset(nextLevelData) ? (
             <View style={s.previewBlock}>
-              <Text style={s.previewTitle}>Next unlock preview · L{nextLevelData.level_number}</Text>
-              <Text style={s.previewSub}>{nextLevelData.name} — buy to add to your garage</Text>
-              <View style={s.previewFrame}>
-                <CarShowroomViewer
-                  key={`preview-${nextLevelData.level_number}`}
-                  modelAsset={nextModelAsset}
-                  height={220}
-                  autoRotate
-                />
-              </View>
+              <Text style={s.previewTitle}>Next unlock · L{nextLevelData.level_number}</Text>
+              <Text style={s.previewSub}>
+                {nextLevelData.name} — {resolveShowcaseModelLabel(nextLevelData)} 3D
+              </Text>
+              <Text style={s.previewHint}>Scroll down to LEVEL GARAGE for full 3D view</Text>
             </View>
           ) : null}
 
@@ -325,7 +318,12 @@ const s = StyleSheet.create({
   previewBlock: { marginHorizontal: 14, marginBottom: 12 },
   previewTitle: { color: '#FFF', fontSize: 13, fontWeight: '800' },
   previewSub: { color: 'rgba(255,255,255,0.35)', fontSize: 10, marginTop: 2, marginBottom: 8 },
-  previewFrame: { borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,45,85,0.25)' },
+  previewHint: {
+    marginTop: 6,
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 10,
+    fontWeight: '600',
+  },
   sectionTitle: { color: '#FFF', fontSize: 16, fontWeight: '800', paddingHorizontal: 16, marginTop: 8 },
   sectionSub: { color: 'rgba(255,255,255,0.35)', fontSize: 11, paddingHorizontal: 16, marginBottom: 10 },
   levelCard: {

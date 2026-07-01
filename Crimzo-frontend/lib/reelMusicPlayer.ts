@@ -20,6 +20,7 @@ type PlayOptions = {
   url: string;
   loop?: boolean;
   volume?: number;
+  positionMillis?: number;
   onFinish?: () => void;
 };
 
@@ -28,6 +29,7 @@ export async function playReelMusic({
   url,
   loop = true,
   volume = 1,
+  positionMillis = 0,
   onFinish,
 }: PlayOptions): Promise<void> {
   await stopReelMusic();
@@ -37,7 +39,7 @@ export async function playReelMusic({
 
   const { sound } = await Audio.Sound.createAsync(
     { uri: url },
-    { shouldPlay: true, isLooping: loop, volume },
+    { shouldPlay: true, isLooping: loop, volume, positionMillis },
   );
 
   if (generation !== loadGeneration) {
