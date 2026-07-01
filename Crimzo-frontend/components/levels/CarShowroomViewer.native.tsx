@@ -2,9 +2,8 @@ import React, { useCallback, useRef } from 'react';
 import { View, StyleSheet, PanResponder, Text, ActivityIndicator } from 'react-native';
 import { GLView, type ExpoWebGLRenderingContext } from 'expo-gl';
 import { Renderer } from 'expo-three';
-import { Asset } from 'expo-asset';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { loadGltfFromAsset } from '../../lib/loadGltfModelNative';
 
 type Props = {
   modelAsset: number;
@@ -18,6 +17,53 @@ type SceneRefs = {
   dragging: boolean;
   autoRotate: boolean;
 };
+
+/** expo-gl does not implement renderbufferStorageMultisample — strip transmission/clearcoat. */
+function makeExpoSafeMaterial(mat: THREE.Material): THREE.Material {
+  if (mat instanceof THREE.MeshPhysicalMaterial) {
+    const safe = new THREE.MeshStandardMaterial({
+      color: mat.color,
+      metalness: Math.min(mat.metalness, 1),
+      roughness: Math.max(mat.roughness, 0.04),
+      map: mat.map,
+      normalMap: mat.normalMap,
+      emissive: mat.emissive,
+      emissiveMap: mat.emissiveMap,
+      aoMap: mat.aoMap,
+      transparent: mat.transparent,
+      opacity: mat.opacity,
+      side: mat.side,
+    });
+    mat.dispose();
+    return safe;
+  }
+  if (mat instanceof THREE.MeshStandardMaterial) {
+    return mat;
+  }
+  if (mat instanceof THREE.MeshBasicMaterial || mat instanceof THREE.MeshLambertMaterial) {
+    return mat;
+  }
+  const anyMat = mat as THREE.MeshStandardMaterial & { color?: THREE.Color; map?: THREE.Texture };
+  const fallback = new THREE.MeshStandardMaterial({
+    color: anyMat.color?.clone?.() ?? new THREE.Color(0xaaaaaa),
+    map: anyMat.map ?? null,
+    metalness: 0.3,
+    roughness: 0.6,
+  });
+  mat.dispose();
+  return fallback;
+}
+
+function sanitizeModelForExpoGL(root: THREE.Object3D) {
+  root.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    if (Array.isArray(child.material)) {
+      child.material = child.material.map(makeExpoSafeMaterial);
+    } else {
+      child.material = makeExpoSafeMaterial(child.material);
+    }
+  });
+}
 
 export default function CarShowroomViewer({
   modelAsset,
@@ -85,17 +131,24 @@ export default function CarShowroomViewer({
     setLoadError(null);
 
     const { drawingBufferWidth: width, drawingBufferHeight: heightPx } = gl;
-    const renderer = new Renderer({ gl });
+    const renderer = new Renderer({
+      gl,
+      antialias: false,
+      alpha: false,
+      powerPreference: 'default',
+    });
     renderer.setSize(width, heightPx);
+    renderer.setPixelRatio(1);
     renderer.setClearColor(backgroundColor);
+    renderer.shadowMap.enabled = false;
     rendererRef.current = renderer;
 
     const scene = new THREE.Scene();
     scene.fog = new THREE.Fog(backgroundColor, 8, 18);
 
     const camera = new THREE.PerspectiveCamera(42, width / heightPx, 0.1, 1000);
-    camera.position.set(0, 1.15, 4.8);
-    camera.lookAt(0, 0.45, 0);
+    camera.position.set(0, 1.2, 5.4);
+    camera.lookAt(0, 0.5, 0);
 
     const ambient = new THREE.AmbientLight(0xffffff, 0.55);
     scene.add(ambient);
@@ -142,41 +195,29 @@ export default function CarShowroomViewer({
     scene.add(ring);
 
     try {
-      const asset = Asset.fromModule(modelAsset);
-      await asset.downloadAsync();
-      const uri = asset.localUri || asset.uri;
+      const gltf = await loadGltfFromAsset(modelAsset);
+      sanitizeModelForExpoGL(gltf.scene);
 
-      await new Promise<void>((resolve, reject) => {
-        const loader = new GLTFLoader();
-        loader.load(
-          uri,
-          (gltf) => {
-            const carGroup = new THREE.Group();
-            carGroup.add(gltf.scene);
+      const carGroup = new THREE.Group();
+      carGroup.add(gltf.scene);
 
-            const box = new THREE.Box3().setFromObject(gltf.scene);
-            const size = new THREE.Vector3();
-            box.getSize(size);
-            const center = new THREE.Vector3();
-            box.getCenter(center);
+      const box = new THREE.Box3().setFromObject(gltf.scene);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
 
-            gltf.scene.position.sub(center);
-            const maxDim = Math.max(size.x, size.y, size.z) || 1;
-            const scale = 2.35 / maxDim;
-            carGroup.scale.set(scale, scale, scale);
-            carGroup.position.y = 0.05;
+      gltf.scene.position.sub(center);
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      const scale = 3.15 / maxDim;
+      carGroup.scale.set(scale, scale, scale);
+      carGroup.position.y = 0.05;
 
-            scene.add(carGroup);
-            sceneRef.current.carGroup = carGroup;
-            sceneRef.current.rotationY = 0;
-            carGroup.rotation.y = 0;
-            setLoading(false);
-            resolve();
-          },
-          undefined,
-          (err) => reject(err),
-        );
-      });
+      scene.add(carGroup);
+      sceneRef.current.carGroup = carGroup;
+      sceneRef.current.rotationY = 0;
+      carGroup.rotation.y = 0;
+      setLoading(false);
     } catch (err) {
       console.error('Showroom model load error:', err);
       setLoadError('Could not load 3D model');
@@ -190,8 +231,17 @@ export default function CarShowroomViewer({
         refs.rotationY += 0.006;
         refs.carGroup.rotation.y = refs.rotationY;
       }
-      renderer.render(scene, camera);
-      gl.endFrameEXP();
+      try {
+        renderer.render(scene, camera);
+        gl.endFrameEXP();
+      } catch (renderErr) {
+        console.error('Showroom render error:', renderErr);
+        setLoadError('3D preview not supported on this device');
+        if (frameRef.current != null) {
+          cancelAnimationFrame(frameRef.current);
+          frameRef.current = null;
+        }
+      }
     };
     render();
   }, [disposeScene, modelAsset]);
