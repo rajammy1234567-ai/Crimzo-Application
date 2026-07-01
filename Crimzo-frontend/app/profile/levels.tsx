@@ -8,7 +8,8 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
-import { apiGet, apiPost } from '../../lib/apiClient';
+import { API_URL, apiGet, apiPost, getApiErrorMessage, getApiErrorStatus } from '../../lib/apiClient';
+import { buildFallbackLevels } from '../../lib/levelCatalog';
 import { appAlert } from '../../lib/appAlert';
 import { DiamondIcon } from '../../lib/currencyIcons';
 import LevelShowcaseRoom, { type ShowcaseLevel } from '../../components/levels/LevelShowcaseRoom';
@@ -37,9 +38,22 @@ export default function LevelsScreen() {
   const [userLevel, setUserLevel] = useState(1);
   const [diamonds, setDiamonds] = useState(0);
   const [nextLevel, setNextLevel] = useState(2);
+  const [offlineMode, setOfflineMode] = useState(false);
 
   const nextLevelData = levels.find((l) => l.is_next);
   const nextModelAsset = nextLevelData ? resolveShowcaseModelAsset(nextLevelData) : null;
+
+  const applyFallbackLevels = useCallback(() => {
+    const ul = user?.user_level ?? 1;
+    const el = user?.equipped_level ?? ul;
+    const fallback = buildFallbackLevels(ul, el, user?.diamonds ?? 0);
+    setOfflineMode(true);
+    setLevels((fallback.levels || []) as LevelRow[]);
+    setEquippedLevel(fallback.equipped_level || 1);
+    setUserLevel(fallback.user_level || 1);
+    setDiamonds(fallback.diamonds ?? user?.diamonds ?? 0);
+    setNextLevel(fallback.next_level || ul + 1);
+  }, [user?.diamonds, user?.equipped_level, user?.user_level]);
 
   const fetchLevels = useCallback(async () => {
     if (!token) {
@@ -47,15 +61,28 @@ export default function LevelsScreen() {
       return;
     }
     try {
-      const res = await apiGet<{
+      type LevelsResponse = {
         success?: boolean;
         levels?: LevelRow[];
         equipped_level?: number;
         user_level?: number;
         diamonds?: number;
         next_level?: number;
-      }>('/api/user/levels', token);
+      };
+
+      let res: LevelsResponse;
+      try {
+        res = await apiGet<LevelsResponse>('/api/user/levels', token);
+      } catch (firstErr) {
+        const firstStatus = getApiErrorStatus(firstErr);
+        if (firstStatus === 404) {
+          res = await apiGet<LevelsResponse>('/api/levels', token);
+        } else {
+          throw firstErr;
+        }
+      }
       if (res.success) {
+        setOfflineMode(false);
         setLevels(res.levels || []);
         setEquippedLevel(res.equipped_level || 1);
         setUserLevel(res.user_level || 1);
@@ -63,18 +90,18 @@ export default function LevelsScreen() {
         setNextLevel(res.next_level || (res.user_level || 1) + 1);
       }
     } catch (e) {
-      console.error('Fetch levels error:', e);
-      if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 404) {
-        appAlert(
-          'Levels API not found',
-          'Backend par levels route deploy nahi hai. Local test: .env mein PC LAN IP (http://192.168.1.x:5001) set karo, backend restart karo (npm start), phir expo start --clear.',
-        );
+      const status = getApiErrorStatus(e);
+      const msg = (getApiErrorMessage(e) || '').toLowerCase();
+      if (status === 404 || msg === 'not found' || msg === 'user not found') {
+        applyFallbackLevels();
+      } else {
+        console.error('Fetch levels error:', e, { api: API_URL, status });
       }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [token, user?.diamonds]);
+  }, [token, user?.diamonds, user?.user_level, user?.equipped_level, applyFallbackLevels]);
 
   useFocusEffect(
     useCallback(() => {
@@ -85,6 +112,13 @@ export default function LevelsScreen() {
 
   const handlePurchase = async (level: LevelRow) => {
     if (!token || purchasing) return;
+    if (offlineMode) {
+      appAlert(
+        'Backend offline',
+        'Level buy karne ke liye local backend chalu karo:\n1) crimzo_app_backend → npm start\n2) .env IP sahi ho (192.168.1.19:5001)\n3) npx expo start --clear',
+      );
+      return;
+    }
     if (!level.can_purchase) {
       appAlert('Locked', `Pehle Level ${nextLevel} unlock karo.`);
       return;
@@ -172,6 +206,11 @@ export default function LevelsScreen() {
           <View style={s.heroMeta}>
             <LevelBadge levelNumber={userLevel} name={levels.find((l) => l.level_number === userLevel)?.name || 'Rookie'} badgeColor={levels.find((l) => l.level_number === equippedLevel)?.badge_color} />
             <Text style={s.heroSub}>Next unlock: Level {nextLevel}</Text>
+            {offlineMode ? (
+              <Text style={s.offlineBanner}>
+                Offline catalog ({API_URL}) — backend: cd crimzo_app_backend && npm start, phir npx expo start --clear
+              </Text>
+            ) : null}
           </View>
 
           {nextLevelData && nextModelAsset && !nextLevelData.owned ? (
@@ -275,6 +314,14 @@ const s = StyleSheet.create({
   loadWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   heroMeta: { paddingHorizontal: 16, paddingBottom: 8, gap: 6 },
   heroSub: { color: 'rgba(255,255,255,0.35)', fontSize: 11, fontWeight: '600' },
+  offlineBanner: {
+    color: '#FFB347',
+    fontSize: 10,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 4,
+    paddingHorizontal: 8,
+  },
   previewBlock: { marginHorizontal: 14, marginBottom: 12 },
   previewTitle: { color: '#FFF', fontSize: 13, fontWeight: '800' },
   previewSub: { color: 'rgba(255,255,255,0.35)', fontSize: 10, marginTop: 2, marginBottom: 8 },

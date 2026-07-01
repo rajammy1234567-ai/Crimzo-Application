@@ -1,0 +1,181 @@
+---
+pid: 15676
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "node \"D:/Programming/Viz_Official_01/Crimzo/crimzo/crimzo_app_backend/server.js\""
+started_at: 2026-07-01T06:56:02.872Z
+running_for_ms: 350001   
+---
+✅ Cloudinary configured (production media hosting)
+✅ Using MongoDB Atlas (cloud)
+🚀 Server running on port 5001
+✅ Agora App ID: 1fe412e91e5c4da8b3e73e00df46acf9
+✅ Media mode: Cloudinary (cloud)
+✅ Razorpay: TEST keys active (rzp_test_SkP...)
+📋 Withdrawals: MANUAL mode — admin panel → Withdrawals (pending → UPI/bank transfer → mark complete)
+✅ Connected to MongoDB: Atlas
+✅ Default tasks synced
+🔄 Retrying in 4s... (8 attempts left)
+❌ Database initialization error: MongoServerError: language override unsupported: all
+    at UpdateManyOperation.handleOk (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\update.js:97:19)
+    at tryOperation (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\execute_operation.js:214:34)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async executeOperation (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\execute_operation.js:78:16)
+    at async Collection.updateMany (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\collection.js:262:16)
+    at async model.Query.exec (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongoose\lib\query.js:4627:63)
+    at async seedDefaultSounds (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\utils\soundSeed.js:25:3)
+    at async initDatabase (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\config\db.js:71:5)
+    at async connectWithRetry (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\server.js:186:5) {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    index: 0,
+    code: 17262,
+    errmsg: 'language override unsupported: all'
+  },
+  index: 0,
+  code: 17262
+}
+❌ MongoDB connection failed: language override unsupported: all
+✅ Using MongoDB Atlas (cloud)
+✅ Connected to MongoDB: Atlas
+✅ Default tasks synced
+🔄 Retrying in 6s... (7 attempts left)
+❌ Database initialization error: MongoServerError: language override unsupported: all
+    at UpdateManyOperation.handleOk (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\update.js:97:19)
+    at tryOperation (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\execute_operation.js:214:34)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async executeOperation (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\execute_operation.js:78:16)
+    at async Collection.updateMany (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\collection.js:262:16)
+    at async model.Query.exec (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongoose\lib\query.js:4627:63)
+    at async seedDefaultSounds (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\utils\soundSeed.js:25:3)
+    at async initDatabase (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\config\db.js:71:5)
+    at async connectWithRetry (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\server.js:186:5) {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    index: 0,
+    code: 17262,
+    errmsg: 'language override unsupported: all'
+  },
+  index: 0,
+  code: 17262
+}
+❌ MongoDB connection failed: language override unsupported: all
+✅ Using MongoDB Atlas (cloud)
+✅ Connected to MongoDB: Atlas
+✅ Default tasks synced
+🔄 Retrying in 9s... (6 attempts left)
+❌ Database initialization error: MongoServerError: language override unsupported: all
+    at UpdateManyOperation.handleOk (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\update.js:97:19)
+    at tryOperation (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\execute_operation.js:214:34)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async executeOperation (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\execute_operation.js:78:16)
+    at async Collection.updateMany (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\collection.js:262:16)
+    at async model.Query.exec (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongoose\lib\query.js:4627:63)
+    at async seedDefaultSounds (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\utils\soundSeed.js:25:3)
+    at async initDatabase (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\config\db.js:71:5)
+    at async connectWithRetry (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\server.js:186:5) {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    index: 0,
+    code: 17262,
+    errmsg: 'language override unsupported: all'
+  },
+  index: 0,
+  code: 17262
+}
+❌ MongoDB connection failed: language override unsupported: all
+✅ Using MongoDB Atlas (cloud)
+✅ Connected to MongoDB: Atlas
+✅ Default tasks synced
+🔄 Retrying in 13.5s... (5 attempts left)
+❌ Database initialization error: MongoServerError: language override unsupported: all
+    at UpdateManyOperation.handleOk (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\update.js:97:19)
+    at tryOperation (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\execute_operation.js:214:34)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async executeOperation (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\execute_operation.js:78:16)
+    at async Collection.updateMany (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\collection.js:262:16)
+    at async model.Query.exec (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongoose\lib\query.js:4627:63)
+    at async seedDefaultSounds (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\utils\soundSeed.js:25:3)
+    at async initDatabase (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\config\db.js:71:5)
+    at async connectWithRetry (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\server.js:186:5) {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    index: 0,
+    code: 17262,
+    errmsg: 'language override unsupported: all'
+  },
+  index: 0,
+  code: 17262
+}
+❌ MongoDB connection failed: language override unsupported: all
+✅ Using MongoDB Atlas (cloud)
+✅ Connected to MongoDB: Atlas
+✅ Default tasks synced
+🔄 Retrying in 20.25s... (4 attempts left)
+❌ Database initialization error: MongoServerError: language override unsupported: all
+    at UpdateManyOperation.handleOk (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\update.js:97:19)
+    at tryOperation (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\execute_operation.js:214:34)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async executeOperation (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\execute_operation.js:78:16)
+    at async Collection.updateMany (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\collection.js:262:16)
+    at async model.Query.exec (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongoose\lib\query.js:4627:63)
+    at async seedDefaultSounds (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\utils\soundSeed.js:25:3)
+    at async initDatabase (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\config\db.js:71:5)
+    at async connectWithRetry (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\server.js:186:5) {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    index: 0,
+    code: 17262,
+    errmsg: 'language override unsupported: all'
+  },
+  index: 0,
+  code: 17262
+}
+❌ MongoDB connection failed: language override unsupported: all
+✅ Using MongoDB Atlas (cloud)
+✅ Connected to MongoDB: Atlas
+✅ Default tasks synced
+🔄 Retrying in 30s... (3 attempts left)
+❌ Database initialization error: MongoServerError: language override unsupported: all
+    at UpdateManyOperation.handleOk (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\update.js:97:19)
+    at tryOperation (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\execute_operation.js:214:34)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async executeOperation (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\execute_operation.js:78:16)
+    at async Collection.updateMany (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\collection.js:262:16)
+    at async model.Query.exec (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongoose\lib\query.js:4627:63)
+    at async seedDefaultSounds (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\utils\soundSeed.js:25:3)
+    at async initDatabase (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\config\db.js:71:5)
+    at async connectWithRetry (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\server.js:186:5) {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    index: 0,
+    code: 17262,
+    errmsg: 'language override unsupported: all'
+  },
+  index: 0,
+  code: 17262
+}
+❌ MongoDB connection failed: language override unsupported: all
+✅ Using MongoDB Atlas (cloud)
+✅ Connected to MongoDB: Atlas
+✅ Default tasks synced
+🔄 Retrying in 30s... (2 attempts left)
+❌ Database initialization error: MongoServerError: language override unsupported: all
+    at UpdateManyOperation.handleOk (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\update.js:97:19)
+    at tryOperation (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\execute_operation.js:214:34)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async executeOperation (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\operations\execute_operation.js:78:16)
+    at async Collection.updateMany (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\collection.js:262:16)
+    at async model.Query.exec (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongoose\lib\query.js:4627:63)
+    at async seedDefaultSounds (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\utils\soundSeed.js:25:3)
+    at async initDatabase (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\config\db.js:71:5)
+    at async connectWithRetry (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\server.js:186:5) {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    index: 0,
+    code: 17262,
+    errmsg: 'language override unsupported: all'
+  },
+  index: 0,
+  code: 17262
+}
+❌ MongoDB connection failed: language override unsupported: all

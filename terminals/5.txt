@@ -1,0 +1,186 @@
+---
+pid: 14168
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "node \"D:/Programming/Viz_Official_01/Crimzo/crimzo/crimzo_app_backend/server.js\""
+started_at: 2026-07-01T06:54:47.466Z
+running_for_ms: 419989   
+---
+ℹ️  LOCAL MODE: Using local file storage for uploads (no Cloudinary needed for testing)
+   → Media files will be saved to ./uploads/ and served at /uploads/...
+   → For production later: sign up free at cloudinary.com and fill CLOUDINARY_* in .env
+ℹ️  Using LOCAL MongoDB by default: mongodb://localhost:27017/crimzo
+   To use Atlas instead: uncomment/edit MONGO_URI in .env (and add /crimzo to path)
+🚀 Server running on port 8001
+✅ Agora App ID: undefined
+✅ Media mode: LOCAL /uploads (no Cloudinary needed for testing)
+⚠️  Razorpay: DEV MOCK — set RAZORPAY_KEY_ID + RAZORPAY_KEY_SECRET in .env, then restart
+✅ Connected to MongoDB: mongodb://localhost:27017/crimzo
+✅ Premium stickers catalog synced (MongoDB)
+✅ Level catalog synced
+✅ Default tasks synced
+❌ Database initialization error: MongoBulkWriteError: language override unsupported: hindi
+    at OrderedBulkOperation.handleWriteError (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:804:19)
+    at executeCommands (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:346:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:790:24
+    at async MongoClient.withSession (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\mongo_client.js:477:20)
+    at async OrderedBulkOperation.execute (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:789:20)
+    at async Collection.bulkWrite (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\collection.js:224:16)
+    at async Collection.insertMany (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\collection.js:171:25) {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    message: 'language override unsupported: hindi',
+    code: 17262,
+    writeErrors: [ [Object] ]
+  },
+  code: 17262,
+  writeErrors: [ { err: [Object], index: 0 } ],
+  result: BulkWriteResult {
+    insertedCount: 0,
+    matchedCount: 0,
+    modifiedCount: 0,
+    deletedCount: 0,
+    upsertedCount: 0,
+    upsertedIds: {},
+    insertedIds: {}
+  },
+  insertedDocs: []
+}
+🔄 Retrying in 4s... (8 attempts left)
+❌ MongoDB connection failed: language override unsupported: hindi
+ℹ️  Using LOCAL MongoDB by default: mongodb://localhost:27017/crimzo
+   To use Atlas instead: uncomment/edit MONGO_URI in .env (and add /crimzo to path)
+✅ Connected to MongoDB: mongodb://localhost:27017/crimzo
+✅ Default tasks synced
+❌ Database initialization error: MongoBulkWriteError: language override unsupported: hindi
+    at OrderedBulkOperation.handleWriteError (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:804:19)
+    at executeCommands (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:346:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:790:24
+    at async MongoClient.withSession (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\mongo_client.js:477:20)
+    at async OrderedBulkOperation.execute (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:789:20)
+    at async Collection.bulkWrite (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\collection.js:224:16)
+    at async Collection.insertMany (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\collection.js:171:25) {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    message: 'language override unsupported: hindi',
+    code: 17262,
+    writeErrors: [ [Object] ]
+  },
+  code: 17262,
+  writeErrors: [ { err: [Object], index: 0 } ],
+  result: BulkWriteResult {
+    insertedCount: 0,
+    matchedCount: 0,
+    modifiedCount: 0,
+    deletedCount: 0,
+    upsertedCount: 0,
+    upsertedIds: {},
+    insertedIds: {}
+  },
+  insertedDocs: []
+}
+🔄 Retrying in 6s... (7 attempts left)
+❌ MongoDB connection failed: language override unsupported: hindi
+ℹ️  Using LOCAL MongoDB by default: mongodb://localhost:27017/crimzo
+   To use Atlas instead: uncomment/edit MONGO_URI in .env (and add /crimzo to path)
+✅ Connected to MongoDB: mongodb://localhost:27017/crimzo
+✅ Default tasks synced
+❌ Database initialization error: MongoBulkWriteError: language override unsupported: hindi
+    at OrderedBulkOperation.handleWriteError (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:804:19)
+    at executeCommands (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:346:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:790:24
+    at async MongoClient.withSession (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\mongo_client.js:477:20)
+    at async OrderedBulkOperation.execute (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:789:20)
+    at async Collection.bulkWrite (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\collection.js:224:16)
+    at async Collection.insertMany (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\collection.js:171:25) {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    message: 'language override unsupported: hindi',
+    code: 17262,
+    writeErrors: [ [Object] ]
+  },
+  code: 17262,
+  writeErrors: [ { err: [Object], index: 0 } ],
+  result: BulkWriteResult {
+    insertedCount: 0,
+    matchedCount: 0,
+    modifiedCount: 0,
+    deletedCount: 0,
+    upsertedCount: 0,
+    upsertedIds: {},
+    insertedIds: {}
+  },
+  insertedDocs: []
+}
+🔄 Retrying in 9s... (6 attempts left)
+❌ MongoDB connection failed: language override unsupported: hindi
+ℹ️  Using LOCAL MongoDB by default: mongodb://localhost:27017/crimzo
+   To use Atlas instead: uncomment/edit MONGO_URI in .env (and add /crimzo to path)
+✅ Connected to MongoDB: mongodb://localhost:27017/crimzo
+✅ Default tasks synced
+❌ Database initialization error: MongoBulkWriteError: language override unsupported: hindi
+    at OrderedBulkOperation.handleWriteError (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:804:19)
+    at executeCommands (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:346:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:790:24
+    at async MongoClient.withSession (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\mongo_client.js:477:20)
+    at async OrderedBulkOperation.execute (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:789:20)
+    at async Collection.bulkWrite (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\collection.js:224:16)
+    at async Collection.insertMany (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\collection.js:171:25) {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    message: 'language override unsupported: hindi',
+    code: 17262,
+    writeErrors: [ [Object] ]
+  },
+  code: 17262,
+  writeErrors: [ { err: [Object], index: 0 } ],
+  result: BulkWriteResult {
+    insertedCount: 0,
+    matchedCount: 0,
+    modifiedCount: 0,
+    deletedCount: 0,
+    upsertedCount: 0,
+    upsertedIds: {},
+    insertedIds: {}
+  },
+  insertedDocs: []
+}
+🔄 Retrying in 13.5s... (5 attempts left)
+❌ MongoDB connection failed: language override unsupported: hindi
+ℹ️  Using LOCAL MongoDB by default: mongodb://localhost:27017/crimzo
+   To use Atlas instead: uncomment/edit MONGO_URI in .env (and add /crimzo to path)
+✅ Connected to MongoDB: mongodb://localhost:27017/crimzo
+✅ Default tasks synced
+❌ Database initialization error: MongoBulkWriteError: language override unsupported: hindi
+    at OrderedBulkOperation.handleWriteError (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:804:19)
+    at executeCommands (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:346:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:790:24
+    at async MongoClient.withSession (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\mongo_client.js:477:20)
+    at async OrderedBulkOperation.execute (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\bulk\common.js:789:20)
+    at async Collection.bulkWrite (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\collection.js:224:16)
+    at async Collection.insertMany (D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend\node_modules\mongodb\lib\collection.js:171:25) {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    message: 'language override unsupported: hindi',
+    code: 17262,
+    writeErrors: [ [Object] ]
+  },
+  code: 17262,
+  writeErrors: [ { err: [Object], index: 0 } ],
+  result: BulkWriteResult {
+    insertedCount: 0,
+    matchedCount: 0,
+    modifiedCount: 0,
+    deletedCount: 0,
+    upsertedCount: 0,
+    upsertedIds: {},
+    insertedIds: {}
+  },
+  insertedDocs: []
+}
+🔄 Retrying in 20.25s... (4 attempts left)
+❌ MongoDB connection failed: language override unsupported: hindi

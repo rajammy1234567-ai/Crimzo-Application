@@ -15,7 +15,7 @@ function mapLocalSound(doc, extra = {}) {
     cover_url: doc.cover_url || null,
     duration_ms: doc.duration_ms || 0,
     category: doc.category || 'trending',
-    language: doc.language || 'all',
+    language: doc.track_language || doc.language || 'all',
     usage_count: doc.usage_count || 0,
     reels_count: extra.reels_count || 0,
     is_trending: !!extra.is_trending,
@@ -84,7 +84,7 @@ async function getAppTrendingSounds(limit = 15, language = 'all') {
 
 async function getLocalSounds({ language, q, limit }) {
   const filter = { is_active: true };
-  if (language && language !== 'all') filter.language = language;
+  if (language && language !== 'all') filter.track_language = language;
   if (q && String(q).trim()) {
     const term = String(q).trim();
     filter.$or = [

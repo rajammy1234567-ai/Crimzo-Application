@@ -7,7 +7,7 @@ router.use(authenticateToken);
 
 router.get('/', levelController.getLevels);
 router.get('/showcase', levelController.getShowcase);
-router.post('/:levelNumber/purchase', levelController.purchaseLevel);
 router.post('/equip', levelController.equipLevel);
+router.post('/:levelNumber/purchase', levelController.purchaseLevel);
 
 module.exports = router;

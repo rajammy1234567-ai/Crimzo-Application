@@ -44,6 +44,33 @@ export class ApiError extends Error {
   }
 }
 
+/** Duck-type check — instanceof ApiError breaks across RN/Hermes module boundaries. */
+export function getApiErrorStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object' || !('status' in error)) return undefined;
+  const status = (error as { status: unknown }).status;
+  return typeof status === 'number' ? status : undefined;
+}
+
+export function getApiErrorMessage(error: unknown): string | undefined {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const msg = (error as { message: unknown }).message;
+    return typeof msg === 'string' ? msg : undefined;
+  }
+  return undefined;
+}
+
+export function isApiError(error: unknown): error is ApiError {
+  return getApiErrorStatus(error) !== undefined;
+}
+
+function isMissingRouteError(error: unknown): boolean {
+  const status = getApiErrorStatus(error);
+  if (status !== 404) return false;
+  const msg = (getApiErrorMessage(error) || '').toLowerCase();
+  return msg === 'not found' || msg === '';
+}
+
 type ApiFetchOptions = RequestInit & {
   token?: string | null;
   timeoutMs?: number;
@@ -164,7 +191,11 @@ export async function apiFetch<T = unknown>(
 
         return await parseResponse<T>(response);
       } catch (error: unknown) {
-        if (error instanceof ApiError) throw error;
+        if (isApiError(error)) {
+          // Route missing on this host — try next backend URL (e.g. prod vs local).
+          if (allowTransientRetry && isMissingRouteError(error)) break;
+          throw error;
+        }
         if (isAbortError(error)) {
           sawTimeout = true;
           break;

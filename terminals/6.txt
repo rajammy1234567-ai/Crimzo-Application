@@ -1,0 +1,18 @@
+---
+pid: 2020
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo\crimzo_app_backend"
+command: "node server.js"
+started_at: 2026-07-01T06:55:44.550Z
+running_for_ms: 370001   
+---
+At line:1 char:75
++ ... ramming\\Viz_Official_01\\Crimzo\\crimzo\\crimzo_app_backend" ; node  ...
++                                                                  ~
+Missing closing ')' in expression.
+At line:1 char:92
++ ... iz_Official_01\\Crimzo\\crimzo\\crimzo_app_backend" ; node server.js)
++                                                                         ~
+Unexpected token ')' in expression or statement.
+    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : MissingEndParenthesisInExpression
+ 

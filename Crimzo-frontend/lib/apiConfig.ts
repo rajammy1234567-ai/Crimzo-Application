@@ -3,7 +3,7 @@ import Constants from 'expo-constants';
 
 const PORT = '5001';
 // Your PC WiFi IPv4 — run `ipconfig` and update if this changes
-const DEV_LAN_HOST = '192.168.1.7';
+const DEV_LAN_HOST = '192.168.1.19';
 
 const envUrl = process.env.EXPO_PUBLIC_BACKEND_URL?.replace(/\/$/, '');
 

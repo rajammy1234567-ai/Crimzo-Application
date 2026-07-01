@@ -24,7 +24,7 @@ router.get('/app-time/today', authenticateToken, user.getAppTimeToday);
 // User levels (also mounted at /api/levels)
 router.get('/levels', authenticateToken, levelController.getLevels);
 router.get('/levels/showcase', authenticateToken, levelController.getShowcase);
-router.post('/levels/:levelNumber/purchase', authenticateToken, levelController.purchaseLevel);
 router.post('/levels/equip', authenticateToken, levelController.equipLevel);
+router.post('/levels/:levelNumber/purchase', authenticateToken, levelController.purchaseLevel);
 
 module.exports = router;

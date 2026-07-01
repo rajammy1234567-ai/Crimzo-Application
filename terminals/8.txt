@@ -1,0 +1,21 @@
+---
+pid: 12432
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "taskkill /PID 20052 /F; Start-Sleep -Seconds 2; node \"D:/Programming/Viz_Official_01/Crimzo/crimzo/crimzo_app_backend/server.js\""
+started_at: 2026-07-01T06:58:15.415Z
+running_for_ms: 204996   
+---
+SUCCESS: The process with PID 20052 has been terminated.
+✅ Cloudinary configured (production media hosting)
+✅ Using MongoDB Atlas (cloud)
+🚀 Server running on port 5001
+✅ Agora App ID: 1fe412e91e5c4da8b3e73e00df46acf9
+✅ Media mode: Cloudinary (cloud)
+✅ Razorpay: TEST keys active (rzp_test_SkP...)
+📋 Withdrawals: MANUAL mode — admin panel → Withdrawals (pending → UPI/bank transfer → mark complete)
+✅ Connected to MongoDB: Atlas
+✅ Default tasks synced
+✅ Database (MongoDB) initialized successfully
+✅ Billing: video call ₹1/min, live talk ₹1/min
+[PK Ranking] Backfilled stats for 4 battle(s)
+🧹 Reset 4 stale is_online user(s)
