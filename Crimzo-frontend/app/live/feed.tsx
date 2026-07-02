@@ -135,7 +135,13 @@ export default function LiveFeedScreen() {
               sessionId={String(item.id)}
               isActive={index === activeIndex}
               feedMode
-              preview={item}
+              preview={{
+                id: item.id,
+                username: item.username,
+                avatar: item.avatar,
+                viewers_count: item.viewers_count,
+                daily_beans_earned: item.daily_beans_earned,
+              }}
               onClose={handleClose}
               onStreamEnded={() => handleStreamEnded(index)}
             />

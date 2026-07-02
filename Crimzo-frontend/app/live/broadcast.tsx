@@ -21,6 +21,12 @@ import {
 import { ensureRtcPermissions, configurePublisherAudio } from '../../lib/agoraRtcHelpers';
 import { toAgoraUid } from '../../lib/agoraUid';
 import { releaseAgoraEngine, trackAgoraEngine } from '../../lib/agoraEngineRelease';
+import {
+  hasNavigatedToCallChannel,
+  isCallHandoffInProgress,
+  prepareAgoraCallHandoff,
+  shouldSkipLiveEngineTeardown,
+} from '../../lib/agoraCallHandoff';
 
 import { API_URL, apiGet, apiPost, ApiError } from '../../lib/apiClient';
 import { startLiveSession } from '../../lib/liveStart';
@@ -38,6 +44,7 @@ import { subscribe } from '../../lib/realtimeSync';
 import { shareLiveStream } from '../../lib/liveShare';
 import LiveFilterPanel from '../../components/LiveFilterPanel';
 import GiftSplashOverlay from '../../components/GiftSplashOverlay';
+import HostDailyEarningsChip from '../../components/live/HostDailyEarningsChip';
 
 import {
   applyLiveFilterToEngine,
@@ -170,6 +177,7 @@ export default function BroadcastScreen() {
   const socketRef = useRef<any>(null);
   const engineRef = useRef<IRtcEngine | null>(null);
   const [agoraReady, setAgoraReady] = useState(false);
+  const [navigatingToCall, setNavigatingToCall] = useState(false);
   const [localAgoraUid, setLocalAgoraUid] = useState(0);
   const [liveSocket, setLiveSocket] = useState<ReturnType<typeof io> | null>(null);
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
@@ -204,6 +212,7 @@ export default function BroadcastScreen() {
     beansPerMin?: number;
   }>>([]);
   const [hostChatBeansEarned, setHostChatBeansEarned] = useState(0);
+  const [dailyBeansEarned, setDailyBeansEarned] = useState(0);
   const [activeChatCount, setActiveChatCount] = useState(0);
   const [privateChats, setPrivateChats] = useState<Array<{
     talkSessionId: string;
@@ -262,11 +271,14 @@ export default function BroadcastScreen() {
 
   useEffect(() => {
     return () => {
+      if (shouldSkipLiveEngineTeardown()) {
+        engineRef.current = null;
+        return;
+      }
       if (engineRef.current) {
         const eng = engineRef.current;
         engineRef.current = null;
-        eng.leaveChannel();
-        setTimeout(() => { try { eng.release(); } catch {} }, 300);
+        void releaseAgoraEngine(eng);
       }
     };
   }, []);
@@ -298,30 +310,40 @@ export default function BroadcastScreen() {
     beansPerMin?: number;
     callType?: 'voice' | 'video';
   }) => {
-    if (!data?.channelName || !data?.requesterId || joiningCallRef.current) return;
+    const channelName = data?.channelName;
+    if (!channelName || !data?.requesterId || joiningCallRef.current || hasNavigatedToCallChannel(channelName)) {
+      return;
+    }
     joiningCallRef.current = true;
+    setNavigatingToCall(true);
 
-    const eng = engineRef.current;
-    engineRef.current = null;
-    setAgoraReady(false);
-    await releaseAgoraEngine(eng);
+    try {
+      const eng = engineRef.current;
+      engineRef.current = null;
+      setAgoraReady(false);
 
-    router.replace({
-      pathname: '/call',
-      params: {
-        channel: data.channelName,
-        role: 'callee',
-        peerId: String(data.requesterId),
-        peerName: data.requesterName || 'Viewer',
-        peerAvatar: data.requesterAvatar || '',
-        ratePerMin: data.ratePerMin != null ? String(data.ratePerMin) : String(data.callType === 'video' ? myRates.videoRatePerMin : myRates.voiceRatePerMin),
-        beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : String(data.callType === 'video' ? myRates.videoBeansPerMin : myRates.voiceBeansPerMin),
-        callMode: data.callType === 'video' ? 'video' : 'voice',
-        fromLive: '1',
-        accepted: '1',
-        sessionId: sessionId || '',
-      },
-    } as any);
+      const prepared = await prepareAgoraCallHandoff(eng, channelName);
+      if (!prepared) return;
+
+      router.replace({
+        pathname: '/call',
+        params: {
+          channel: channelName,
+          role: 'callee',
+          peerId: String(data.requesterId),
+          peerName: data.requesterName || 'Viewer',
+          peerAvatar: data.requesterAvatar || '',
+          ratePerMin: data.ratePerMin != null ? String(data.ratePerMin) : String(data.callType === 'video' ? myRates.videoRatePerMin : myRates.voiceRatePerMin),
+          beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : String(data.callType === 'video' ? myRates.videoBeansPerMin : myRates.voiceBeansPerMin),
+          callMode: data.callType === 'video' ? 'video' : 'voice',
+          fromLive: '1',
+          accepted: '1',
+          sessionId: sessionId || '',
+        },
+      } as any);
+    } finally {
+      joiningCallRef.current = false;
+    }
   }, [router, myRates, sessionId]);
 
   const handleCallRequestAction = useCallback(async (
@@ -338,6 +360,10 @@ export default function BroadcastScreen() {
     },
   ) => {
     if (!token) return;
+    if (action === 'accept') {
+      handledCallRequestIds.current.add(requestId);
+      promptedCallRequestIds.current.add(requestId);
+    }
     try {
       const res = await respondLiveCall(token, requestId, action);
       handledCallRequestIds.current.add(requestId);
@@ -827,7 +853,8 @@ export default function BroadcastScreen() {
       ]);
 
       const r = await startLiveSession(token, user?.country || 'Unknown');
-      const { sessionId: sid, channelName, token: agoraToken, appId, uid: hostUid } = r;
+      const { sessionId: sid, channelName, token: agoraToken, appId, uid: hostUid, daily_beans_earned: dailyBeans } = r;
+      setDailyBeansEarned(dailyBeans);
 
       liveBroadcastMediaRef.current = {
         channelName,
@@ -912,7 +939,7 @@ export default function BroadcastScreen() {
 
       {/* ═══ CAMERA VIEW ═══ */}
       <View style={st.cameraWrap}>
-        {agoraReady ? (
+        {agoraReady && !navigatingToCall && !isCallHandoffInProgress() ? (
           <RtcSurfaceView style={{ flex: 1 }} canvas={{ uid: 0 }} />
         ) : cameraPermission?.granted && cameraEnabled ? (
           <CameraView style={{ flex: 1 }} facing={facing} mode="video" />
@@ -968,6 +995,11 @@ export default function BroadcastScreen() {
 
         {/* ── HEADER ── */}
         <SafeAreaView style={[st.headerWrap, { pointerEvents: 'box-none' }]} edges={['top']}>
+          {isLive && (
+            <View style={st.dailyEarnWrap}>
+              <HostDailyEarningsChip amount={dailyBeansEarned} />
+            </View>
+          )}
           <View style={st.headerRow}>
             {/* Back / Close */}
             <TouchableOpacity onPress={handleGoBack} activeOpacity={0.7}>
@@ -1331,6 +1363,7 @@ const st = StyleSheet.create({
 
   // Header
   headerWrap: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20 },
+  dailyEarnWrap: { paddingHorizontal: 14, paddingTop: 4, paddingBottom: 2 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 6 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   iconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },

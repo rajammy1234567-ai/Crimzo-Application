@@ -30,6 +30,7 @@ import PrivateTalkChat from '../components/PrivateTalkChat';
 import HostBusyOverlay from '../components/HostBusyOverlay';
 import StickerPanel from '../components/StickerPanel';
 import GiftSplashOverlay from '../components/GiftSplashOverlay';
+import HostDailyEarningsChip from './live/HostDailyEarningsChip';
 
 import {
   createAgoraRtcEngine,
@@ -41,6 +42,12 @@ import {
 } from '../components/agoraImports';
 import { toAgoraUid } from '../lib/agoraUid';
 import { releaseAgoraEngine, trackAgoraEngine } from '../lib/agoraEngineRelease';
+import {
+  hasNavigatedToCallChannel,
+  isCallHandoffInProgress,
+  prepareAgoraCallHandoff,
+  shouldSkipLiveEngineTeardown,
+} from '../lib/agoraCallHandoff';
 
 import { API_URL, apiGet, apiPost, ApiError } from '../lib/apiClient';
 const { width: SW, height: SH } = Dimensions.get('window');
@@ -83,6 +90,7 @@ export type LiveStreamPreview = {
   username?: string;
   avatar?: string | null;
   viewers_count?: number;
+  daily_beans_earned?: number;
 };
 
 export type LiveWatchRoomProps = {
@@ -128,6 +136,14 @@ export default function LiveWatchRoom({
   const talkPromptShownRef = useRef(false);
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
   const [agoraReady, setAgoraReady] = useState(false);
+  const [navigatingToCall, setNavigatingToCall] = useState(false);
+  const [hostDailyBeans, setHostDailyBeans] = useState(preview?.daily_beans_earned ?? 0);
+
+  useEffect(() => {
+    if (typeof preview?.daily_beans_earned === 'number') {
+      setHostDailyBeans(preview.daily_beans_earned);
+    }
+  }, [preview?.daily_beans_earned, sessionIdProp]);
   const remoteUidRef = useRef<number | null>(null);
   const joiningCallRef = useRef(false);
   const [hostCameraOff, setHostCameraOff] = useState(false);
@@ -318,39 +334,48 @@ export default function LiveWatchRoom({
     beansPerMin?: number;
     callType?: 'voice' | 'video';
   }) => {
-    if (!data?.channelName || joiningCallRef.current) return;
+    const channelName = data?.channelName;
+    if (!channelName || joiningCallRef.current || hasNavigatedToCallChannel(channelName)) return;
     joiningCallRef.current = true;
+    setNavigatingToCall(true);
 
-    const eng = engineRef.current;
-    engineRef.current = null;
-    await releaseAgoraEngine(eng);
+    try {
+      const eng = engineRef.current;
+      engineRef.current = null;
+      remoteUidRef.current = null;
+      setRemoteUid(null);
+      setAgoraReady(false);
 
-    if (socketRef.current) {
-      try { socketRef.current.emit('leave_live', { sessionId }); } catch { /* ignore */ }
+      if (socketRef.current) {
+        try { socketRef.current.emit('leave_live', { sessionId }); } catch { /* ignore */ }
+      }
+
+      const prepared = await prepareAgoraCallHandoff(eng, channelName);
+      if (!prepared) return;
+
+      const isVideo = data.callType === 'video';
+      if (isVideo) setVideoCallStatus('accepted');
+      else setCallStatus('accepted');
+
+      router.replace({
+        pathname: '/call',
+        params: {
+          channel: channelName,
+          role: 'caller',
+          peerId: String(data.hostId || streamData?.hostId || ''),
+          peerName: data.hostName || streamData?.hostUsername || 'Host',
+          peerAvatar: data.hostAvatar || streamData?.hostAvatar || '',
+          ratePerMin: String(data.ratePerMin ?? (isVideo ? hostRates.videoRatePerMin : hostRates.voiceRatePerMin)),
+          beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : '',
+          callMode: isVideo ? 'video' : 'voice',
+          fromLive: '1',
+          accepted: '1',
+          sessionId: String(sessionId || ''),
+        },
+      } as any);
+    } finally {
+      joiningCallRef.current = false;
     }
-    remoteUidRef.current = null;
-    setRemoteUid(null);
-    setAgoraReady(false);
-    const isVideo = data.callType === 'video';
-    if (isVideo) setVideoCallStatus('accepted');
-    else setCallStatus('accepted');
-
-    router.replace({
-      pathname: '/call',
-      params: {
-        channel: data.channelName,
-        role: 'caller',
-        peerId: String(data.hostId || streamData?.hostId || ''),
-        peerName: data.hostName || streamData?.hostUsername || 'Host',
-        peerAvatar: data.hostAvatar || streamData?.hostAvatar || '',
-        ratePerMin: String(data.ratePerMin ?? (isVideo ? hostRates.videoRatePerMin : hostRates.voiceRatePerMin)),
-        beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : '',
-        callMode: isVideo ? 'video' : 'voice',
-        fromLive: '1',
-        accepted: '1',
-        sessionId: String(sessionId || ''),
-      },
-    } as any);
   }, [router, streamData, hostRates, sessionId]);
 
   const sendCallRequest = useCallback(async (callType: 'voice' | 'video' = 'voice') => {
@@ -495,11 +520,11 @@ export default function LiveWatchRoom({
       socketRef.current = null;
     }
     setViewerSocket(null);
-    if (engineRef.current) {
-      try {
-        engineRef.current.leaveChannel();
-        engineRef.current.release();
-      } catch { /* ignore */ }
+    if (!shouldSkipLiveEngineTeardown() && engineRef.current) {
+      const eng = engineRef.current;
+      engineRef.current = null;
+      void releaseAgoraEngine(eng);
+    } else if (shouldSkipLiveEngineTeardown()) {
       engineRef.current = null;
     }
     remoteUidRef.current = null;
@@ -666,7 +691,11 @@ export default function LiveWatchRoom({
         hostId?: string;
         hostBusy?: boolean;
         hostBusyType?: 'talk' | 'call' | null;
+        daily_beans_earned?: number;
       }>(`/api/live/join/${sessionId}`, {}, token);
+      if (typeof r.daily_beans_earned === 'number') {
+        setHostDailyBeans(r.daily_beans_earned);
+      }
       const hostId = r.hostId != null ? String(r.hostId) : r.hostId;
       const hostAgoraUid = typeof r.hostUid === 'number'
         ? r.hostUid
@@ -893,7 +922,7 @@ export default function LiveWatchRoom({
   const hostAvatar = streamData?.hostAvatar || streamData?.host_avatar;
   const isViewer = streamData?.hostId !== user?.id;
   const hostAgoraUid = streamData?.hostUid ?? toAgoraUid(streamData?.hostId);
-  const showHostVideo = isAgoraNativeLinked && agoraReady && !!hostAgoraUid;
+  const showHostVideo = isAgoraNativeLinked && agoraReady && !!hostAgoraUid && !navigatingToCall && !isCallHandoffInProgress();
   const showBusyOverlay = isViewer && hostBusy && !canChat;
 
   const handleVoiceCall = () => {
@@ -1013,6 +1042,9 @@ export default function LiveWatchRoom({
 
       {/* ═══ HEADER ═══ */}
       <SafeAreaView style={[s.headerSafe, { pointerEvents: 'box-none' }]} edges={['top']}>
+        <View style={s.dailyEarnWrap}>
+          <HostDailyEarningsChip amount={hostDailyBeans} />
+        </View>
         <Animated.View style={[s.headerRow, { opacity: headerFade }]}>
           {/* Host info pill */}
           <View style={s.hostPill}>
@@ -1325,7 +1357,8 @@ const s = StyleSheet.create({
 
   // Header
   headerSafe: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingTop: 8, paddingBottom: 6 },
+  dailyEarnWrap: { paddingHorizontal: 14, paddingTop: 4, paddingBottom: 2 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingTop: 4, paddingBottom: 6 },
 
   // Host pill
   hostPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 28, paddingLeft: 4, paddingRight: 6, paddingVertical: 4, gap: 8, maxWidth: SW * 0.72, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },

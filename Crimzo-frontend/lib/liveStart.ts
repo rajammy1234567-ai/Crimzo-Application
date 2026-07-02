@@ -8,6 +8,7 @@ export type LiveStartResponse = {
   token?: string;
   appId?: string;
   uid?: number;
+  daily_beans_earned?: number;
   error?: string;
   detail?: string;
 };
@@ -35,7 +36,9 @@ function formatStartLiveError(payload?: LiveStartResponse | null, fallback?: str
 export async function startLiveSession(
   authToken: string,
   location?: string,
-): Promise<Required<Pick<LiveStartResponse, 'sessionId' | 'channelName' | 'token' | 'appId' | 'uid'>>> {
+): Promise<Required<Pick<LiveStartResponse, 'sessionId' | 'channelName' | 'token' | 'appId' | 'uid'>> & {
+  daily_beans_earned: number;
+}> {
   let lastError: unknown;
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
@@ -61,6 +64,7 @@ export async function startLiveSession(
           token: response.token,
           appId: response.appId,
           uid: Number(response.uid),
+          daily_beans_earned: Number(response.daily_beans_earned) || 0,
         };
       }
 

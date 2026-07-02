@@ -50,7 +50,13 @@ import {
   shouldConfigureRemoteAudio,
 } from '../../lib/agoraRtcHelpers';
 import { publish, subscribe } from '../../lib/realtimeSync';
-import { releaseAgoraEngine, releaseTrackedAgoraEngine, trackAgoraEngine } from '../../lib/agoraEngineRelease';
+import {
+  releaseAgoraEngine,
+  releaseTrackedAgoraEngine,
+  trackAgoraEngine,
+  waitForAgoraReleaseIdle,
+} from '../../lib/agoraEngineRelease';
+import { clearCallHandoff } from '../../lib/agoraCallHandoff';
 import StickerPanel from '../../components/StickerPanel';
 import GiftSplashOverlay from '../../components/GiftSplashOverlay';
 
@@ -230,6 +236,7 @@ export default function VideoCallScreen() {
       });
     }
 
+    clearCallHandoff(channelName);
     if (params.fromLive === '1') {
       publish('live_call_screen_ended', { role });
     }
@@ -346,9 +353,7 @@ export default function VideoCallScreen() {
 
     try {
       await releaseTrackedAgoraEngine();
-      if (params.fromLive === '1') {
-        await new Promise<void>((resolve) => setTimeout(resolve, 300));
-      }
+      await waitForAgoraReleaseIdle(params.fromLive === '1' ? 900 : 350);
       await prepareVoiceCallAudio();
       const perms = await ensureRtcPermissions();
       if (!perms.mic) {
@@ -392,7 +397,16 @@ export default function VideoCallScreen() {
       });
       if (isVideoMode) {
         engine.enableVideo();
-        engine.startPreview();
+        if (params.fromLive !== '1') {
+          engine.startPreview();
+        } else {
+          await new Promise<void>((resolve) => setTimeout(resolve, 400));
+          try {
+            engine.startPreview();
+          } catch (previewErr) {
+            console.warn('[VideoCall] startPreview deferred:', previewErr);
+          }
+        }
       } else {
         engine.disableVideo();
       }
@@ -700,7 +714,7 @@ export default function VideoCallScreen() {
         </View>
       )}
 
-      {connected && isAgoraNativeLinked && camOn && (
+      {connected && isAgoraNativeLinked && camOn && localUid > 0 && (
         <View style={s.localPip}>
           <RtcSurfaceView style={s.localVideo} canvas={{ uid: localUid }} />
         </View>
