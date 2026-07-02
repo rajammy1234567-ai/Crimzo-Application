@@ -4,8 +4,24 @@ import Constants from 'expo-constants';
 const PORT = '5001';
 // Your PC WiFi IPv4 — run `ipconfig` and update if this changes
 const DEV_LAN_HOST = '192.168.1.8';
+const PRODUCTION_BACKEND_URL = 'https://crimzo-application-backend.onrender.com';
 
-const envUrl = process.env.EXPO_PUBLIC_BACKEND_URL?.replace(/\/$/, '');
+const rawEnvUrl = process.env.EXPO_PUBLIC_BACKEND_URL?.replace(/\/$/, '');
+
+function isLocalDevUrl(url?: string): boolean {
+  if (!url) return true;
+  return /localhost|127\.0\.0\.1|192\.168\.|10\.0\.2\.2/i.test(url);
+}
+
+/** Release APK must hit production — .env LAN IP is only for local dev. */
+function resolveEnvUrl(): string | undefined {
+  if (!__DEV__ && isLocalDevUrl(rawEnvUrl)) {
+    return PRODUCTION_BACKEND_URL;
+  }
+  return rawEnvUrl;
+}
+
+const envUrl = resolveEnvUrl();
 
 function isDeployedBackend(url?: string): boolean {
   return !!url && url.startsWith('https://');
