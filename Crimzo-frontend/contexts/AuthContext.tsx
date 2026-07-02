@@ -4,7 +4,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { API_URL, apiFetch, apiGet, apiPost, getApiErrorMessage, getApiErrorStatus } from '../lib/apiClient';
 import { mergeBeanBalance } from '../lib/beanBalance';
-import { getApiUrlCandidates, setActiveApiUrl } from '../lib/apiConfig';
+import {
+  getApiUrlCandidates,
+  isDeployedBackend,
+  setActiveApiUrl,
+  WARMUP_MAX_ATTEMPTS,
+  WARMUP_PER_ATTEMPT_TIMEOUT_MS,
+  WARMUP_RETRY_BASE_DELAY_MS,
+} from '../lib/apiConfig';
 import { clearPendingReferralCode, getReferralSignupPayload } from '../lib/referral';
 if (typeof window !== 'undefined' || (typeof navigator !== 'undefined' && navigator.product === 'ReactNative')) {
   console.log('%c🔗 Crimzo using backend:', 'color:#0f0', API_URL);
@@ -13,31 +20,81 @@ if (API_URL.includes('localhost') && typeof navigator !== 'undefined' && navigat
   console.warn('%c⚠️ Using localhost backend URL from a mobile device/emulator may not reach your dev PC. Set EXPO_PUBLIC_BACKEND_URL to your computer LAN IP (e.g. http://192.168.1.105:5001) in .env and restart expo.', 'color:#f80; font-weight:bold');
 }
 
-// Warmup backend on start (helps in dev)
+// Warmup backend on start — extra retries for Render cold start after sleep
 let _backendReady = false;
+let _warmupInFlight = false;
+
+const RETRYABLE_WARMUP_STATUSES = new Set([502, 503, 504]);
+
+function warmupDelayMs(attempt: number, deployed: boolean): number {
+  const base = deployed ? WARMUP_RETRY_BASE_DELAY_MS : 1_500;
+  return base * (attempt + 1);
+}
+
 const warmupBackend = async () => {
+  if (_backendReady || _warmupInFlight) return;
+  _warmupInFlight = true;
+
   const candidates = getApiUrlCandidates();
-  for (const base of candidates) {
-    try {
-      const res = await fetch(`${base}/api/health`, { method: 'GET' });
-      if (res.ok) {
-        _backendReady = true;
-        setActiveApiUrl(base);
-        console.log('✅ Backend reachable at', base);
-        return;
+  const deployed = candidates.some(isDeployedBackend);
+  const maxAttempts = deployed ? WARMUP_MAX_ATTEMPTS : 2;
+
+  try {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      for (const base of candidates) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), WARMUP_PER_ATTEMPT_TIMEOUT_MS);
+        try {
+          const res = await fetch(`${base}/api/health`, {
+            method: 'GET',
+            signal: controller.signal,
+          });
+          if (res.ok) {
+            _backendReady = true;
+            setActiveApiUrl(base);
+            console.log(
+              '✅ Backend reachable at',
+              base,
+              attempt > 0 ? `(attempt ${attempt + 1})` : '',
+            );
+            return;
+          }
+          if (deployed && RETRYABLE_WARMUP_STATUSES.has(res.status)) {
+            console.log(`⏳ Backend waking up (${res.status}) — retrying…`);
+          }
+        } catch {
+          if (deployed && attempt === 0) {
+            console.log('⏳ Backend waking up — retrying…');
+          }
+        } finally {
+          clearTimeout(timer);
+        }
       }
-    } catch {
-      // try next candidate
+
+      if (attempt < maxAttempts - 1) {
+        await new Promise((r) => setTimeout(r, warmupDelayMs(attempt, deployed)));
+      }
     }
-  }
-  if (!_backendReady) {
-    console.warn('⚠️ Backend not reachable. Tried:', candidates.join(', '));
+
+    if (!_backendReady) {
+      console.warn('⚠️ Backend not reachable. Tried:', candidates.join(', '));
+    }
+  } finally {
+    _warmupInFlight = false;
   }
 };
+
 function backendUnreachableMessage(): string {
+  const tried = getApiUrlCandidates().join(', ');
+  if (getApiUrlCandidates().some(isDeployedBackend)) {
+    return (
+      `Server is waking up (tried: ${tried}). ` +
+      'Wait 30–60 seconds and try again — cloud backend needs time after sleep.'
+    );
+  }
   return (
     `Cannot reach backend. Start it: cd crimzo_app_backend && npm start — ` +
-    `then restart Expo: npx expo start -c. Tried: ${getApiUrlCandidates().join(', ')}`
+    `then restart Expo: npx expo start -c. Tried: ${tried}`
   );
 }
 
@@ -54,7 +111,11 @@ function throwAuthApiError(error: unknown, fallback: string): never {
 }
 
 warmupBackend();
-setTimeout(() => { if (!_backendReady) warmupBackend(); }, 3000);
+[5_000, 15_000, 30_000, 60_000].forEach((ms) => {
+  setTimeout(() => {
+    if (!_backendReady) warmupBackend();
+  }, ms);
+});
 
 interface User {
   id: string | number;

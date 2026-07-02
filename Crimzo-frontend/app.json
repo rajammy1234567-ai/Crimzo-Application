@@ -29,7 +29,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.crimzolive",
-      "versionCode": 34,
+      "versionCode": 35,
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",

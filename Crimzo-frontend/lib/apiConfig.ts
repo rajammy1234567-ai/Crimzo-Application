@@ -4,7 +4,14 @@ import Constants from 'expo-constants';
 const PORT = '5001';
 // Your PC WiFi IPv4 — run `ipconfig` and update if this changes
 const DEV_LAN_HOST = '192.168.1.8';
-const PRODUCTION_BACKEND_URL = 'https://crimzo-application-backend.onrender.com';
+export const PRODUCTION_BACKEND_URL = 'https://crimzo-application-backend.onrender.com';
+
+/** Render free tier cold start can take 30–90s after sleep. */
+export const LOCAL_REQUEST_TIMEOUT_MS = 20_000;
+export const DEPLOYED_REQUEST_TIMEOUT_MS = 90_000;
+export const WARMUP_PER_ATTEMPT_TIMEOUT_MS = 35_000;
+export const WARMUP_MAX_ATTEMPTS = 8;
+export const WARMUP_RETRY_BASE_DELAY_MS = 4_000;
 
 const rawEnvUrl = process.env.EXPO_PUBLIC_BACKEND_URL?.replace(/\/$/, '');
 
@@ -23,8 +30,17 @@ function resolveEnvUrl(): string | undefined {
 
 const envUrl = resolveEnvUrl();
 
-function isDeployedBackend(url?: string): boolean {
+export function isDeployedBackend(url?: string): boolean {
   return !!url && url.startsWith('https://');
+}
+
+export function getRequestTimeoutMs(baseUrl?: string): number {
+  const url = baseUrl || resolveApiUrl();
+  return isDeployedBackend(url) ? DEPLOYED_REQUEST_TIMEOUT_MS : LOCAL_REQUEST_TIMEOUT_MS;
+}
+
+export function getTransientRetryCount(baseUrl?: string): number {
+  return isDeployedBackend(baseUrl || resolveApiUrl()) ? 6 : 3;
 }
 
 function addUnique(list: string[], url: string) {
