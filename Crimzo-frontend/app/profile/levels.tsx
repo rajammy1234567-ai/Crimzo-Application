@@ -112,7 +112,7 @@ export default function LevelsScreen() {
     if (offlineMode) {
       appAlert(
         'Backend offline',
-        'Level buy karne ke liye local backend chalu karo:\n1) crimzo_app_backend → npm start\n2) .env IP sahi ho (192.168.1.19:5001)\n3) npx expo start --clear',
+        'Level buy karne ke liye local backend chalu karo:\n1) crimzo_app_backend → npm start\n2) .env IP sahi ho (192.168.1.8:5001)\n3) npx expo start --clear',
       );
       return;
     }
