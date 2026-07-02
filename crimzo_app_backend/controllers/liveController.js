@@ -224,6 +224,7 @@ exports.startLive = async (req, res) => {
       throw new Error('Live session was created but session id is missing');
     }
 
+    const dailyEarningsMap = await getDailyBeansEarnedMap([String(userId)]);
     res.json({
       success: true,
       sessionId,
@@ -233,6 +234,7 @@ exports.startLive = async (req, res) => {
       uid,
       talkRatePerMin,
       talkBillingEnabled,
+      daily_beans_earned: dailyEarningsMap.get(String(userId)) || 0,
     });
   } catch (error) {
     console.error('Start live error:', error);
@@ -380,6 +382,7 @@ exports.joinLive = async (req, res) => {
     const billingSettings = await getBillingSettings();
     const hostRates = resolveUserRates(host, billingSettings);
     const hostBusyState = await getHostBusyState(sessionId, hostIdStr);
+    const dailyEarningsMap = await getDailyBeansEarnedMap([hostIdStr]);
     res.json({
       success: true, channelName, token, appId, uid, hostUid,
       sessionId: session.id, hostId: hostIdStr, hostUsername: host.username,
@@ -392,6 +395,7 @@ exports.joinLive = async (req, res) => {
       voiceBillingEnabled: billingSettings.videoCallBillingEnabled,
       hostBusy: hostBusyState.busy,
       hostBusyType: hostBusyState.type,
+      daily_beans_earned: dailyEarningsMap.get(hostIdStr) || 0,
     });
   } catch (error) {
     console.error('Join live error:', error);
