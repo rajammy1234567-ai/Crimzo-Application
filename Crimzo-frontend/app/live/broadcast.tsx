@@ -62,7 +62,7 @@ const TIMER_OPTIONS = [
 
 // ── Sub-Components ──
 
-const PulsingDot = React.memo(() => {
+const PulsingDot = React.memo(function PulsingDot() {
   const pulse = useRef(new Animated.Value(1)).current;
   const opac = useRef(new Animated.Value(0.6)).current;
   useEffect(() => {
@@ -85,7 +85,7 @@ const PulsingDot = React.memo(() => {
   );
 });
 
-const LiveTimer = React.memo(({ startTime }: { startTime: number }) => {
+const LiveTimer = React.memo(function LiveTimer({ startTime }: { startTime: number }) {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     const iv = setInterval(() => setElapsed(Math.floor((Date.now() - startTime) / 1000)), 1000);
@@ -95,7 +95,7 @@ const LiveTimer = React.memo(({ startTime }: { startTime: number }) => {
   return <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '600' }}>{String(m).padStart(2, '0')}:{String(s).padStart(2, '0')}</Text>;
 });
 
-const CountdownTimer = React.memo(({ duration, startTime, onExpired }: { duration: number; startTime: number; onExpired: () => void }) => {
+const CountdownTimer = React.memo(function CountdownTimer({ duration, startTime, onExpired }: { duration: number; startTime: number; onExpired: () => void }) {
   const [remaining, setRemaining] = useState(duration);
   useEffect(() => {
     const iv = setInterval(() => {
@@ -115,7 +115,7 @@ const CountdownTimer = React.memo(({ duration, startTime, onExpired }: { duratio
   );
 });
 
-const GoLiveGlow = React.memo(() => {
+const GoLiveGlow = React.memo(function GoLiveGlow() {
   const s1 = useRef(new Animated.Value(1)).current;
   const o1 = useRef(new Animated.Value(0.3)).current;
   const s2 = useRef(new Animated.Value(1)).current;
