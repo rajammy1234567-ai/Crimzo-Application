@@ -23,6 +23,7 @@ import { toAgoraUid } from '../../lib/agoraUid';
 import { releaseAgoraEngine, trackAgoraEngine } from '../../lib/agoraEngineRelease';
 
 import { API_URL, apiGet, apiPost, ApiError } from '../../lib/apiClient';
+import { startLiveSession } from '../../lib/liveStart';
 import {
   respondLiveTalk,
   getLiveTalkStatus,
@@ -37,15 +38,13 @@ import { subscribe } from '../../lib/realtimeSync';
 import { shareLiveStream } from '../../lib/liveShare';
 import LiveFilterPanel from '../../components/LiveFilterPanel';
 import GiftSplashOverlay from '../../components/GiftSplashOverlay';
-import LiveEntranceOverlay from '../../components/LiveEntranceOverlay';
-import { publishLiveEntrance } from '../../components/LiveEntranceOverlay';
+
 import {
   applyLiveFilterToEngine,
   getLiveFilterPreset,
   type LiveFilterId,
 } from '../../lib/liveFilters';
 
-const LIVE_START_TIMEOUT_MS = 10000;
 const LOADING_SAFETY_MS = 15000;
 
 const { width: SW, height: SH } = Dimensions.get('window');
@@ -552,8 +551,6 @@ export default function BroadcastScreen() {
         sessionId: String(sessionId),
         userId: user?.id,
         username: user?.username,
-        equipped_level: user?.equipped_level,
-        user_level: user?.user_level,
       });
     });
     const presenceHeartbeat = setInterval(() => {
@@ -562,19 +559,6 @@ export default function BroadcastScreen() {
       }
     }, 25000);
     s.on('viewer_count_update', (d: { count: number }) => setViewerCount(Math.max(0, d.count - 1)));
-
-    s.on('live_entrance', (data: any) => {
-      if (data?.username && data?.emoji) {
-        publishLiveEntrance({
-          username: data.username,
-          level: data.level || 3,
-          name: data.name || 'VIP',
-          emoji: data.emoji,
-          badge_color: data.badge_color || '#FF2D55',
-          showcase_type: data.showcase_type,
-        });
-      }
-    });
 
     s.on('live_talk_incoming', (data: {
       requestId?: string;
@@ -842,26 +826,7 @@ export default function BroadcastScreen() {
         new Promise<void>((resolve) => setTimeout(resolve, 3000)),
       ]);
 
-      const r = await apiPost<{
-        success?: boolean;
-        sessionId: string;
-        channelName: string;
-        token: string;
-        appId: string;
-        uid: number;
-        error?: string;
-        detail?: string;
-      }>(
-        '/api/live/start',
-        { location: user?.country || 'Unknown' },
-        token,
-        LIVE_START_TIMEOUT_MS,
-      );
-
-      if (!r?.sessionId) {
-        throw new ApiError(r?.error || r?.detail || 'Could not start live session', 500, r);
-      }
-
+      const r = await startLiveSession(token, user?.country || 'Unknown');
       const { sessionId: sid, channelName, token: agoraToken, appId, uid: hostUid } = r;
 
       liveBroadcastMediaRef.current = {
@@ -887,11 +852,16 @@ export default function BroadcastScreen() {
         setTimeout(() => { try { eng.release(); } catch {} }, 300);
       }
       setAgoraReady(false);
-      const msg = e instanceof ApiError
-        ? e.message
-        : e instanceof Error
-          ? e.message
-          : 'Failed to start broadcast.';
+      let msg = 'Failed to start broadcast.';
+      if (e instanceof ApiError) {
+        const data = e.data as { detail?: string; error?: string } | undefined;
+        msg = data?.detail || data?.error || e.message || msg;
+        if (e.status === 408 || e.status === 0) {
+          msg += ' Server may be waking up — wait 30 seconds and try again.';
+        }
+      } else if (e instanceof Error) {
+        msg = e.message;
+      }
       appAlert('Go Live Failed', msg);
       setLoading(false);
     }
@@ -938,7 +908,7 @@ export default function BroadcastScreen() {
     <View style={st.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <GiftSplashOverlay />
-      <LiveEntranceOverlay />
+
 
       {/* ═══ CAMERA VIEW ═══ */}
       <View style={st.cameraWrap}>
@@ -1223,7 +1193,7 @@ export default function BroadcastScreen() {
             talkRatePerMin={myRates.chatRatePerMin}
             sharedSocket={liveSocket}
             onStickerPress={noopPress}
-            equippedLevel={user?.equipped_level}
+
           />
         )}
 

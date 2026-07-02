@@ -160,7 +160,19 @@ async function loadActiveLiveSessions() {
 exports.startLive = async (req, res) => {
   try {
     const { location } = req.body;
-    const userId = req.user.id;
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Login required to go live' });
+    }
+
+    const appId = process.env.AGORA_APP_ID;
+    const appCertificate = process.env.AGORA_APP_CERTIFICATE;
+    if (!appId || !appCertificate) {
+      return res.status(503).json({
+        error: 'Live streaming is not configured on the server',
+        detail: 'Missing AGORA_APP_ID or AGORA_APP_CERTIFICATE',
+      });
+    }
 
     // End any stuck active sessions for this host (app crash / force close)
     const stale = await LiveSession.updateMany(
@@ -172,13 +184,9 @@ exports.startLive = async (req, res) => {
     }
 
     const channelName = `live_${userId}_${Date.now()}`;
-
-    const appId = process.env.AGORA_APP_ID;
-    const appCertificate = process.env.AGORA_APP_CERTIFICATE;
     const expirationTimeInSeconds = 3600;
     const currentTimestamp = Math.floor(Date.now() / 1000);
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
-
     const uid = deriveAgoraUid(userId);
 
     const token = RtcTokenBuilder.buildTokenWithUid(
@@ -190,22 +198,41 @@ exports.startLive = async (req, res) => {
       channel_name: channelName,
       agora_token: token,
       session_type: 'single',
-      location: location || 'Unknown'
+      location: location || 'Unknown',
     });
 
-    await User.findByIdAndUpdate(userId, { status: 'live' });
-    emitLiveStreamsUpdated();
-    const billingSettings = await getBillingSettings();
+    await User.findByIdAndUpdate(userId, { status: 'live', is_online: true });
+
+    try {
+      emitLiveStreamsUpdated();
+    } catch (emitErr) {
+      console.warn('live_streams_updated emit failed:', emitErr?.message);
+    }
+
+    let talkRatePerMin = 1;
+    let talkBillingEnabled = false;
+    try {
+      const billingSettings = await getBillingSettings();
+      talkRatePerMin = billingSettings.liveTalkRatePerMin;
+      talkBillingEnabled = billingSettings.liveTalkBillingEnabled;
+    } catch (billingErr) {
+      console.warn('Billing settings load failed on live start:', billingErr?.message);
+    }
+
+    const sessionId = session._id ? String(session._id) : session.id;
+    if (!sessionId) {
+      throw new Error('Live session was created but session id is missing');
+    }
 
     res.json({
       success: true,
-      sessionId: session.id,
+      sessionId,
       channelName,
       token,
       appId,
       uid,
-      talkRatePerMin: billingSettings.liveTalkRatePerMin,
-      talkBillingEnabled: billingSettings.liveTalkBillingEnabled,
+      talkRatePerMin,
+      talkBillingEnabled,
     });
   } catch (error) {
     console.error('Start live error:', error);

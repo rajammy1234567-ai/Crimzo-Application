@@ -182,9 +182,6 @@ exports.getFullProfile = async (req, res) => {
       isMutualFriend: interaction.isMutualFriend,
     });
 
-    const { getPublicLevelInfo } = require('./levelController');
-    const levelInfo = await getPublicLevelInfo(userId);
-
     const isSelf = String(req.user.id) === String(userId);
     const profile = {
         id: u.id, crimzo_id: u.crimzo_id, username: u.username,
@@ -224,12 +221,6 @@ exports.getFullProfile = async (req, res) => {
         chatRatePerMin: userRates.chatRatePerMin,
         voiceBeansPerMin: userRates.voiceBeansPerMin,
         chatBeansPerMin: userRates.chatBeansPerMin,
-        user_level: levelInfo?.user_level ?? 1,
-        equipped_level: levelInfo?.equipped_level ?? 1,
-        level_name: levelInfo?.level_name ?? 'Rookie',
-        level_badge_color: levelInfo?.level_badge_color ?? '#6B7280',
-        showcase_emoji: levelInfo?.showcase_emoji ?? '🛵',
-        showcase_type: levelInfo?.showcase_type ?? 'scooter',
     };
 
     if (isSelf) {

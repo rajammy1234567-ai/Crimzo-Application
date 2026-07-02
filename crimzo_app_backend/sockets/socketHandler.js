@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const LiveSession = require('../models/LiveSession');
-const Level = require('../models/Level');
+
 const { getBillingSettings } = require('../utils/billingSettings');
 const { resolveUserRates } = require('../utils/userRates');
 const {
@@ -427,48 +427,15 @@ module.exports = (io) => {
         await LiveSession.findByIdAndUpdate(sessionId, { viewers_count: count });
         io.to(room).emit('viewer_count_update', { count });
 
-        // ── ENTRANCE EFFECT: high level users get flying car / vehicle zoom on join (visible to everyone in live)
-        // Only non-host joiners for now; host self-join rarely shows fancy entry.
-        if (userId && String(session?.user_id || '') !== String(userId)) {
-          try {
-            const joining = await User.findById(userId).select('username equipped_level user_level');
-            const lvl = joining?.equipped_level || joining?.user_level || (data?.equipped_level || 1);
-            if (lvl >= 3) {
-              const levelDoc = await Level.findOne({ level_number: lvl, is_active: true })
-                .select('name showcase_type showcase_emoji showcase_model_key badge_color');
-              if (levelDoc) {
-                io.to(room).emit('live_entrance', {
-                  userId: String(userId),
-                  username: joining?.username || username || 'VIP',
-                  level: lvl,
-                  name: levelDoc.name,
-                  showcase_type: levelDoc.showcase_type,
-                  emoji: levelDoc.showcase_emoji,
-                  badge_color: levelDoc.badge_color || '#FF2D55',
-                  model_key: levelDoc.showcase_model_key || null,
-                  timestamp: Date.now(),
-                });
-              }
-            }
-          } catch (e) {
-            console.warn('live_entrance lookup failed:', e?.message);
-          }
-        }
       } catch (err) {
         console.error('join_live error:', err.message);
       }
 
-      // Richer join payload for VIP level users (chat shows level tag)
-      const joinPayload = {
+      io.to(room).emit('live_system_message', {
         type: 'join',
         username: username || 'Someone',
         message: `${username || 'Someone'} joined the stream`,
-      };
-      // If we computed entrance above we can attach, but lightweight: attach level if passed in data or known
-      if (data?.equipped_level && data.equipped_level >= 3) {
-        joinPayload.level = data.equipped_level;
-      }
-      io.to(room).emit('live_system_message', joinPayload);
+      });
     });
 
     socket.on('leave_live', async (data) => {

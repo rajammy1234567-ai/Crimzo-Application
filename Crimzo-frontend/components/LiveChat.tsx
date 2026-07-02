@@ -36,7 +36,6 @@ interface ChatMessage {
     bg_color?: string;
     gift_diamonds?: number;
     timestamp: number;
-    level?: number; // for VIP level joins
 }
 
 interface LiveChatProps {
@@ -50,7 +49,6 @@ interface LiveChatProps {
     talkRatePerMin?: number;
     sharedSocket?: Socket | null;
     onStickerPress: () => void;
-    equippedLevel?: number;
 }
 
 function normalizeSessionId(sessionId: string | number): string {
@@ -110,17 +108,11 @@ const ChatBubble = React.memo(function ChatBubble({
 }: { item: ChatMessage; opacity: number; isHostMsg: boolean }) {
     // System - "joined"
     if (item.type === 'system') {
-        const hasLvl = (item as any).level && (item as any).level >= 3;
         return (
             <View style={[msgS.row, { opacity }]}>
                 <View style={msgS.systemPill}>
                     <Text style={msgS.systemUser}>{item.username || 'Someone'}</Text>
                     <Text style={msgS.systemAction}> joined</Text>
-                    {hasLvl ? (
-                        <View style={msgS.vipTag}>
-                            <Text style={msgS.vipTagText}>L{(item as any).level}</Text>
-                        </View>
-                    ) : null}
                     <Text style={msgS.systemDot}> 👋</Text>
                 </View>
             </View>
@@ -174,11 +166,6 @@ const msgS = StyleSheet.create({
     systemUser: { color: 'rgba(255,255,255,0.55)', fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
     systemAction: { color: 'rgba(255,255,255,0.3)', fontSize: 13, fontWeight: '600' },
     systemDot: { fontSize: 11 },
-    vipTag: {
-        marginLeft: 6, backgroundColor: '#FFD700', borderRadius: 6,
-        paddingHorizontal: 5, paddingVertical: 1,
-    },
-    vipTagText: { color: '#111', fontSize: 9, fontWeight: '900' },
     // Gift
     giftPill: {
         flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start',
@@ -208,7 +195,6 @@ const msgS = StyleSheet.create({
 export default function LiveChat({
     sessionId, userId, username, token, isHost = false, hostUserId,
     canChat = true, talkRatePerMin = 1, sharedSocket, onStickerPress,
-    equippedLevel,
 }: LiveChatProps) {
     const insets = useSafeAreaInsets();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -229,10 +215,8 @@ export default function LiveChat({
             sessionId: normalizeSessionId(sessionId),
             userId,
             username,
-            equipped_level: equippedLevel,
-            user_level: equippedLevel, // approx
         });
-    }, [sessionId, userId, username, equippedLevel]);
+    }, [sessionId, userId, username]);
 
     // Socket connection (reuse parent socket when provided — keeps room in sync)
     useEffect(() => {
@@ -249,13 +233,12 @@ export default function LiveChat({
                     if (!fromSelf) triggerGiftSplash(data, false);
                 }
             };
-            const onSystem = (data: { message?: string; username?: string; level?: number }) => {
+            const onSystem = (data: { message?: string; username?: string }) => {
                 setMessages((prev) => appendChatMessage(prev, {
                     id: `sys_${Date.now()}`,
                     type: 'system',
                     message: data.message,
                     username: data.username,
-                    level: data.level,
                     timestamp: Date.now(),
                 }));
             };

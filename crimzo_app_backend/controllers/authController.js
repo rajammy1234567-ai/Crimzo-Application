@@ -5,7 +5,6 @@ const nodemailer = require('nodemailer');
 const User = require('../models/User');
 const { uploadToCloudinary } = require('../config/cloudinary');
 const { sendOtpSms, verifyOtpSms, normalizeIndianMobile, isFast2SmsConfigured } = require('../utils/fast2sms');
-const { NEW_USER_LEVEL_FIELDS } = require('../utils/levelDefaults');
 
 // In-memory OTP store (dev only — use Redis/DB in production)
 const otpStore = new Map();
@@ -68,9 +67,6 @@ function formatAuthUser(user, extra = {}, referralResult = null) {
     friends_count: user.friends_count ?? 0,
     is_online: user.is_online,
     status: user.status,
-    user_level: user.user_level ?? 1,
-    equipped_level: user.equipped_level ?? 1,
-    owned_levels: user.owned_levels?.length ? user.owned_levels : [1],
     ...extra,
   };
 }
@@ -102,7 +98,7 @@ exports.guestLogin = async (req, res) => {
       diamonds: 100,
       beans: 0,
       country: 'India',
-      ...NEW_USER_LEVEL_FIELDS,
+
     });
 
     const token = jwt.sign(
@@ -220,7 +216,7 @@ exports.verifyOtp = async (req, res) => {
         diamonds: 0,
         beans: 0,
         country: 'India',
-        ...NEW_USER_LEVEL_FIELDS,
+  
       });
       referralResult = await applyReferralIfPresent(user, req);
       console.log('New phone user created, ID:', user.id);
@@ -338,7 +334,7 @@ exports.googleLogin = async (req, res) => {
         diamonds: 0,
         beans: 0,
         country: 'India',
-        ...NEW_USER_LEVEL_FIELDS,
+  
       });
       referralResult = await applyReferralIfPresent(user, req);
       console.log('New Google user created, ID:', user.id);
@@ -427,7 +423,7 @@ exports.register = async (req, res) => {
       diamonds: 0,
       beans: 0,
       country: 'India',
-      ...NEW_USER_LEVEL_FIELDS,
+
     });
 
     const referralResult = await applyReferralIfPresent(user, req);
@@ -679,7 +675,7 @@ exports.completeEmailRegistration = async (req, res) => {
       diamonds: 0,
       beans: 0,
       country: 'India',
-      ...NEW_USER_LEVEL_FIELDS,
+
     });
     const referralResult = await applyReferralIfPresent(user, req);
     const token = jwt.sign(

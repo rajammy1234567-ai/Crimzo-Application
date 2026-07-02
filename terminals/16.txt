@@ -3,7 +3,7 @@ pid: 5492
 cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
 command: "Set-Location \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\"; npx expo start --clear --web"
 started_at: 2026-07-02T11:13:50.015Z
-running_for_ms: 585013   
+running_for_ms: 4370014  
 ---
 env: load .env
 env: export EXPO_PUBLIC_BACKEND_URL EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID

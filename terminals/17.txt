@@ -3,7 +3,7 @@ pid: 6848
 cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
 command: "Set-Location \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\"; npx expo start --clear --web"
 started_at: 2026-07-02T11:14:19.239Z
-running_for_ms: 559994   
+running_for_ms: 4344990  
 ---
 env: load .env
 env: export EXPO_PUBLIC_BACKEND_URL EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID
@@ -58,3 +58,164 @@ Web Bundled 811ms node_modules\expo-router\entry.js (1 module)
 [expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.
 "textShadow*" style props are deprecated. Use "textShadow".
 ✅ Backend reachable at https://crimzo-application-backend.onrender.com 
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+λ Bundled 55ms node_modules\expo-router\node\render.js (1 module)
+"shadow*" style props are deprecated. Use "boxShadow".
+[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.
+"textShadow*" style props are deprecated. Use "textShadow".
+Web Bundled 974ms node_modules\expo-router\entry.js (1 module)
+Web Bundled 78ms node_modules\expo-router\entry.js (1 module)
+λ Bundled 48ms node_modules\expo-router\node\render.js (1 module)
+✅ Backend reachable at https://crimzo-application-backend.onrender.com 
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+"shadow*" style props are deprecated. Use "boxShadow".
+Web Bundled 840ms node_modules\expo-router\entry.js (1 module)
+[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.
+"textShadow*" style props are deprecated. Use "textShadow".
+✅ Backend reachable at https://crimzo-application-backend.onrender.com 
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+λ Bundled 49ms node_modules\expo-router\node\render.js (1 module)
+"shadow*" style props are deprecated. Use "boxShadow".
+[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.
+"textShadow*" style props are deprecated. Use "textShadow".
+Web Bundled 922ms node_modules\expo-router\entry.js (1 module)
+λ  WARN  props.pointerEvents is deprecated. Use style.pointerEvents 
+  console.warn (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\expo\node_modules\@expo\cli\src\start\server\serverLogLikeMetro.ts:161:21)
+  warnOnce (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-native-web\dist\modules\warnOnce\index.js:24:13)
+  createDOMProps (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-native-web\dist\modules\createDOMProps\index.js:805:13)
+  createElement (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-native-web\dist\exports\createElement\index.js:23:32)
+  Component (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-native-web\dist\exports\View\index.js:111:23)
+  Object.callComponentInDEV [as react-stack-bottom-frame] (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8970:18)
+  renderWithHooks (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:4699:19)
+  run (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5539:39)
+  retryNode (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5899:31)
+  renderNodeDestructive (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5849:11)
+Web Bundled 55ms node_modules\expo-router\entry.js (1 module)
+λ Bundled 83ms node_modules\expo-router\node\render.js (1 module)
+✅ Backend reachable at https://crimzo-application-backend.onrender.com 
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+"shadow*" style props are deprecated. Use "boxShadow".
+Web Bundled 832ms node_modules\expo-router\entry.js (1 module)
+[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.
+"textShadow*" style props are deprecated. Use "textShadow".
+✅ Backend reachable at https://crimzo-application-backend.onrender.com 
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+λ Bundled 61ms node_modules\expo-router\node\render.js (1 module)
+"shadow*" style props are deprecated. Use "boxShadow".
+[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.
+"textShadow*" style props are deprecated. Use "textShadow".
+λ  WARN  props.pointerEvents is deprecated. Use style.pointerEvents 
+  console.warn (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\expo\node_modules\@expo\cli\src\start\server\serverLogLikeMetro.ts:161:21)
+  warnOnce (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-native-web\dist\modules\warnOnce\index.js:24:13)
+  createDOMProps (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-native-web\dist\modules\createDOMProps\index.js:805:13)
+  createElement (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-native-web\dist\exports\createElement\index.js:23:32)
+  Component (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-native-web\dist\exports\View\index.js:111:23)
+  Object.callComponentInDEV [as react-stack-bottom-frame] (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8970:18)
+  renderWithHooks (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:4699:19)
+  run (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5539:39)
+  retryNode (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5899:31)
+  renderNodeDestructive (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5849:11)
+Web Bundled 1069ms node_modules\expo-router\entry.js (1 module)
+Web Bundled 62ms node_modules\expo-router\entry.js (1 module)
+λ Bundled 43ms node_modules\expo-router\node\render.js (1 module)
+✅ Backend reachable at https://crimzo-application-backend.onrender.com 
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+"shadow*" style props are deprecated. Use "boxShadow".
+Web Bundled 796ms node_modules\expo-router\entry.js (1 module)
+[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.
+"textShadow*" style props are deprecated. Use "textShadow".
+ LOG  [web] Logs will appear in the browser console
+✅ Backend reachable at https://crimzo-application-backend.onrender.com 
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+λ Bundled 36ms node_modules\expo-router\node\render.js (1 module)
+"shadow*" style props are deprecated. Use "boxShadow".
+[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.
+Web Bundled 877ms node_modules\expo-router\entry.js (1 module)
+"textShadow*" style props are deprecated. Use "textShadow".
+λ  WARN  props.pointerEvents is deprecated. Use style.pointerEvents 
+  console.warn (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\expo\node_modules\@expo\cli\src\start\server\serverLogLikeMetro.ts:161:21)
+  warnOnce (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-native-web\dist\modules\warnOnce\index.js:24:13)
+  createDOMProps (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-native-web\dist\modules\createDOMProps\index.js:805:13)
+  createElement (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-native-web\dist\exports\createElement\index.js:23:32)
+  Component (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-native-web\dist\exports\View\index.js:111:23)
+  Object.callComponentInDEV [as react-stack-bottom-frame] (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8970:18)
+  renderWithHooks (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:4699:19)
+  run (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5539:39)
+  retryNode (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5899:31)
+  renderNodeDestructive (D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5849:11)
+Web Bundled 61ms node_modules\expo-router\entry.js (1 module)
+λ Bundled 107ms node_modules\expo-router\node\render.js (1 module)
+✅ Backend reachable at https://crimzo-application-backend.onrender.com 
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+"shadow*" style props are deprecated. Use "boxShadow".
+Web Bundled 855ms node_modules\expo-router\entry.js (1 module)
+[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.
+"textShadow*" style props are deprecated. Use "textShadow".
+✅ Backend reachable at https://crimzo-application-backend.onrender.com 
+ LOG  [web] Logs will appear in the browser console
+Unable to resolve "../../components/levels/LevelBadge" from "app\(tabs)\profile.tsx"
+  20 | import { BeanIcon, DiamondIcon } from '../../lib/currencyIcons';
+  21 | import { shareReferralInvite } from '../../lib/referral';
+> 22 | import LevelBadge from '../../components/levels/LevelBadge';
+     |                         ^
+  23 |
+  24 | const { width: SW, height: SH } = Dimensions.get('window');
+  25 | const REEL_THUMB_W = (SW - 6) / 3;
+
+Import stack:
+
+ app\(tabs)\profile.tsx
+ | import "../../components/levels/LevelBadge"
+
+ app (require.context)
+
+Unable to resolve "../../components/levels/LevelBadge" from "app\(tabs)\profile.tsx"
+  20 | import { BeanIcon, DiamondIcon } from '../../lib/currencyIcons';
+  21 | import { shareReferralInvite } from '../../lib/referral';
+> 22 |
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  23 |
+  24 | const { width: SW, height: SH } = Dimensions.get('window');
+  25 | const REEL_THUMB_W = (SW - 6) / 3;
+
+Import stack:
+
+ app\(tabs)\profile.tsx
+ | import "../../components/levels/LevelBadge"
+
+ app (require.context)
+
+Unable to resolve "../../components/LiveEntranceOverlay" from "app\live\broadcast.tsx"
+  38 | import LiveFilterPanel from '../../components/LiveFilterPanel';
+  39 | import GiftSplashOverlay from '../../components/GiftSplashOverlay';
+> 40 | import LiveEntranceOverlay from '../../components/LiveEntranceOverlay';
+     |                                  ^
+  41 | import { publishLiveEntrance } from '../../components/LiveEntranceOverlay';
+  42 | import {
+  43 |   applyLiveFilterToEngine,
+
+Import stack:
+
+ app\live\broadcast.tsx
+ | import "../../components/LiveEntranceOverlay"
+
+ app (require.context)
+
+Unable to resolve "../../components/LiveEntranceOverlay" from "app\live\broadcast.tsx"
+  38 | import LiveFilterPanel from '../../components/LiveFilterPanel';
+  39 | import GiftSplashOverlay from '../../components/GiftSplashOverlay';
+> 40 | import LiveEntranceOverlay from '../../components/LiveEntranceOverlay';
+     |                                  ^
+  41 | import { publishLiveEntrance } from '../../components/LiveEntranceOverlay';
+  42 | import {
+  43 |   applyLiveFilterToEngine,
+
+Import stack:
+
+ app\live\broadcast.tsx
+ | import "../../components/LiveEntranceOverlay"
+
+ app (require.context)
+

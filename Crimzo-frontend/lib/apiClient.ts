@@ -1,19 +1,17 @@
 import {
   API_URL,
   getApiUrlCandidates,
-  getRequestTimeoutMs,
-  getTransientRetryCount,
-  isDeployedBackend,
   setActiveApiUrl,
   subscribeApiUrl,
 } from './apiConfig';
 
 export { API_URL, subscribeApiUrl };
 
-const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000; // 10 min for photos/videos over WiFi
+const DEFAULT_TIMEOUT_MS = 20000;
+const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 const RETRYABLE_STATUSES = new Set([502, 503, 504]);
-const LOCAL_RETRY_BASE_DELAY_MS = 800;
-const DEPLOYED_RETRY_BASE_DELAY_MS = 2_500;
+const MAX_TRANSIENT_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 800;
 
 /** Rewrites localhost media URLs so videos/images load on phone/emulator */
 export function resolveMediaUrl(url?: string | null): string {
@@ -111,18 +109,8 @@ function isIdempotentMethod(method?: string): boolean {
   return m === 'GET' || m === 'HEAD' || m === 'OPTIONS';
 }
 
-function isDeployedHostList(hosts: string[]): boolean {
-  return hosts.some(isDeployedBackend);
-}
-
 function networkErrorMessage(tried: string[]): string {
   const list = tried.join(', ');
-  if (isDeployedHostList(tried)) {
-    return (
-      `Cannot reach server (tried: ${list}). ` +
-      'The cloud backend may be waking up — wait 30–60 seconds and try again.'
-    );
-  }
   return (
     `Cannot reach backend. Tried: ${list}. ` +
     'Ensure backend is running (npm start in crimzo_app_backend), phone and PC are on the same WiFi, ' +
@@ -132,15 +120,6 @@ function networkErrorMessage(tried: string[]): string {
 
 function timeoutErrorMessage(tried: string[], isUpload: boolean): string {
   const hosts = tried.join(', ');
-  if (isDeployedHostList(tried)) {
-    if (isUpload) {
-      return `Upload timed out (tried: ${hosts}). Server may be waking up — try again in a minute.`;
-    }
-    return (
-      `Server is waking up (tried: ${hosts}). ` +
-      'Wait 30–60 seconds and try again — Render free tier needs time after sleep.'
-    );
-  }
   if (isUpload) {
     return (
       `Upload timed out (tried: ${hosts}). ` +
@@ -151,11 +130,6 @@ function timeoutErrorMessage(tried: string[], isUpload: boolean): string {
     `Request timed out (tried: ${hosts}). ` +
     'Ensure the backend is running (cd crimzo_app_backend && npm start), phone/emulator and PC are on the same network, and Windows Firewall allows port 5001.'
   );
-}
-
-function retryDelayMs(base: string, attempt: number): number {
-  const baseDelay = isDeployedBackend(base) ? DEPLOYED_RETRY_BASE_DELAY_MS : LOCAL_RETRY_BASE_DELAY_MS;
-  return baseDelay * (attempt + 1);
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -185,8 +159,8 @@ export async function apiFetch<T = unknown>(
   const isFormData =
     typeof FormData !== 'undefined' && rest.body instanceof FormData;
 
-  // Prefer API_URL (set by warmup/login) then other device-specific candidates.
-  // RN FormData with {uri,type,name} can be retried across URLs; web File blobs can too.
+  const effectiveTimeout = timeoutMs ?? (isFormData ? UPLOAD_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
+
   const bases = [API_URL, ...getApiUrlCandidates().filter((u) => u !== API_URL)];
 
   const tried: string[] = [];
@@ -196,11 +170,8 @@ export async function apiFetch<T = unknown>(
 
   for (const base of bases) {
     tried.push(base);
-    const maxAttempts = allowTransientRetry ? getTransientRetryCount(base) : 1;
-    const effectiveTimeout =
-      timeoutMs ?? (isFormData ? UPLOAD_TIMEOUT_MS : getRequestTimeoutMs(base));
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    for (let attempt = 0; attempt < (allowTransientRetry ? MAX_TRANSIENT_RETRIES : 1); attempt++) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), effectiveTimeout);
 
@@ -223,9 +194,9 @@ export async function apiFetch<T = unknown>(
         if (
           allowTransientRetry &&
           RETRYABLE_STATUSES.has(response.status) &&
-          attempt < maxAttempts - 1
+          attempt < MAX_TRANSIENT_RETRIES - 1
         ) {
-          await sleep(retryDelayMs(base, attempt));
+          await sleep(RETRY_BASE_DELAY_MS * (attempt + 1));
           continue;
         }
 
@@ -236,23 +207,14 @@ export async function apiFetch<T = unknown>(
         return await parseResponse<T>(response);
       } catch (error: unknown) {
         if (isApiError(error)) {
-          // Route missing on this host — try next backend URL (e.g. prod vs local).
           if (allowTransientRetry && isMissingRouteError(error)) break;
           throw error;
         }
         if (isAbortError(error)) {
-          if (allowTransientRetry && attempt < maxAttempts - 1) {
-            await sleep(retryDelayMs(base, attempt));
-            continue;
-          }
           sawTimeout = true;
           break;
         }
         if (isNetworkError(error)) {
-          if (allowTransientRetry && attempt < maxAttempts - 1) {
-            await sleep(retryDelayMs(base, attempt));
-            continue;
-          }
           lastNetworkError = error;
           break;
         }
@@ -272,7 +234,6 @@ export async function apiFetch<T = unknown>(
   throw new ApiError(networkErrorMessage(tried), 0);
 }
 
-/** Multipart upload helper — long timeout, correct device URL. */
 export async function apiUpload<T = unknown>(
   path: string,
   formData: FormData,

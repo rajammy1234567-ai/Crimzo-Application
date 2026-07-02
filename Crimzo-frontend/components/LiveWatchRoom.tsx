@@ -30,8 +30,7 @@ import PrivateTalkChat from '../components/PrivateTalkChat';
 import HostBusyOverlay from '../components/HostBusyOverlay';
 import StickerPanel from '../components/StickerPanel';
 import GiftSplashOverlay from '../components/GiftSplashOverlay';
-import LiveEntranceOverlay from '../components/LiveEntranceOverlay';
-import { publishLiveEntrance } from '../components/LiveEntranceOverlay';
+
 import {
   createAgoraRtcEngine,
   ChannelProfileType,
@@ -541,8 +540,6 @@ export default function LiveWatchRoom({
         sessionId: String(sessionId),
         userId: user?.id,
         username: user?.username,
-        equipped_level: user?.equipped_level,
-        user_level: user?.user_level,
       });
     });
     s.on('viewer_count_update', (d: { count: number }) => setViewerCount(d.count));
@@ -561,19 +558,7 @@ export default function LiveWatchRoom({
       );
     });
 
-    s.on('live_entrance', (data: any) => {
-      // Trigger the fancy full-screen flying car (or other vehicle) animation
-      if (data?.username && data?.emoji) {
-        publishLiveEntrance({
-          username: data.username,
-          level: data.level || 3,
-          name: data.name || 'VIP',
-          emoji: data.emoji,
-          badge_color: data.badge_color || '#FF2D55',
-          showcase_type: data.showcase_type,
-        });
-      }
-    });
+
     s.on('live_talk_accepted', (data: { requestId?: string }) => {
       if (data?.requestId) {
         void beginTalkBilling(data.requestId);
@@ -970,7 +955,7 @@ export default function LiveWatchRoom({
     <View style={s.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       {isActive ? <GiftSplashOverlay /> : null}
-      {isActive ? <LiveEntranceOverlay /> : null}
+
 
       {/* ═══ STREAM VIDEO ═══ */}
       <View style={StyleSheet.absoluteFill}>
@@ -1251,7 +1236,7 @@ export default function LiveWatchRoom({
           talkRatePerMin={hostRates.chatRatePerMin}
           sharedSocket={viewerSocket}
           onStickerPress={() => setShowStickers(true)}
-          equippedLevel={user?.equipped_level}
+
         />
       )}
 

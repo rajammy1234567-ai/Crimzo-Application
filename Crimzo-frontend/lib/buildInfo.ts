@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 /** Human-readable release stamp — bump when shipping a new APK. */
-export const BUILD_STAMP = '2026-07-02-render-warmup';
+export const BUILD_STAMP = '2026-06-16-v22';
 
 export const APP_VERSION =
   Constants.expoConfig?.version ??
