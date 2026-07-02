@@ -41,9 +41,17 @@ const googleSignInPlugin = iosUrlScheme
     ]
   : '@react-native-google-signin/google-signin';
 
+const backendUrl =
+  process.env.EXPO_PUBLIC_BACKEND_URL ||
+  'https://crimzo-application-backend.onrender.com';
+
 module.exports = {
   expo: {
     ...base,
+    extra: {
+      ...(base.extra || {}),
+      EXPO_PUBLIC_BACKEND_URL: backendUrl,
+    },
     plugins: [
       ...(base.plugins || []),
       googleSignInPlugin,

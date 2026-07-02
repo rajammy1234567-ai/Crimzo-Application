@@ -1,0 +1,60 @@
+---
+pid: 6848
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "Set-Location \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\"; npx expo start --clear --web"
+started_at: 2026-07-02T11:14:19.239Z
+running_for_ms: 559994   
+---
+env: load .env
+env: export EXPO_PUBLIC_BACKEND_URL EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID
+Starting project at D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend
+Starting Metro Bundler
+warning: Bundler cache is empty, rebuilding (this may take a minute)
+Waiting on http://localhost:8081
+The following packages should be updated for best compatibility with the installed expo version:
+Logs for your project will appear below.
+  expo-application@56.0.3 - expected version: ~7.0.8
+  expo-crypto@15.0.8 - expected version: ~15.0.9
+Your project may not work correctly until you install the expected versions of the packages.
+| (node:13616) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:2488) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+Web node_modules\expo-router\entry.js ▓▓▓▓░░░░░░░░░░░░ 25.0% ( 47/235)
+λ node_modules\expo-router\node\render.js ▓▓░░░░░░░░░░░░░░ 13.0% (122/338)
+Web node_modules\expo-router\entry.js ▓▓▓▓░░░░░░░░░░░░ 25.0% (207/453)
+λ node_modules\expo-router\node\render.js ▓▓░░░░░░░░░░░░░░ 13.8% (139/379)
+Web node_modules\expo-router\entry.js ▓▓▓▓▓░░░░░░░░░░░ 35.1% (343/579)
+λ node_modules\expo-router\node\render.js ▓▓▓▓▓░░░░░░░░░░░ 36.5% (343/568)
+Web node_modules\expo-router\entry.js ▓▓▓▓▓▓▓░░░░░░░░░ 48.9% (469/671)
+λ node_modules\expo-router\node\render.js ▓▓▓▓▓▓▓▓▓░░░░░░░ 59.7% (570/738)
+Web node_modules\expo-router\entry.js ▓▓▓▓▓▓▓▓▓▓░░░░░░ 65.0% (694/861)
+λ node_modules\expo-router\node\render.js ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 69.0% (730/879)
+Web node_modules\expo-router\entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 90.3% (1026/1080)
+λ node_modules\expo-router\node\render.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 88.3% (1047/1114)
+Web Bundled 22113ms node_modules\expo-router\entry.js (1126 modules)
+λ Bundled 22183ms node_modules\expo-router\node\render.js (1242 modules)
+"shadow*" style props are deprecated. Use "boxShadow".
+[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.
+"textShadow*" style props are deprecated. Use "textShadow".
+✅ Backend reachable at https://crimzo-application-backend.onrender.com 
+Web node_modules\expo-router\entry.js ▓▓▓░░░░░░░░░░░░░ 23.0% ( 28/142)
+Web node_modules\expo-router\entry.js ▓▓▓▓▓▓░░░░░░░░░░ 39.6% (399/634)
+Web node_modules\expo-router\entry.js ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 78.6% (837/944)
+Web Bundled 9167ms node_modules\expo-router\entry.js (1138 modules)
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+λ Bundled 57ms node_modules\expo-router\node\render.js (1 module)
+"shadow*" style props are deprecated. Use "boxShadow".
+[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.
+Web Bundled 913ms node_modules\expo-router\entry.js (1 module)
+"textShadow*" style props are deprecated. Use "textShadow".
+Web Bundled 59ms node_modules\expo-router\entry.js (1 module)
+✅ Backend reachable at https://crimzo-application-backend.onrender.com 
+ LOG  [web] Logs will appear in the browser console
+λ Bundled 44ms node_modules\expo-router\node\render.js (1 module)
+"shadow*" style props are deprecated. Use "boxShadow".
+Web Bundled 811ms node_modules\expo-router\entry.js (1 module)
+[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the `expo-audio` and `expo-video` packages to replace the required functionality.
+"textShadow*" style props are deprecated. Use "textShadow".
+✅ Backend reachable at https://crimzo-application-backend.onrender.com 

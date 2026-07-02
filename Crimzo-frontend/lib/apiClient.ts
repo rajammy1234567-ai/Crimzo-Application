@@ -5,9 +5,10 @@ import {
   getTransientRetryCount,
   isDeployedBackend,
   setActiveApiUrl,
+  subscribeApiUrl,
 } from './apiConfig';
 
-export { API_URL };
+export { API_URL, subscribeApiUrl };
 
 const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000; // 10 min for photos/videos over WiFi
 const RETRYABLE_STATUSES = new Set([502, 503, 504]);

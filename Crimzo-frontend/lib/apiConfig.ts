@@ -13,22 +13,42 @@ export const WARMUP_PER_ATTEMPT_TIMEOUT_MS = 35_000;
 export const WARMUP_MAX_ATTEMPTS = 8;
 export const WARMUP_RETRY_BASE_DELAY_MS = 4_000;
 
-const rawEnvUrl = process.env.EXPO_PUBLIC_BACKEND_URL?.replace(/\/$/, '');
+function readConfiguredBackendUrl(): string | undefined {
+  const fromProcess = process.env.EXPO_PUBLIC_BACKEND_URL;
+  const fromExtra =
+    Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL ??
+    (Constants as { manifest?: { extra?: { EXPO_PUBLIC_BACKEND_URL?: string } } }).manifest?.extra
+      ?.EXPO_PUBLIC_BACKEND_URL;
+  const raw = (fromProcess || fromExtra || '').replace(/\/$/, '');
+  return raw || undefined;
+}
+
+const rawEnvUrl = readConfiguredBackendUrl();
 
 function isLocalDevUrl(url?: string): boolean {
-  if (!url) return true;
+  if (!url) return false;
   return /localhost|127\.0\.0\.1|192\.168\.|10\.0\.2\.2/i.test(url);
 }
 
 /** Release APK must hit production — .env LAN IP is only for local dev. */
-function resolveEnvUrl(): string | undefined {
-  if (!__DEV__ && isLocalDevUrl(rawEnvUrl)) {
-    return PRODUCTION_BACKEND_URL;
-  }
+function resolveEnvUrl(): string {
+  if (!rawEnvUrl) return PRODUCTION_BACKEND_URL;
+  if (!__DEV__ && isLocalDevUrl(rawEnvUrl)) return PRODUCTION_BACKEND_URL;
   return rawEnvUrl;
 }
 
 const envUrl = resolveEnvUrl();
+
+type ApiUrlListener = (url: string) => void;
+const apiUrlListeners = new Set<ApiUrlListener>();
+
+export function subscribeApiUrl(listener: ApiUrlListener): () => void {
+  apiUrlListeners.add(listener);
+  listener(API_URL);
+  return () => {
+    apiUrlListeners.delete(listener);
+  };
+}
 
 export function isDeployedBackend(url?: string): boolean {
   return !!url && url.startsWith('https://');
@@ -48,9 +68,16 @@ function addUnique(list: string[], url: string) {
   if (!list.includes(normalized)) list.push(normalized);
 }
 
+function appendDevProductionFallback(candidates: string[]) {
+  if (__DEV__ && isLocalDevUrl(rawEnvUrl)) {
+    addUnique(candidates, PRODUCTION_BACKEND_URL);
+  }
+}
+
 /** Ordered list of backend URLs to try (first = preferred). */
 export function getApiUrlCandidates(): string[] {
   const candidates: string[] = [];
+  const localUrl = `http://localhost:${PORT}`;
 
   // Deployed backend — same URL on emulator, device, and web
   if (envUrl && isDeployedBackend(envUrl)) {
@@ -59,15 +86,26 @@ export function getApiUrlCandidates(): string[] {
   }
 
   if (Platform.OS === 'web') {
-    if (envUrl) addUnique(candidates, envUrl);
-    addUnique(candidates, `http://localhost:${PORT}`);
+    if (envUrl && isDeployedBackend(envUrl)) {
+      addUnique(candidates, envUrl);
+      return candidates;
+    }
+    if (envUrl && isLocalDevUrl(envUrl)) {
+      addUnique(candidates, localUrl);
+      if (envUrl !== localUrl) addUnique(candidates, envUrl);
+      appendDevProductionFallback(candidates);
+      return candidates;
+    }
+    addUnique(candidates, PRODUCTION_BACKEND_URL);
+    addUnique(candidates, localUrl);
     return candidates;
   }
 
   if (Platform.OS === 'ios' && !Constants.isDevice) {
-    addUnique(candidates, `http://localhost:${PORT}`);
+    addUnique(candidates, localUrl);
     if (envUrl) addUnique(candidates, envUrl);
     addUnique(candidates, `http://${DEV_LAN_HOST}:${PORT}`);
+    appendDevProductionFallback(candidates);
     return candidates;
   }
 
@@ -76,12 +114,14 @@ export function getApiUrlCandidates(): string[] {
     addUnique(candidates, `http://10.0.2.2:${PORT}`);
     if (envUrl) addUnique(candidates, envUrl);
     addUnique(candidates, `http://${DEV_LAN_HOST}:${PORT}`);
+    appendDevProductionFallback(candidates);
     return candidates;
   }
 
   // Physical phone / tablet — same WiFi + PC LAN IP
   if (envUrl) addUnique(candidates, envUrl);
   addUnique(candidates, `http://${DEV_LAN_HOST}:${PORT}`);
+  appendDevProductionFallback(candidates);
   return candidates;
 }
 
@@ -92,5 +132,8 @@ export function resolveApiUrl(): string {
 export let API_URL = resolveApiUrl();
 
 export function setActiveApiUrl(url: string) {
-  API_URL = url.replace(/\/$/, '');
+  const next = url.replace(/\/$/, '');
+  if (next === API_URL) return;
+  API_URL = next;
+  apiUrlListeners.forEach((listener) => listener(API_URL));
 }

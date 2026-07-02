@@ -1,9 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { appAlert } from '../lib/appAlert';
 
 import io, { Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
-import { API_URL } from '../lib/apiClient';
+import { subscribeApiUrl } from '../lib/apiConfig';
 import { publish } from '../lib/realtimeSync';
 import { loadAppSettings, onAppSettingsChange, type AppSettings } from '../lib/appSettings';
 import { attachAppTimeTracker } from '../lib/appTimeTracker';
@@ -12,6 +12,7 @@ import { playGiftSplashSound } from '../lib/uiSounds';
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const { user, token, updateUser, logout } = useAuth();
+  const [backendUrl, setBackendUrl] = useState('');
   const socketRef = useRef<Socket | null>(null);
   const appSettingsRef = useRef<AppSettings>({ notificationsEnabled: true, language: 'Automatic' });
   const updateUserRef = useRef(updateUser);
@@ -27,8 +28,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     return onAppSettingsChange((s) => { appSettingsRef.current = s; });
   }, []);
 
+  useEffect(() => subscribeApiUrl(setBackendUrl), []);
+
   useEffect(() => {
-    if (!token || !user?.id || !API_URL) {
+    if (!token || !user?.id || !backendUrl) {
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
@@ -36,7 +39,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const socket = io(API_URL, {
+    const socket = io(backendUrl, {
       transports: ['websocket'],
       auth: { token },
     });
@@ -180,7 +183,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [token, user?.id]);
+  }, [token, user?.id, backendUrl]);
 
   return <>{children}</>;
 }
