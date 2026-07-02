@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { PRIVACY_URL, TERMS_URL, apiFetch, apiGet } from '../../lib/apiClient';
+import { getPrivacyUrl, getTermsUrl, apiFetch, apiGet } from '../../lib/apiClient';
 import {
   loadAppSettings,
   saveAppSettings,
@@ -445,12 +445,12 @@ export default function SettingsScreen() {
         {
           icon: 'shield-checkmark-outline',
           label: 'Privacy Policy',
-          onPress: () => openURL(PRIVACY_URL, 'privacy'),
+          onPress: () => openURL(getPrivacyUrl(), 'privacy'),
         },
         {
           icon: 'document-text-outline',
           label: 'User Agreement',
-          onPress: () => openURL(TERMS_URL, 'terms'),
+          onPress: () => openURL(getTermsUrl(), 'terms'),
         },
       ],
     },
@@ -717,7 +717,7 @@ export default function SettingsScreen() {
             ))}
             <TouchableOpacity
               style={styles.legalWebBtn}
-              onPress={() => legalType && Linking.openURL(legalType === 'privacy' ? PRIVACY_URL : TERMS_URL)}
+              onPress={() => legalType && Linking.openURL(legalType === 'privacy' ? getPrivacyUrl() : getTermsUrl())}
             >
               <Text style={styles.legalWebText}>Open full document in browser</Text>
             </TouchableOpacity>

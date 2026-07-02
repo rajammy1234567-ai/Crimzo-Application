@@ -695,7 +695,7 @@ export default function ProfileScreen() {
             <Text style={s.reelsEmptySub}>Upload your first reel!</Text>
             <TouchableOpacity
               style={s.uploadReelBtn}
-              onPress={() => router.push('/(tabs)/reels' as any)}
+              onPress={() => router.push('/reel/create' as any)}
               activeOpacity={0.8}
             >
               <Ionicons name="add-circle-outline" size={18} color="#FFF" />

@@ -205,7 +205,11 @@ export default function WalletScreen() {
           <TouchableOpacity onPress={() => router.back()} style={s.navBtn} activeOpacity={0.7}>
             <Ionicons name="arrow-back" size={24} color="#FFF" />
           </TouchableOpacity>
-          <TouchableOpacity style={s.navBtn} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={s.navBtn}
+            activeOpacity={0.7}
+            onPress={() => router.push('/profile/transactions' as never)}
+          >
             <Ionicons name="receipt-outline" size={22} color="#FFF" />
           </TouchableOpacity>
         </View>

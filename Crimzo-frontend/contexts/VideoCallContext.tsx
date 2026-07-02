@@ -4,7 +4,7 @@ import { appAlert } from '../lib/appAlert';
 import { useRouter } from 'expo-router';
 import io, { Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
-import { API_URL, ApiError, apiGet } from '../lib/apiClient';
+import { API_URL, apiGet, getApiErrorMessage, getApiErrorStatus } from '../lib/apiClient';
 import {
   checkVideoCallEligibility,
   isInsufficientBalanceError,
@@ -173,10 +173,14 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
         return;
       }
     } catch (e) {
-      if (e instanceof ApiError && e.status === 403) {
-        appAlert('Follow First', e.message);
+      const status = getApiErrorStatus(e);
+      const message = getApiErrorMessage(e);
+      if (status === 403) {
+        appAlert('Follow First', message || 'Follow each other to start a video call.');
         return;
       }
+      appAlert('Error', message || 'Could not verify call permissions. Check your connection.');
+      return;
     }
 
     let ratePerMin = VIDEO_CALL_RATE_PER_MIN;
@@ -200,7 +204,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
         );
         return;
       }
-      appAlert('Error', e instanceof ApiError ? e.message : 'Could not verify wallet balance');
+      appAlert('Error', getApiErrorMessage(e) || 'Could not verify wallet balance');
       return;
     }
 
@@ -215,7 +219,14 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
 
     clearRingTimeout();
     ringTimeoutRef.current = setTimeout(() => {
+      socketRef.current?.emit('video_call_reject', {
+        callerId: user.id,
+        calleeId: peerId,
+        reason: 'no_answer',
+      });
+      publish('video_call_rejected', { peerId: String(peerId) });
       appAlert('No Answer', `${peerName} did not answer.`, [{ text: 'OK' }]);
+      if (router.canGoBack()) router.back();
     }, CALL_RING_TIMEOUT_MS);
 
     router.push({

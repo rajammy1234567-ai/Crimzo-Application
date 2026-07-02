@@ -1,6 +1,5 @@
 import { Asset } from 'expo-asset';
 import { cacheDirectory, readAsStringAsync, writeAsStringAsync } from 'expo-file-system/legacy';
-import { loadAsync } from 'expo-three';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
@@ -9,22 +8,50 @@ const SHOWROOM_SCALE = 3.15;
 const CAR_BODY_COLOR = 0xc8d0dc;
 
 let patchApplied = false;
-let meshoptReady: Promise<void> | null = null;
+let meshoptInit: Promise<boolean> | null = null;
 
-async function attachMeshoptDecoder(loader: GLTFLoader): Promise<void> {
-  if (!meshoptReady) {
-    meshoptReady = (async () => {
+function glbUsesMeshopt(buffer: ArrayBuffer): boolean {
+  try {
+    const view = new DataView(buffer);
+    const jsonLen = view.getUint32(12, true);
+    const jsonBytes = new Uint8Array(buffer, 20, jsonLen);
+    const json = JSON.parse(new TextDecoder().decode(jsonBytes)) as { extensionsUsed?: string[] };
+    return (json.extensionsUsed ?? []).includes('EXT_meshopt_compression');
+  } catch {
+    return false;
+  }
+}
+
+/** Init WASM meshopt once; must run after RN Blob/URL patches. */
+async function ensureMeshoptDecoderReady(): Promise<boolean> {
+  if (!meshoptInit) {
+    meshoptInit = (async () => {
+      applyGltfNativePatches();
       try {
-        if (typeof WebAssembly === 'object' && MeshoptDecoder.supported) {
-          await MeshoptDecoder.ready;
-          loader.setMeshoptDecoder(MeshoptDecoder);
+        if (!MeshoptDecoder.supported) {
+          console.warn(
+            'MeshoptDecoder: WebAssembly unavailable on this device. Use uncompressed GLB assets.',
+          );
+          return false;
         }
+        await MeshoptDecoder.ready;
+        return true;
       } catch (e) {
-        console.warn('MeshoptDecoder unavailable:', e);
+        console.warn('MeshoptDecoder init failed:', e);
+        return false;
       }
     })();
   }
-  await meshoptReady;
+  return meshoptInit;
+}
+
+/** Attach decoder to every loader instance (singleton init, per-loader setup). */
+async function attachMeshoptDecoder(loader: GLTFLoader): Promise<boolean> {
+  const ready = await ensureMeshoptDecoderReady();
+  if (ready) {
+    loader.setMeshoptDecoder(MeshoptDecoder);
+  }
+  return ready;
 }
 let blobCounter = 0;
 const embeddedImages = new Map<string, { bytes: Uint8Array; mime: string }>();
@@ -123,7 +150,7 @@ function applyGltfNativePatches() {
   patchApplied = true;
 
   const g = global as typeof global & { createImageBitmap?: unknown };
-  g.createImageBitmap = undefined;
+  g.createImageBitmap = undefined as never;
 
   const ExpoTextureLoad = THREE.TextureLoader.prototype.load;
 
@@ -253,16 +280,17 @@ export function createFallbackCarGroup(): THREE.Group {
 async function parseGltfFromAsset(modelAsset: number): Promise<THREE.Object3D> {
   applyGltfNativePatches();
 
-  try {
-    const gltf = await loadAsync(modelAsset);
-    if (gltf?.scene) return gltf.scene;
-  } catch (e) {
-    console.warn('loadAsync failed:', e);
+  const buffer = await readAssetArrayBuffer(modelAsset);
+  const needsMeshopt = glbUsesMeshopt(buffer);
+  const loader = new GLTFLoader();
+  const meshoptReady = await attachMeshoptDecoder(loader);
+
+  if (needsMeshopt && !meshoptReady) {
+    throw new Error(
+      'GLB is meshopt-compressed but MeshoptDecoder is unavailable. Re-export the model without EXT_meshopt_compression.',
+    );
   }
 
-  const buffer = await readAssetArrayBuffer(modelAsset);
-  const loader = new GLTFLoader();
-  await attachMeshoptDecoder(loader);
   const gltf = await new Promise<{ scene: THREE.Object3D }>((resolve, reject) => {
     loader.parse(buffer, '', resolve, (err) => reject(err instanceof Error ? err : new Error(String(err))));
   });
@@ -281,5 +309,6 @@ export async function loadShowroomCarGroup(modelAsset: number): Promise<THREE.Gr
 }
 
 export function preloadShowroomModel(modelAsset: number): void {
+  void ensureMeshoptDecoderReady();
   void readAssetArrayBuffer(modelAsset).catch(() => {});
 }

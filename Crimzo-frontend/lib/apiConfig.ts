@@ -34,6 +34,8 @@ export function getApiUrlCandidates(): string[] {
 
   if (Platform.OS === 'ios' && !Constants.isDevice) {
     addUnique(candidates, `http://localhost:${PORT}`);
+    if (envUrl) addUnique(candidates, envUrl);
+    addUnique(candidates, `http://${DEV_LAN_HOST}:${PORT}`);
     return candidates;
   }
 

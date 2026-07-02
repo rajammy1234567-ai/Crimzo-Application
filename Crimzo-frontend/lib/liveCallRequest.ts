@@ -33,6 +33,9 @@ export type LiveCallStatus = {
     requesterName?: string;
     requesterAvatar?: string | null;
     channelName?: string;
+    callType?: LiveCallType;
+    ratePerMin?: number;
+    beansPerMin?: number;
   }>;
 };
 

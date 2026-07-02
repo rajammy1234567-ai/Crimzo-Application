@@ -103,6 +103,12 @@ export default function LiveFeedScreen() {
     router.back();
   }, [router]);
 
+  useEffect(() => {
+    if (!loading && streams.length === 0) {
+      router.replace('/(tabs)/home');
+    }
+  }, [loading, streams.length, router]);
+
   if (loading) {
     return (
       <View style={styles.loading}>
@@ -113,7 +119,6 @@ export default function LiveFeedScreen() {
   }
 
   if (streams.length === 0) {
-    router.replace('/(tabs)/home');
     return null;
   }
 

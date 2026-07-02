@@ -9,7 +9,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { KEYBOARD_BEHAVIOR } from '../../components/KeyboardAware';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { PRIVACY_URL, TERMS_URL } from '../../lib/apiClient';
+import { getPrivacyUrl, getTermsUrl } from '../../lib/apiClient';
 import GoogleSignInButton from '../../components/auth/GoogleSignInButton';
 import { resolvePostAuthRoute } from '../../lib/liveShare';
 
@@ -19,8 +19,14 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showEmailLogin, setShowEmailLogin] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, user, loading: authLoading } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace('/(tabs)/home');
+    }
+  }, [authLoading, user, router]);
   const passwordRef = useRef<TextInput>(null);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -175,9 +181,9 @@ export default function LoginScreen() {
 
             <Text style={s.terms}>
               {'By continuing, you agree to Crimzo\'s\n'}
-              <Text style={s.termsLink} onPress={() => Linking.openURL(TERMS_URL)}>Terms of Service</Text>
+              <Text style={s.termsLink} onPress={() => Linking.openURL(getTermsUrl())}>Terms of Service</Text>
               {' & '}
-              <Text style={s.termsLink} onPress={() => Linking.openURL(PRIVACY_URL)}>Privacy Policy</Text>
+              <Text style={s.termsLink} onPress={() => Linking.openURL(getPrivacyUrl())}>Privacy Policy</Text>
             </Text>
           </Animated.View>
         </ScrollView>

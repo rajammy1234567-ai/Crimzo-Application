@@ -19,8 +19,13 @@ export function resolveMediaUrl(url?: string | null): string {
   }
 }
 
-export const PRIVACY_URL = `${API_URL}/privacy`;
-export const TERMS_URL = `${API_URL}/terms`;
+export function getPrivacyUrl(): string {
+  return `${API_URL}/privacy`;
+}
+
+export function getTermsUrl(): string {
+  return `${API_URL}/terms`;
+}
 
 export function authHeaders(token?: string | null): Record<string, string> {
   const headers: Record<string, string> = {
@@ -108,10 +113,17 @@ function networkErrorMessage(tried: string[]): string {
   );
 }
 
-function timeoutErrorMessage(tried: string[]): string {
+function timeoutErrorMessage(tried: string[], isUpload: boolean): string {
+  const hosts = tried.join(', ');
+  if (isUpload) {
+    return (
+      `Upload timed out (tried: ${hosts}). ` +
+      'Try a smaller photo/video, same WiFi, or restart backend.'
+    );
+  }
   return (
-    `Upload timed out (tried: ${tried.join(', ')}). ` +
-    'Try a smaller photo/video, same WiFi, or restart backend.'
+    `Request timed out (tried: ${hosts}). ` +
+    'Ensure the backend is running (cd crimzo_app_backend && npm start), phone/emulator and PC are on the same network, and Windows Firewall allows port 5001.'
   );
 }
 
@@ -212,7 +224,7 @@ export async function apiFetch<T = unknown>(
   }
 
   if (sawTimeout) {
-    throw new ApiError(timeoutErrorMessage(tried), 408);
+    throw new ApiError(timeoutErrorMessage(tried, isFormData), 408);
   }
   if (lastNetworkError) {
     throw new ApiError(networkErrorMessage(tried), 0);

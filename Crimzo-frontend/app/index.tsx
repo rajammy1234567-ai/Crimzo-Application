@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Easing, Image, ActivityIndicator } from 'react-native';
+import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -7,6 +8,7 @@ import {
   clearPendingLiveSession,
   getPendingLiveSession,
 } from '../lib/liveShare';
+import { extractReferralCodeFromUrl, getPendingReferralCode } from '../lib/referral';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export default function Index() {
@@ -43,7 +45,15 @@ export default function Index() {
           }
           router.replace('/(tabs)/home');
         } else {
-          router.replace('/(auth)/login');
+          const initialUrl = await Linking.getInitialURL().catch(() => null);
+          const inviteCode =
+            (initialUrl ? extractReferralCodeFromUrl(initialUrl) : null) ||
+            (await getPendingReferralCode().catch(() => null));
+          if (inviteCode) {
+            router.replace(`/invite/${inviteCode}` as never);
+          } else {
+            router.replace('/(auth)/login');
+          }
         }
       }, 400);
       return () => clearTimeout(timeout);

@@ -185,10 +185,9 @@ exports.getFullProfile = async (req, res) => {
     const { getPublicLevelInfo } = require('./levelController');
     const levelInfo = await getPublicLevelInfo(userId);
 
-    res.json({
-      success: true,
-      profile: {
-        id: u.id, crimzo_id: u.crimzo_id, username: u.username, email: u.email,
+    const isSelf = String(req.user.id) === String(userId);
+    const profile = {
+        id: u.id, crimzo_id: u.crimzo_id, username: u.username,
         avatar: u.avatar, bio: u.bio, country: u.country,
         gender: u.gender || '',
         age: u.age || '',
@@ -196,15 +195,7 @@ exports.getFullProfile = async (req, res) => {
         second_language: u.second_language || '',
         tags: u.tags || '',
         show_location: !!u.show_location,
-        push_notifications_enabled: u.push_notifications_enabled !== false,
         is_private: !!u.is_private,
-        diamonds: u.diamonds,
-        beans: balance.walletBeans,
-        pendingTaskBeans: balance.pendingTaskBeans,
-        totalBeans: balance.totalBeans,
-        totalWithdrawableBeans: balance.totalWithdrawableBeans,
-        withdrawableInr: balance.withdrawableInr,
-        wallet_balance: u.wallet_balance || 0,
         followers_count: counts?.followers_count ?? u.followers_count,
         following_count: counts?.following_count ?? u.following_count,
         friends_count: counts?.friends_count ?? u.friends_count,
@@ -239,8 +230,23 @@ exports.getFullProfile = async (req, res) => {
         level_badge_color: levelInfo?.level_badge_color ?? '#6B7280',
         showcase_emoji: levelInfo?.showcase_emoji ?? '🛵',
         showcase_type: levelInfo?.showcase_type ?? 'scooter',
-      }
-    });
+    };
+
+    if (isSelf) {
+      Object.assign(profile, {
+        email: u.email,
+        push_notifications_enabled: u.push_notifications_enabled !== false,
+        diamonds: u.diamonds,
+        beans: balance.walletBeans,
+        pendingTaskBeans: balance.pendingTaskBeans,
+        totalBeans: balance.totalBeans,
+        totalWithdrawableBeans: balance.totalWithdrawableBeans,
+        withdrawableInr: balance.withdrawableInr,
+        wallet_balance: u.wallet_balance || 0,
+      });
+    }
+
+    res.json({ success: true, profile });
   } catch (error) {
     console.error('Get full profile error:', error);
     res.status(500).json({ error: 'Failed to get profile' });

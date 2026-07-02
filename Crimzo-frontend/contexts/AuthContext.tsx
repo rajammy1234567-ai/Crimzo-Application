@@ -2,7 +2,7 @@ import React, { createContext, useState, useContext, useEffect, useRef, useCallb
 import { appAlert } from '../lib/appAlert';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import { API_URL, apiFetch, apiGet, apiPost, ApiError } from '../lib/apiClient';
+import { API_URL, apiFetch, apiGet, apiPost, getApiErrorMessage, getApiErrorStatus } from '../lib/apiClient';
 import { mergeBeanBalance } from '../lib/beanBalance';
 import { getApiUrlCandidates, setActiveApiUrl } from '../lib/apiConfig';
 import { clearPendingReferralCode, getReferralSignupPayload } from '../lib/referral';
@@ -34,6 +34,25 @@ const warmupBackend = async () => {
     console.warn('⚠️ Backend not reachable. Tried:', candidates.join(', '));
   }
 };
+function backendUnreachableMessage(): string {
+  return (
+    `Cannot reach backend. Start it: cd crimzo_app_backend && npm start — ` +
+    `then restart Expo: npx expo start -c. Tried: ${getApiUrlCandidates().join(', ')}`
+  );
+}
+
+function throwAuthApiError(error: unknown, fallback: string): never {
+  const status = getApiErrorStatus(error);
+  const message = getApiErrorMessage(error);
+  if (status === 408 || status === 0) {
+    throw new Error(backendUnreachableMessage());
+  }
+  if (status !== undefined) {
+    throw new Error(message || fallback);
+  }
+  throw new Error(message || fallback);
+}
+
 warmupBackend();
 setTimeout(() => { if (!_backendReady) warmupBackend(); }, 3000);
 
@@ -135,14 +154,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchUser = async (authToken: string) => {
     try {
       const userData = await apiGet<User>('/api/auth/me', authToken, 10000);
+      const stillCurrent = await AsyncStorage.getItem('auth_token');
+      if (stillCurrent !== authToken) return;
       setUser(userData);
       AsyncStorage.setItem('cached_user', JSON.stringify(userData)).catch(() => { });
     } catch (error: unknown) {
-      const status = error instanceof ApiError ? error.status : undefined;
+      const status = getApiErrorStatus(error);
+      const message = getApiErrorMessage(error) || '';
       if (status === 403) {
-        const banned = error instanceof ApiError && /suspended|banned/i.test(error.message);
+        const banned = /suspended|banned/i.test(message);
         if (banned) {
-          appAlert('Account Suspended', error.message || 'Your account has been suspended.');
+          appAlert('Account Suspended', message || 'Your account has been suspended.');
         }
         await logout();
       } else if (status === 401 || status === 404) {
@@ -181,19 +203,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('Login response:', data);
       persistAuth(data.token, data.user);
     } catch (error: unknown) {
-      console.error('Login error:', error instanceof Error ? error.message : error);
-      if (error instanceof ApiError) {
-        if (error.status === 408) {
-          throw new Error('Server is waking up. Please wait a moment and try again.');
-        }
-        if (error.status === 0) {
-          throw new Error(
-            `Cannot reach backend at ${API_URL}. Start backend: cd crimzo_app_backend && npm start. Restart Expo: npx expo start -c`
-          );
-        }
-        throw new Error(error.message);
-      }
-      throw new Error(error instanceof Error ? error.message : 'Login failed. Please check your connection.');
+      console.error('Login error:', getApiErrorMessage(error) ?? error);
+      throwAuthApiError(error, 'Login failed. Please check your connection.');
     }
   };
 
@@ -236,9 +247,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await clearPendingReferralCode();
       persistAuth(data.token, data.user);
     } catch (error: unknown) {
-      const message = error instanceof ApiError ? error.message : (error instanceof Error ? error.message : 'Registration failed');
-      console.error('Registration error:', message);
-      throw new Error(message || 'Registration failed. Please check your connection.');
+      console.error('Registration error:', getApiErrorMessage(error) ?? error);
+      throwAuthApiError(error, 'Registration failed. Please check your connection.');
     }
   };
 
@@ -280,7 +290,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await clearPendingReferralCode();
       persistAuth(data.token, data.user);
     } catch (error: unknown) {
-      throw new Error(error instanceof ApiError ? error.message : 'Google sign-in failed.');
+      throwAuthApiError(error, 'Google sign-in failed.');
     }
   };
 
@@ -297,8 +307,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
       persistAuth(data.token, data.user);
     } catch (error: unknown) {
-      console.error('Email login error:', error instanceof Error ? error.message : error);
-      throw new Error(error instanceof ApiError ? error.message : 'Login failed. Please check your email.');
+      console.error('Email login error:', getApiErrorMessage(error) ?? error);
+      throwAuthApiError(error, 'Login failed. Please check your email.');
     }
   };
 
@@ -321,8 +331,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const data = await apiPost<{ token: string; user: User }>('/api/auth/guest', {}, null, 15000);
       persistAuth(data.token, data.user, true);
     } catch (error: unknown) {
-      console.error('Guest login error:', error instanceof Error ? error.message : error);
-      throw new Error(error instanceof ApiError ? error.message : 'Guest login failed. Check your connection.');
+      console.error('Guest login error:', getApiErrorMessage(error) ?? error);
+      throwAuthApiError(error, 'Guest login failed. Check your connection.');
     }
   };
 
@@ -334,8 +344,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await apiPost('/api/auth/phone/send-otp', { phone }, null, 15000);
       console.log('OTP sent successfully');
     } catch (error: unknown) {
-      console.error('Send OTP error:', error instanceof Error ? error.message : error);
-      throw new Error(error instanceof ApiError ? error.message : 'Failed to send OTP.');
+      console.error('Send OTP error:', getApiErrorMessage(error) ?? error);
+      throwAuthApiError(error, 'Failed to send OTP.');
     }
   };
 
@@ -352,8 +362,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await clearPendingReferralCode();
       persistAuth(data.token, data.user);
     } catch (error: unknown) {
-      console.error('Verify OTP error:', error instanceof Error ? error.message : error);
-      throw new Error(error instanceof ApiError ? error.message : 'OTP verification failed.');
+      console.error('Verify OTP error:', getApiErrorMessage(error) ?? error);
+      throwAuthApiError(error, 'OTP verification failed.');
     }
   };
 
@@ -371,7 +381,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await apiPost('/api/auth/email/send-otp', { email: email.trim().toLowerCase() }, null, 15000);
     } catch (error: unknown) {
-      throw new Error(error instanceof ApiError ? error.message : 'Failed to send OTP to email.');
+      throwAuthApiError(error, 'Failed to send OTP to email.');
     }
   };
 
@@ -394,7 +404,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return { isNewUser };
     } catch (error: unknown) {
-      throw new Error(error instanceof ApiError ? error.message : 'OTP verification failed.');
+      throwAuthApiError(error, 'OTP verification failed.');
     }
   };
 
@@ -416,7 +426,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await clearPendingReferralCode();
       persistAuth(data.token, data.user);
     } catch (error: unknown) {
-      throw new Error(error instanceof ApiError ? error.message : 'Registration failed.');
+      throwAuthApiError(error, 'Registration failed.');
     }
   };
 

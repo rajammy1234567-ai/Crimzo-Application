@@ -511,6 +511,9 @@ export default function BroadcastScreen() {
           requesterName: r.requesterName,
           requesterAvatar: r.requesterAvatar,
           channelName: r.channelName,
+          callType: r.callType,
+          ratePerMin: r.ratePerMin ?? callStatus.ratePerMin,
+          beansPerMin: r.beansPerMin ?? callStatus.beansPerMin,
         })));
         pendingCalls.forEach((r) => {
           if (!promptedCallRequestIds.current.has(r.id) && !handledCallRequestIds.current.has(r.id)) {
@@ -520,8 +523,9 @@ export default function BroadcastScreen() {
               requesterName: r.requesterName,
               requesterAvatar: r.requesterAvatar,
               channelName: r.channelName,
-              ratePerMin: callStatus.ratePerMin,
-              beansPerMin: callStatus.beansPerMin,
+              callType: r.callType,
+              ratePerMin: r.ratePerMin ?? callStatus.ratePerMin,
+              beansPerMin: r.beansPerMin ?? callStatus.beansPerMin,
             });
           }
         });

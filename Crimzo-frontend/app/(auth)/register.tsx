@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 
-import { PRIVACY_URL, TERMS_URL } from '../../lib/apiClient';
+import { getPrivacyUrl, getTermsUrl } from '../../lib/apiClient';
 import GoogleSignInButton from '../../components/auth/GoogleSignInButton';
 import {
   formatReferralInviteCode,
@@ -29,8 +29,14 @@ export default function RegisterScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [referralId, setReferralId] = useState('');
-  const { register } = useAuth();
   const router = useRouter();
+  const { register, user, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace('/(tabs)/home');
+    }
+  }, [authLoading, user, router]);
 
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
@@ -159,7 +165,7 @@ export default function RegisterScreen() {
           showsVerticalScrollIndicator={false}
         >
           {/* Back */}
-          <TouchableOpacity style={s.backBtn} onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <TouchableOpacity style={s.backBtn} onPress={() => router.replace('/(auth)/login' as never)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <View style={s.backBtnInner}>
               <Ionicons name="arrow-back" size={22} color="#FFF" />
             </View>
@@ -329,16 +335,16 @@ export default function RegisterScreen() {
 
             <View style={s.footer}>
               <Text style={s.footerText}>Already have an account? </Text>
-              <TouchableOpacity onPress={() => router.back()}>
+              <TouchableOpacity onPress={() => router.replace('/(auth)/login' as never)}>
                 <Text style={s.footerLink}>Sign In</Text>
               </TouchableOpacity>
             </View>
 
             <Text style={s.terms}>
               {'By creating an account, you agree to Crimzo\'s\n'}
-              <Text style={s.termsLink} onPress={() => Linking.openURL(TERMS_URL)}>Terms of Service</Text>
+              <Text style={s.termsLink} onPress={() => Linking.openURL(getTermsUrl())}>Terms of Service</Text>
               {' & '}
-              <Text style={s.termsLink} onPress={() => Linking.openURL(PRIVACY_URL)}>Privacy Policy</Text>
+              <Text style={s.termsLink} onPress={() => Linking.openURL(getPrivacyUrl())}>Privacy Policy</Text>
             </Text>
           </Animated.View>
         </ScrollView>

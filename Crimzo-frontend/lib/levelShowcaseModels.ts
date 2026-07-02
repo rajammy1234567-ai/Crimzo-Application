@@ -10,7 +10,8 @@
 export const SHOWCASE_MODEL_ASSETS: Record<string, number> = {
   golf_gti: require('../assets/models/golf_gti/scene-v1.glb'),
   golf_gti_v2: require('../assets/models/golf_gti/scene-v2.glb'),
-  golf_gti_v3: require('../assets/models/golf_gti/scene-v3.glb'),
+  // scene-v3.glb is meshopt-only (~16MB compressed, ~63MB raw) — use v2 on native until a mobile GLB is added
+  golf_gti_v3: require('../assets/models/golf_gti/scene-v2.glb'),
 };
 
 /** Human-readable labels for garage UI. */

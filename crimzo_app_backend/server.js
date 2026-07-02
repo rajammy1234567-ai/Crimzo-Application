@@ -143,7 +143,7 @@ app.use((req, res) => {
 require("./sockets/socketHandler")(io);
 
 // ── Start Server ──
-const PORT = process.env.PORT || 8001;
+const PORT = process.env.PORT || 5001;
 
 // ── Start server immediately (don't block on DB) ──
 server.listen(PORT, "0.0.0.0", () => {

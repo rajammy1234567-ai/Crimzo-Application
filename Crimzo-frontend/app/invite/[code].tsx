@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Image } fr
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
-import { API_URL } from '../../lib/apiClient';
+import { apiGet } from '../../lib/apiClient';
 import {
   buildReferralLink,
   formatReferralDiamonds,
@@ -36,8 +36,7 @@ export default function InviteScreen() {
       return;
     }
     savePendingReferralCode(code).catch(() => {});
-    fetch(`${API_URL}/api/referral/validate/${encodeURIComponent(code)}`)
-      .then((res) => res.json())
+    apiGet<ReferrerPreview>(`/api/referral/validate/${encodeURIComponent(code)}`, null, 15000)
       .then((data) => setPreview(data))
       .catch(() => setPreview({ valid: false }))
       .finally(() => setChecking(false));

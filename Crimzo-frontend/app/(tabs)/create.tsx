@@ -247,6 +247,10 @@ export default function CreateScreen() {
         mediaType={storyMediaType}
         onClose={() => setShowStoryPreview(false)}
         onUpload={doUploadStory}
+        onRecrop={() => {
+          setShowStoryPreview(false);
+          void pickAndUploadStory(storyMediaType);
+        }}
       />
 
     </View>
@@ -262,12 +266,14 @@ function StoryPreviewModal({
   mediaType,
   onClose,
   onUpload,
+  onRecrop,
 }: {
   visible: boolean;
   asset: any;
   mediaType: 'photo' | 'video';
   onClose: () => void;
   onUpload: () => void;
+  onRecrop: () => void;
 }) {
   if (!visible || !asset) return null;
   return (
@@ -298,7 +304,13 @@ function StoryPreviewModal({
         {/* Upload button */}
         <View style={spmStyles.footer}>
           <View style={spmStyles.actionRow}>
-            <TouchableOpacity style={spmStyles.recropBtn} onPress={() => { onClose(); }}>
+            <TouchableOpacity
+              style={spmStyles.recropBtn}
+              onPress={() => {
+                if (mediaType === 'photo') onRecrop();
+                else onClose();
+              }}
+            >
               <Ionicons name="crop" size={20} color="#9333EA" />
               <Text style={spmStyles.recropBtnText}>Re-crop</Text>
             </TouchableOpacity>

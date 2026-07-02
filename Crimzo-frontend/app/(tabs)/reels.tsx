@@ -95,13 +95,17 @@ function normalizeComment(raw: any): Comment {
   };
 }
 
+type ReelPlayerControls = { toggle: () => void };
+
 /** Only one native video decoder — mounts for the active reel only. */
 function ReelVideoLayer({
   item,
   token,
+  onControlsReady,
 }: {
   item: Reel;
   token?: string | null;
+  onControlsReady?: (controls: ReelPlayerControls) => void;
 }) {
   const hasOverlayAudio = !!item.audio_url;
   const videoSource = resolveMediaUrl(item.video_url);
@@ -110,6 +114,22 @@ function ReelVideoLayer({
     p.muted = hasOverlayAudio;
     p.volume = hasOverlayAudio ? 0 : 1;
   });
+
+  useEffect(() => {
+    onControlsReady?.({
+      toggle: () => {
+        try {
+          if (player.playing) player.pause();
+          else player.play();
+        } catch {
+          // player may still be initializing
+        }
+      },
+    });
+    return () => {
+      onControlsReady?.({ toggle: () => {} });
+    };
+  }, [player, onControlsReady]);
 
   useEffect(() => {
     try {
@@ -190,7 +210,7 @@ const ReelItem = React.memo(function ReelItem({
   tabBarHeight: number;
   currentUserId: string | undefined;
   token?: string | null;
-  onLike: (reelId: string) => void;
+  onLike: (reelId: string) => Promise<boolean>;
   onFollow: (userId: string) => Promise<void>;
   onOpenComments: (reelId: string) => void;
   onOpenProfile: (userId: string) => void;
@@ -207,6 +227,7 @@ const ReelItem = React.memo(function ReelItem({
   const [followBusy, setFollowBusy] = useState(false);
   const heartScale = useRef(new Animated.Value(1)).current;
   const doubleTapRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playerControlsRef = useRef<ReelPlayerControls>({ toggle: () => {} });
   const bigHeartOpacity = useRef(new Animated.Value(0)).current;
   const bigHeartScale = useRef(new Animated.Value(0.5)).current;
 
@@ -236,12 +257,18 @@ const ReelItem = React.memo(function ReelItem({
     ]).start();
   };
 
-  const handleLike = () => {
+  const handleLike = async () => {
     const newLiked = !liked;
+    const prevLiked = liked;
+    const prevCount = likesCount;
     setLiked(newLiked);
-    setLikesCount(prev => newLiked ? prev + 1 : Math.max(prev - 1, 0));
+    setLikesCount((prev) => (newLiked ? prev + 1 : Math.max(prev - 1, 0)));
     animateHeart();
-    onLike(item.id);
+    const ok = await onLike(item.id);
+    if (!ok) {
+      setLiked(prevLiked);
+      setLikesCount(prevCount);
+    }
   };
 
   const handleDoubleTap = () => {
@@ -250,21 +277,22 @@ const ReelItem = React.memo(function ReelItem({
       doubleTapRef.current = null;
       // Double tap - like
       if (!liked) {
+        const prevCount = likesCount;
         setLiked(true);
-        setLikesCount(prev => prev + 1);
+        setLikesCount((prev) => prev + 1);
         animateHeart();
-        onLike(item.id);
+        void onLike(item.id).then((ok) => {
+          if (!ok) {
+            setLiked(false);
+            setLikesCount(prevCount);
+          }
+        });
       }
       showBigHeart();
     } else {
       doubleTapRef.current = setTimeout(() => {
         doubleTapRef.current = null;
-        // Single tap - toggle play/pause
-        if (player.playing) {
-          player.pause();
-        } else {
-          player.play();
-        }
+        if (isActive) playerControlsRef.current.toggle();
       }, 300);
     }
   };
@@ -307,7 +335,13 @@ const ReelItem = React.memo(function ReelItem({
         style={styles.videoTouchable}
       >
         {isActive ? (
-          <ReelVideoLayer item={item} token={token} />
+          <ReelVideoLayer
+            item={item}
+            token={token}
+            onControlsReady={(controls) => {
+              playerControlsRef.current = controls;
+            }}
+          />
         ) : (
           <View style={[StyleSheet.absoluteFill, styles.reelPoster]} />
         )}
@@ -763,12 +797,14 @@ export default function ReelsScreen() {
     }, [])
   );
 
-  const handleLike = async (reelId: string) => {
-    if (!token) return;
+  const handleLike = async (reelId: string): Promise<boolean> => {
+    if (!token) return false;
     try {
       await apiPost(`/api/reels/${reelId}/like`, {}, token);
+      return true;
     } catch (e) {
       console.error('Like error:', e);
+      return false;
     }
   };
 
@@ -907,14 +943,16 @@ export default function ReelsScreen() {
     }
   };
 
+  const handleViewReelRef = useRef(handleViewReel);
+  handleViewReelRef.current = handleViewReel;
+
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
     if (viewableItems.length > 0) {
       const newIndex = viewableItems[0].index;
       setActiveIndex(newIndex);
-      // Record view
       const viewedReel = viewableItems[0].item;
       if (viewedReel) {
-        handleViewReel(viewedReel.id);
+        void handleViewReelRef.current(viewedReel.id);
       }
     }
   }).current;
