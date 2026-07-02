@@ -22,6 +22,7 @@ export type ShowcaseLevel = {
   badge_color: string;
   owned: boolean;
   equipped: boolean;
+  has_entrance?: boolean;
 };
 
 type Props = {
@@ -76,6 +77,12 @@ export default function LevelShowcaseRoom({ items, equippedLevel, onEquip }: Pro
         <View style={s.activeMeta}>
           <Text style={[s.activeName, { color: active.badge_color }]}>{active.name}</Text>
           <Text style={s.activeType}>{modelLabel.toUpperCase()}</Text>
+          {active.has_entrance && (
+            <View style={s.entranceBadge}>
+              <Ionicons name="rocket" size={12} color="#FFD700" />
+              <Text style={s.entranceText}>FLYING CAR ENTRANCE</Text>
+            </View>
+          )}
         </View>
 
         {!active.equipped && onEquip ? (
@@ -155,4 +162,10 @@ const s = StyleSheet.create({
   thumbLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 8, fontWeight: '800', marginTop: 1 },
   empty: { marginHorizontal: 14, padding: 20, alignItems: 'center', borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.03)' },
   emptyText: { color: 'rgba(255,255,255,0.45)', fontSize: 13, textAlign: 'center' },
+  entranceBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8,
+    backgroundColor: 'rgba(255,215,0,0.15)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
+    borderWidth: 1, borderColor: 'rgba(255,215,0,0.35)',
+  },
+  entranceText: { color: '#FFD700', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
 });

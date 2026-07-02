@@ -37,6 +37,8 @@ import { subscribe } from '../../lib/realtimeSync';
 import { shareLiveStream } from '../../lib/liveShare';
 import LiveFilterPanel from '../../components/LiveFilterPanel';
 import GiftSplashOverlay from '../../components/GiftSplashOverlay';
+import LiveEntranceOverlay from '../../components/LiveEntranceOverlay';
+import { publishLiveEntrance } from '../../components/LiveEntranceOverlay';
 import {
   applyLiveFilterToEngine,
   getLiveFilterPreset,
@@ -542,7 +544,13 @@ export default function BroadcastScreen() {
         s.emit('join_user', { userId: user.id });
         s.emit('app_presence', { category: 'live' });
       }
-      s.emit('join_live', { sessionId: String(sessionId), userId: user?.id, username: user?.username });
+      s.emit('join_live', {
+        sessionId: String(sessionId),
+        userId: user?.id,
+        username: user?.username,
+        equipped_level: user?.equipped_level,
+        user_level: user?.user_level,
+      });
     });
     const presenceHeartbeat = setInterval(() => {
       if (s.connected) {
@@ -550,6 +558,20 @@ export default function BroadcastScreen() {
       }
     }, 25000);
     s.on('viewer_count_update', (d: { count: number }) => setViewerCount(Math.max(0, d.count - 1)));
+
+    s.on('live_entrance', (data: any) => {
+      if (data?.username && data?.emoji) {
+        publishLiveEntrance({
+          username: data.username,
+          level: data.level || 3,
+          name: data.name || 'VIP',
+          emoji: data.emoji,
+          badge_color: data.badge_color || '#FF2D55',
+          showcase_type: data.showcase_type,
+        });
+      }
+    });
+
     s.on('live_talk_incoming', (data: {
       requestId?: string;
       requesterName?: string;
@@ -912,6 +934,7 @@ export default function BroadcastScreen() {
     <View style={st.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <GiftSplashOverlay />
+      <LiveEntranceOverlay />
 
       {/* ═══ CAMERA VIEW ═══ */}
       <View style={st.cameraWrap}>
@@ -1196,6 +1219,7 @@ export default function BroadcastScreen() {
             talkRatePerMin={myRates.chatRatePerMin}
             sharedSocket={liveSocket}
             onStickerPress={noopPress}
+            equippedLevel={user?.equipped_level}
           />
         )}
 

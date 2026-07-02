@@ -38,6 +38,11 @@ const PREMIUM_STICKERS = [
   { name: 'Phoenix Rise', emoji: '🦅', icon_name: 'bonfire', icon_color: '#FF4444', bg_color: '#BF360C', category: 'vip', price: 300, is_animated: true },
   { name: 'Galaxy Rose', emoji: '🌺', icon_name: 'flower', icon_color: '#FF69B4', bg_color: '#1A1A2E', category: 'vip', price: 500, is_animated: true },
 
+  // ── Car / Vehicle entrances (VIP stickers — buy for profile flair + future entrance) ──
+  { name: 'Sports Car', emoji: '🏎️', icon_name: 'car-sport', icon_color: '#00E5FF', bg_color: '#0D1B2A', category: 'vip', price: 1200, is_animated: true },
+  { name: 'Royal Chariot', emoji: '🐎', icon_name: 'shield', icon_color: '#FFD700', bg_color: '#3D1F00', category: 'vip', price: 3500, is_animated: true },
+  { name: 'Neon Drift', emoji: '🚗', icon_name: 'car', icon_color: '#FF2D55', bg_color: '#14001F', category: 'vip', price: 8500, is_animated: true },
+
   // ── Elite — thousands tier ──
   { name: 'Golden Throne', emoji: '🪑', icon_name: 'diamond', icon_color: '#FFD700', bg_color: '#5D4037', category: 'vip', price: 1000, is_animated: true },
   { name: 'Ruby Heart', emoji: '❤️‍🔥', icon_name: 'heart', icon_color: '#FF1744', bg_color: '#880E4F', category: 'love', price: 2500, is_animated: true },

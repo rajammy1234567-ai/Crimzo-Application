@@ -6,6 +6,7 @@ function mapLevelForUser(level, userState) {
   const num = level.level_number;
   const owned = userState.owned_levels.includes(num);
   const nextLevel = userState.user_level + 1;
+  const hasEntrance = num >= 3; // car+ levels get the flying entrance
   return {
     id: level.id || level._id?.toString(),
     level_number: num,
@@ -24,6 +25,7 @@ function mapLevelForUser(level, userState) {
     is_next: num === nextLevel,
     can_purchase: !owned && num === nextLevel,
     locked: !owned && num > nextLevel,
+    has_entrance: hasEntrance,
   };
 }
 

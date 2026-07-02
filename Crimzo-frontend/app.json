@@ -120,11 +120,9 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "3494a0fa-1301-44ba-9bc4-4ff2d26f2c02"
-      }
+      "router": {}
+     
     },
-    "owner": "dev_eas_office_viz001"
+    "owner": "viz_eas001"
   }
 }

@@ -24,6 +24,7 @@ type LevelRow = ShowcaseLevel & {
   is_next: boolean;
   locked: boolean;
   is_default: boolean;
+  has_entrance?: boolean;
 };
 
 export default function LevelsScreen() {
@@ -204,6 +205,9 @@ export default function LevelsScreen() {
           <View style={s.heroMeta}>
             <LevelBadge levelNumber={userLevel} name={levels.find((l) => l.level_number === userLevel)?.name || 'Rookie'} badgeColor={levels.find((l) => l.level_number === equippedLevel)?.badge_color} />
             <Text style={s.heroSub}>Next unlock: Level {nextLevel}</Text>
+            {levels.find((l) => l.level_number === equippedLevel)?.has_entrance && (
+              <Text style={s.entranceActiveNote}>🚗 Your car flies across lives when you enter — visible to all!</Text>
+            )}
             {offlineMode ? (
               <Text style={s.offlineBanner}>
                 Offline catalog ({API_URL}) — backend: cd crimzo_app_backend && npm start, phir npx expo start --clear
@@ -217,6 +221,9 @@ export default function LevelsScreen() {
               <Text style={s.previewSub}>
                 {nextLevelData.name} — {resolveShowcaseModelLabel(nextLevelData)} 3D
               </Text>
+              {nextLevelData.has_entrance && (
+                <Text style={s.entranceHint}>✨ Includes FLYING CAR entrance effect in lives</Text>
+              )}
               <Text style={s.previewHint}>Scroll down to LEVEL GARAGE for full 3D view</Text>
             </View>
           ) : null}
@@ -253,6 +260,9 @@ export default function LevelsScreen() {
                       ) : null}
                       {level.owned ? (
                         <View style={s.ownedPill}><Text style={s.ownedText}>OWNED</Text></View>
+                      ) : null}
+                      {level.has_entrance ? (
+                        <View style={s.entrancePill}><Ionicons name="car-sport" size={10} color="#FFD700" /><Text style={s.entrancePillText}>ENTRANCE</Text></View>
                       ) : null}
                     </View>
                     <Text style={s.levelDesc} numberOfLines={2}>{level.description}</Text>
@@ -307,6 +317,13 @@ const s = StyleSheet.create({
   loadWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   heroMeta: { paddingHorizontal: 16, paddingBottom: 8, gap: 6 },
   heroSub: { color: 'rgba(255,255,255,0.35)', fontSize: 11, fontWeight: '600' },
+  entranceActiveNote: {
+    color: '#FFD700',
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginTop: 4,
+  },
   offlineBanner: {
     color: '#FFB347',
     fontSize: 10,
@@ -323,6 +340,12 @@ const s = StyleSheet.create({
     color: 'rgba(255,255,255,0.35)',
     fontSize: 10,
     fontWeight: '600',
+  },
+  entranceHint: {
+    marginTop: 4,
+    color: '#FFD700',
+    fontSize: 11,
+    fontWeight: '800',
   },
   sectionTitle: { color: '#FFF', fontSize: 16, fontWeight: '800', paddingHorizontal: 16, marginTop: 8 },
   sectionSub: { color: 'rgba(255,255,255,0.35)', fontSize: 11, paddingHorizontal: 16, marginBottom: 10 },
@@ -344,6 +367,13 @@ const s = StyleSheet.create({
   modelPillText: { color: '#00BFFF', fontSize: 8, fontWeight: '900' },
   ownedPill: { backgroundColor: 'rgba(255,215,0,0.15)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
   ownedText: { color: '#FFD700', fontSize: 8, fontWeight: '900' },
+  entrancePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: 'rgba(255,215,0,0.18)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
+    borderWidth: 1, borderColor: 'rgba(255,215,0,0.3)',
+  },
+  entrancePillText: { color: '#FFD700', fontSize: 8, fontWeight: '900', letterSpacing: 0.3 },
+
   levelDesc: { color: 'rgba(255,255,255,0.4)', fontSize: 10, marginTop: 2 },
   priceRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   priceText: { color: '#00BFFF', fontSize: 11, fontWeight: '700' },
