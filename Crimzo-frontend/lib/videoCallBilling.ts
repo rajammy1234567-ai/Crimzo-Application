@@ -27,8 +27,12 @@ export type VideoCallSessionStart = {
 export async function checkVideoCallEligibility(
   token: string,
   peerId?: string | number,
+  callMode?: 'voice' | 'video',
 ): Promise<VideoCallRateInfo & { beansPerMin?: number }> {
-  const qs = peerId ? `?peerId=${encodeURIComponent(String(peerId))}` : '';
+  const params = new URLSearchParams();
+  if (peerId != null) params.set('peerId', String(peerId));
+  if (callMode) params.set('callMode', callMode);
+  const qs = params.toString() ? `?${params}` : '';
   return apiGet(`/api/video-call/check${qs}`, token);
 }
 

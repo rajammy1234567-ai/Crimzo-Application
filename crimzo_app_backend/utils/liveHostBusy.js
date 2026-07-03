@@ -15,24 +15,30 @@ async function getHostBusyState(sessionId, hostId = null) {
 
   const callQuery = { session_id: sessionId, status: 'accepted' };
   if (hostId) callQuery.host_id = hostId;
-  const acceptedCall = await LiveCallRequest.findOne(callQuery).select('channel_name').lean();
+  const acceptedCalls = await LiveCallRequest.find(callQuery)
+    .select('channel_name call_type')
+    .lean();
 
   let onCall = false;
-  if (acceptedCall?.channel_name) {
-    const activeVoice = await VideoCallSession.findOne({
+  for (const acceptedCall of acceptedCalls) {
+    if (!acceptedCall?.channel_name) continue;
+    const activeSession = await VideoCallSession.findOne({
       channelName: acceptedCall.channel_name,
       status: 'active',
     }).select('_id');
-    if (activeVoice) {
+    if (activeSession) {
       onCall = true;
-    } else {
-      const latestVoice = await VideoCallSession.findOne({
-        channelName: acceptedCall.channel_name,
-      })
-        .select('status')
-        .sort({ createdAt: -1 });
-      // Accepted call but billing session not created yet — host is still busy.
-      onCall = !latestVoice;
+      break;
+    }
+    const latestSession = await VideoCallSession.findOne({
+      channelName: acceptedCall.channel_name,
+    })
+      .select('status')
+      .sort({ createdAt: -1 });
+    // Accepted call but billing session not created yet — host is still busy.
+    if (!latestSession) {
+      onCall = true;
+      break;
     }
   }
 

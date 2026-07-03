@@ -3,6 +3,7 @@ import { appAlert } from '../../lib/appAlert';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Dimensions, RefreshControl, StatusBar, Animated, Modal, FlatList, ActivityIndicator, Platform, TextInput, Share, Clipboard } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
+import { useVideoCall } from '../../contexts/VideoCallContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -28,6 +29,7 @@ const REEL_THUMB_W = (SW - 6) / 3;
 //  PROFILE SCREEN  (Instagram-style)
 // ══════════════════════════════════════════════════════════════
 export default function ProfileScreen() {
+  const { startCall } = useVideoCall();
   const { user, token, logout, updateUser } = useAuth();
 
   const router = useRouter();
@@ -812,6 +814,10 @@ export default function ProfileScreen() {
         onMessage={(id, username) => {
           setListModalVisible(false);
           router.push(`/profile/messages?userId=${id}&username=${encodeURIComponent(username)}` as any);
+        }}
+        onVideoCall={(id, username, avatar) => {
+          setListModalVisible(false);
+          void startCall(id, username, avatar);
         }}
       />
 

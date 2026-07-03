@@ -86,6 +86,8 @@ export type CallMediaOptions = {
   subscribeVideo?: boolean;
   micEnabled?: boolean;
   expectedRemoteUid?: number;
+  channelProfile?: number;
+  clientRoleType?: number;
 };
 
 /** Channel media options for 1-on-1 Communication profile calls. */
@@ -98,6 +100,13 @@ export function buildCallJoinOptions(options: CallMediaOptions = {}) {
     publishCameraTrack: publishVideo,
     autoSubscribeAudio: true,
     autoSubscribeVideo: subscribeVideo,
+    enableAudioRecordingOrPlayout: true,
+    ...(options.channelProfile != null
+      ? { channelProfile: options.channelProfile }
+      : {}),
+    ...(options.clientRoleType != null
+      ? { clientRoleType: options.clientRoleType }
+      : {}),
   };
 }
 

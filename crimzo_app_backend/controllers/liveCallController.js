@@ -218,6 +218,8 @@ exports.getCallStatus = async (req, res) => {
     callPayload.beansPerMin = hostRates.voiceBeansPerMin;
     callPayload.videoRatePerMin = hostRates.videoRatePerMin;
     callPayload.videoBeansPerMin = hostRates.videoBeansPerMin;
+    callPayload.voiceRatePerMin = hostRates.voiceRatePerMin;
+    callPayload.voiceBeansPerMin = hostRates.voiceBeansPerMin;
 
     const pending = await LiveCallRequest.find({
       session_id: sessionId,
@@ -263,6 +265,12 @@ exports.getCallStatus = async (req, res) => {
         status: accepted[0].status,
         callType: accepted[0].call_type || 'voice',
       } : null,
+      acceptedCalls_all: accepted.map((row) => ({
+        id: row._id.toString(),
+        channelName: row.channel_name,
+        status: row.status,
+        callType: row.call_type || 'voice',
+      })),
       pendingRequests: pendingForHost.map((r) => ({
         id: r._id.toString(),
         requesterId: r.requester_id?._id?.toString(),

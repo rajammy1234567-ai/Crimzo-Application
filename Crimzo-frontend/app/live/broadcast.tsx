@@ -45,6 +45,7 @@ import { shareLiveStream } from '../../lib/liveShare';
 import LiveFilterPanel from '../../components/LiveFilterPanel';
 import GiftSplashOverlay from '../../components/GiftSplashOverlay';
 import HostDailyEarningsChip from '../../components/live/HostDailyEarningsChip';
+import LivePkLauncher from '../../components/live/LivePkLauncher';
 
 import {
   applyLiveFilterToEngine,
@@ -193,6 +194,7 @@ export default function BroadcastScreen() {
   const useExpoCamera = !isAgoraNativeLinked;
 
   // Timer state
+  const [showPkLauncher, setShowPkLauncher] = useState(false);
   const [showTimerModal, setShowTimerModal] = useState(false);
   const [selectedDuration, setSelectedDuration] = useState(0);
   const [timerExpired, setTimerExpired] = useState(false);
@@ -1026,6 +1028,23 @@ export default function BroadcastScreen() {
             {/* Right side */}
             <View style={st.headerRight}>
               {isLive && (
+                <TouchableOpacity
+                  onPress={() => setShowPkLauncher(true)}
+                  activeOpacity={0.85}
+                  disabled={navigatingToCall || isCallHandoffInProgress()}
+                >
+                  <LinearGradient
+                    colors={['#FF9500', '#FF2D55']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={st.pkHeaderBtn}
+                  >
+                    <Ionicons name="flash" size={14} color="#FFF" />
+                    <Text style={st.pkHeaderBtnText}>PK</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+              {isLive && (
                 <View style={st.viewerPill}>
                   <Ionicons name="people" size={12} color="#FFF" />
                   <Text style={st.viewerText}>{formatViewers(viewerCount)}</Text>
@@ -1331,6 +1350,22 @@ export default function BroadcastScreen() {
         onSelect={handleFilterSelect}
         onClose={() => setShowFilterPanel(false)}
       />
+
+      <LivePkLauncher
+        visible={showPkLauncher}
+        onClose={() => setShowPkLauncher(false)}
+        token={token}
+        sessionId={sessionId}
+        liveEngine={engineRef.current}
+        onEngineReleased={() => {
+          engineRef.current = null;
+          setAgoraReady(false);
+        }}
+        onLiveEnded={() => {
+          setIsLive(false);
+          setSessionId(null);
+        }}
+      />
     </View>
   );
 }
@@ -1372,6 +1407,17 @@ const st = StyleSheet.create({
   dailyEarnWrap: { paddingHorizontal: 14, paddingTop: 4, paddingBottom: 2 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 6 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  pkHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  pkHeaderBtnText: { color: '#FFF', fontSize: 11, fontWeight: '900', letterSpacing: 0.8 },
   iconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   liveBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, gap: 6 },
   liveBadgeText: { color: '#FFF', fontSize: 12, fontWeight: '900', letterSpacing: 1.5 },

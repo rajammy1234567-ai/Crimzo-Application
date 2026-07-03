@@ -211,6 +211,7 @@ export default function VideoCallScreen() {
   );
   const remoteConfirmedRef = useRef(false);
   const connectedPhaseRef = useRef(false);
+  const localChannelReadyRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [callPhase, setCallPhase] = useState<CallPhase>(
@@ -322,12 +323,33 @@ export default function VideoCallScreen() {
     (fallbackUid?: number) => {
       clearConnectFallback();
       if (!fallbackUid) return;
-      connectFallbackTimerRef.current = setTimeout(() => {
-        if (callEndedRef.current || remoteConfirmedRef.current) return;
-        if (!localJoinedRef.current || !engineRef.current) return;
-        logAgoraCall("connect_fallback", { fallbackUid, channelName });
-        handleRemotePresence(engineRef.current, fallbackUid);
-      }, 3000);
+
+      let attempts = 0;
+      const maxAttempts = 12;
+
+      const runAttempt = () => {
+        connectFallbackTimerRef.current = setTimeout(() => {
+          if (callEndedRef.current || remoteConfirmedRef.current) return;
+          if (!engineRef.current) return;
+
+          if (!localJoinedRef.current) {
+            attempts += 1;
+            if (attempts < maxAttempts) {
+              runAttempt();
+            }
+            return;
+          }
+
+          logAgoraCall("connect_fallback", {
+            fallbackUid,
+            channelName,
+            attempts,
+          });
+          handleRemotePresence(engineRef.current, fallbackUid);
+        }, attempts === 0 ? 2000 : 1000);
+      };
+
+      runAttempt();
     },
     [channelName, clearConnectFallback, handleRemotePresence],
   );
@@ -365,6 +387,7 @@ export default function VideoCallScreen() {
       callEndedRef.current = true;
       connectedPhaseRef.current = false;
       remoteConfirmedRef.current = false;
+      localChannelReadyRef.current = false;
       clearRingTimeout();
       clearConnectFallback();
       clearBillingTimer();
@@ -552,6 +575,29 @@ export default function VideoCallScreen() {
     ],
   );
 
+  const handleLocalChannelReady = useCallback(
+    (engine: IRtcEngine) => {
+      if (callEndedRef.current || localChannelReadyRef.current) return;
+      localChannelReadyRef.current = true;
+      localJoinedRef.current = true;
+      setLoading(false);
+      setCallPhase((prev) => (prev === "ringing" ? prev : "connecting"));
+      configurePublisherAudio(engine, {
+        speakerphone: speakerOnRef.current,
+      });
+      finalizeCallAudioAfterJoin(engine, {
+        ...audioOpts(),
+        expectedRemoteUid: remoteUidRef.current ?? expectedRemoteUid,
+      });
+      if (remoteUidRef.current) {
+        tryActivateCall(engine, remoteUidRef.current);
+      } else {
+        tryActivateCall(engine);
+      }
+    },
+    [audioOpts, expectedRemoteUid, tryActivateCall],
+  );
+
   const initAgora = useCallback(async () => {
     if (
       !channelName ||
@@ -559,9 +605,23 @@ export default function VideoCallScreen() {
       !user?.id ||
       engineRef.current ||
       initAgoraInProgressRef.current
-    )
+    ) {
+      console.log("[VideoCall] initAgora skipped", {
+        channelName,
+        token: Boolean(token),
+        userId: user?.id,
+        hasEngine: Boolean(engineRef.current),
+        inProgress: initAgoraInProgressRef.current,
+      });
       return;
+    }
     initAgoraInProgressRef.current = true;
+    localJoinedRef.current = false;
+    localChannelReadyRef.current = false;
+    remoteConfirmedRef.current = false;
+    connectedPhaseRef.current = false;
+    remoteUidRef.current = null;
+    setRemoteUid(null);
 
     try {
       if (!isAgoraNativeLinked) {
@@ -621,6 +681,8 @@ export default function VideoCallScreen() {
         ...audioOpts(),
         publishVideo: isVideoMode && camOn,
         subscribeVideo: isVideoMode,
+        channelProfile: ChannelProfileType.ChannelProfileCommunication,
+        clientRoleType: ClientRoleType.ClientRoleBroadcaster,
       });
 
       const engine = createAgoraRtcEngine();
@@ -632,31 +694,25 @@ export default function VideoCallScreen() {
       const handler = {
         onJoinChannelSuccess: () => {
           logAgoraCall("local_joined", { uid, channelName });
-          localJoinedRef.current = true;
-          setLoading(false);
-          setCallPhase((prev) => (prev === "ringing" ? prev : "connecting"));
-          configurePublisherAudio(engine, {
-            speakerphone: speakerOnRef.current,
-          });
-          finalizeCallAudioAfterJoin(engine, {
-            ...audioOpts(),
-            expectedRemoteUid: remoteUidRef.current ?? expectedRemoteUid,
-          });
-          if (remoteUidRef.current) {
-            tryActivateCall(engine, remoteUidRef.current);
-          } else {
-            tryActivateCall(engine);
-          }
+          handleLocalChannelReady(engine);
         },
-        onConnectionStateChanged: (_conn: unknown, state: number) => {
+        onConnectionStateChanged: (
+          _conn: unknown,
+          state: number,
+          reason?: number,
+        ) => {
           if (state === ConnectionStateType.ConnectionStateConnected) {
-            localJoinedRef.current = true;
-            configurePublisherAudio(engine, {
-              speakerphone: speakerOnRef.current,
-            });
-            finalizeCallAudioAfterJoin(engine, {
-              ...audioOpts(),
-              expectedRemoteUid: remoteUidRef.current ?? expectedRemoteUid,
+            if (!localChannelReadyRef.current) {
+              logAgoraCall("connection_state_connected", { uid, channelName });
+            }
+            handleLocalChannelReady(engine);
+            return;
+          }
+          if (state === ConnectionStateType.ConnectionStateFailed) {
+            logAgoraCall("connection_state_failed", {
+              uid,
+              channelName,
+              reason,
             });
           }
         },
@@ -767,7 +823,15 @@ export default function VideoCallScreen() {
         uid,
         appId: creds.appId,
       });
-      engine.joinChannel(creds.token, channelName, uid, joinOpts);
+      const joinResult = engine.joinChannel(
+        creds.token,
+        channelName,
+        uid,
+        joinOpts,
+      );
+      if (typeof joinResult === "number" && joinResult < 0) {
+        throw new Error(`Agora join failed (${joinResult})`);
+      }
       configurePublisherAudio(engine, { speakerphone: speakerOnRef.current });
       if (!isVideoMode || !camOn) {
         engine.muteLocalVideoStream(!camOn || !isVideoMode);
@@ -822,6 +886,7 @@ export default function VideoCallScreen() {
     params.fromLive,
     prepareLocalCallMedia,
     handleRemotePresence,
+    handleLocalChannelReady,
   ]);
 
   endCallRef.current = endCall;
@@ -832,6 +897,24 @@ export default function VideoCallScreen() {
   isCallerRef.current = isCaller;
 
   useEffect(() => {
+    console.log("[VideoCall] mount", {
+      channelName,
+      role,
+      peerId,
+      preAccepted,
+      isVideoMode,
+      fromLive: params.fromLive,
+    });
+
+    callEndedRef.current = false;
+    localJoinedRef.current = false;
+    localChannelReadyRef.current = false;
+    remoteConfirmedRef.current = false;
+    connectedPhaseRef.current = false;
+    remoteUidRef.current = null;
+    billingStartedRef.current = false;
+    sessionIdRef.current = null;
+
     if (Platform.OS === "web") {
       appAlert(
         "Mobile Only",
@@ -849,7 +932,19 @@ export default function VideoCallScreen() {
     }
 
     const socket = io(API_URL, { transports: ["websocket"], auth: { token } });
-    socket.on("connect", () => socket.emit("join_user", { userId: user.id }));
+    socket.on("connect", () => {
+      console.log("[VideoCall] socket connected", {
+        channelName,
+        userId: user.id,
+      });
+      socket.emit("join_user", { userId: user.id });
+    });
+    socket.on("connect_error", (error: unknown) => {
+      console.error("[VideoCall] socket connect_error", error);
+    });
+    socket.on("disconnect", (reason: string) => {
+      console.log("[VideoCall] socket disconnected", { reason });
+    });
     socket.on("video_call_ended", (data?: { channelName?: string }) => {
       if (data?.channelName && data.channelName !== channelName) return;
       if (!callEndedRef.current) endCallRef.current("remote_ended");

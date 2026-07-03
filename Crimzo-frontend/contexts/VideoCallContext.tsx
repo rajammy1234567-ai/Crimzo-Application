@@ -78,12 +78,20 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
 
     const socket = io(API_URL, { transports: ["websocket"], auth: { token } });
     socket.on("connect", () => {
+      console.log("[VideoCallContext] socket connected", { userId: user.id });
       socket.emit("join_user", { userId: user.id });
+    });
+    socket.on("connect_error", (error: unknown) => {
+      console.error("[VideoCallContext] socket connect_error", error);
+    });
+    socket.on("disconnect", (reason: string) => {
+      console.log("[VideoCallContext] socket disconnected", { reason });
     });
 
     socket.on(
       "video_call_incoming",
       (data: IncomingCall & { ratePerMin?: number; beansPerMin?: number }) => {
+        console.log("[VideoCallContext] video_call_incoming", data);
         if (!data?.channelName || !data?.callerId) return;
         const callMode: CallMode =
           data.callMode === "voice" ? "voice" : "video";
@@ -257,7 +265,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
       let ratePerMin = VIDEO_CALL_RATE_PER_MIN;
       let beansPerMin: number | undefined;
       try {
-        const eligibility = await checkVideoCallEligibility(token, peerId);
+        const eligibility = await checkVideoCallEligibility(token, peerId, callMode);
         ratePerMin = eligibility.ratePerMin ?? VIDEO_CALL_RATE_PER_MIN;
         beansPerMin = eligibility.beansPerMin;
       } catch (e) {

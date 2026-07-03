@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
+import { useVideoCall } from '../../contexts/VideoCallContext';
 
 import { apiGet, apiPost, resolveMediaUrl } from '../../lib/apiClient';
 import FollowListModal, { FollowUser } from '../../components/profile/FollowListModal';
@@ -29,6 +30,7 @@ export default function UserProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user: me, token } = useAuth();
+  const { startCall, startVoiceCall } = useVideoCall();
   const [profile, setProfile] = useState<any>(null);
   const [reels, setReels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -448,6 +450,22 @@ export default function UserProfileScreen() {
               )}
             </TouchableOpacity>
           )}
+          {profile.canInteract && (
+            <>
+              <TouchableOpacity
+                style={s.callIconBtn}
+                onPress={() => void startVoiceCall(profile.id, profile.username, profile.avatar)}
+              >
+                <Ionicons name="call" size={20} color="#25D366" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.callIconBtn}
+                onPress={() => void startCall(profile.id, profile.username, profile.avatar)}
+              >
+                <Ionicons name="videocam" size={20} color="#A855F7" />
+              </TouchableOpacity>
+            </>
+          )}
           <TouchableOpacity
             style={[s.messageBtn, !profile.canInteract && s.actionDisabled]}
             onPress={handleMessage}
@@ -524,6 +542,10 @@ export default function UserProfileScreen() {
         onMessage={(id, username) => {
           setListVisible(false);
           router.push(`/profile/messages?userId=${id}&username=${encodeURIComponent(username)}` as any);
+        }}
+        onVideoCall={(id, username, avatar) => {
+          setListVisible(false);
+          void startCall(id, username, avatar);
         }}
       />
     </View>
@@ -663,6 +685,14 @@ const s = StyleSheet.create({
   },
   followMainText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
   followingMainText: { color: '#CCC' },
+  callIconBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   messageBtn: {
     flex: 1,
     backgroundColor: 'rgba(255,255,255,0.1)',

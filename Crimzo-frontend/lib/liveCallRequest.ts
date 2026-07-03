@@ -25,6 +25,12 @@ export type LiveCallStatus = {
     status: string;
     callType?: LiveCallType;
   } | null;
+  acceptedCalls_all?: Array<{
+    id: string;
+    channelName: string;
+    status: string;
+    callType?: LiveCallType;
+  }>;
   videoRatePerMin?: number;
   videoBeansPerMin?: number;
   pendingRequests?: Array<{

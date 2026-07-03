@@ -166,10 +166,22 @@ export default function LiveWatchRoom({
   const [hostBusy, setHostBusy] = useState(false);
   const [hostBusyType, setHostBusyType] = useState<'talk' | 'call' | null>(null);
 
-  const hostRates = useMemo(
-    () => resolveRates(streamData?.hostVoiceRatePerMin, streamData?.hostChatRatePerMin),
-    [streamData?.hostVoiceRatePerMin, streamData?.hostChatRatePerMin],
-  );
+  const hostRates = useMemo(() => {
+    const base = resolveRates(streamData?.hostVoiceRatePerMin, streamData?.hostChatRatePerMin);
+    return {
+      ...base,
+      videoRatePerMin: streamData?.hostVideoRatePerMin ?? base.videoRatePerMin,
+      videoBeansPerMin: streamData?.hostVideoBeansPerMin ?? base.videoBeansPerMin,
+    };
+  }, [
+    streamData?.hostVoiceRatePerMin,
+    streamData?.hostChatRatePerMin,
+    streamData?.hostVideoRatePerMin,
+    streamData?.hostVideoBeansPerMin,
+  ]);
+
+  const privateCallsEnabled = streamData?.videoCallEnabled !== false
+    && streamData?.voiceBillingEnabled !== false;
 
   useEffect(() => {
     canChatRef.current = canChat;
@@ -456,18 +468,34 @@ export default function LiveWatchRoom({
         setVideoCallRequestId(videoPending.id);
         setVideoCallStatus('pending');
       }
-      if (status.acceptedCall?.channelName) {
-        const callType = (status.acceptedCall.callType === 'video' ? 'video' : 'voice') as 'voice' | 'video';
-        if (callType === 'video') setVideoCallStatus('accepted');
-        else setCallStatus('accepted');
+      const acceptedRows = status.acceptedCalls_all?.length
+        ? status.acceptedCalls_all
+        : status.acceptedCall
+          ? [status.acceptedCall]
+          : [];
+      const videoAccepted = acceptedRows.find((row) => row.callType === 'video' && row.channelName);
+      const voiceAccepted = acceptedRows.find((row) => (row.callType || 'voice') !== 'video' && row.channelName);
+      if (videoAccepted?.channelName) {
+        setVideoCallStatus('accepted');
         void joinAcceptedCall({
-          channelName: status.acceptedCall.channelName,
+          channelName: videoAccepted.channelName,
           hostId: streamData?.hostId,
           hostName: streamData?.hostUsername,
           hostAvatar: streamData?.hostAvatar,
-          ratePerMin: callType === 'video' ? hostRates.videoRatePerMin : hostRates.voiceRatePerMin,
-          beansPerMin: callType === 'video' ? hostRates.videoBeansPerMin : hostRates.voiceBeansPerMin,
-          callType,
+          ratePerMin: hostRates.videoRatePerMin,
+          beansPerMin: hostRates.videoBeansPerMin,
+          callType: 'video',
+        });
+      } else if (voiceAccepted?.channelName) {
+        setCallStatus('accepted');
+        void joinAcceptedCall({
+          channelName: voiceAccepted.channelName,
+          hostId: streamData?.hostId,
+          hostName: streamData?.hostUsername,
+          hostAvatar: streamData?.hostAvatar,
+          ratePerMin: hostRates.voiceRatePerMin,
+          beansPerMin: hostRates.voiceBeansPerMin,
+          callType: 'voice',
         });
       }
     } catch {
@@ -952,6 +980,10 @@ export default function LiveWatchRoom({
 
   const handleVoiceCall = () => {
     if (!streamData?.hostId) return;
+    if (!privateCallsEnabled) {
+      appAlert('Unavailable', 'Private calls are not enabled right now.');
+      return;
+    }
     if (hostBusy) {
       appAlert('Host Busy', 'The host is busy with someone right now. Please try again later.');
       return;
@@ -973,6 +1005,10 @@ export default function LiveWatchRoom({
 
   const handleVideoCall = () => {
     if (!streamData?.hostId) return;
+    if (!privateCallsEnabled) {
+      appAlert('Unavailable', 'Private video calls are not enabled right now.');
+      return;
+    }
     if (hostBusy) {
       appAlert('Host Busy', 'The host is busy with someone right now. Please try again later.');
       return;
@@ -1119,75 +1155,108 @@ export default function LiveWatchRoom({
             )}
           </View>
 
-          {/* Right side: close button */}
-          <TouchableOpacity onPress={leaveStream} activeOpacity={0.7} style={s.closeBtn}>
-            <Ionicons name="close" size={22} color="#FFF" />
-          </TouchableOpacity>
+          <View style={s.headerActions}>
+            {isViewer && privateCallsEnabled && (
+              <TouchableOpacity
+                onPress={handleVideoCall}
+                activeOpacity={0.85}
+                disabled={hostBusy || requestingVideoCall || videoCallStatus === 'pending'}
+                style={s.headerVideoBtn}
+              >
+                <LinearGradient
+                  colors={
+                    videoCallStatus === 'pending'
+                      ? ['#94A3B8', '#64748B']
+                      : ['#C084FC', '#A855F7', '#7C3AED']
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={s.headerVideoBtnInner}
+                >
+                  <Ionicons
+                    name={videoCallStatus === 'pending' ? 'time' : 'videocam'}
+                    size={16}
+                    color="#FFF"
+                  />
+                  <Text style={s.headerVideoBtnText}>
+                    {videoCallStatus === 'pending' ? 'Wait' : 'Video'}
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={leaveStream} activeOpacity={0.7} style={s.closeBtn}>
+              <Ionicons name="close" size={22} color="#FFF" />
+            </TouchableOpacity>
+          </View>
         </Animated.View>
       </SafeAreaView>
 
       {/* Call + Video + Chat — vertical rounded pills on the right */}
       {isViewer && (
         <View style={[s.actionRail, { bottom: 118 + Math.max(insets.bottom, 8) }]}>
-          <TouchableOpacity
-            style={[s.actionRailBtnWrap, { shadowColor: callStatus === 'pending' ? '#64748B' : '#10B981' }]}
-            onPress={handleVoiceCall}
-            disabled={hostBusy || requestingCall || callStatus === 'pending'}
-            activeOpacity={0.88}
-          >
-            <LinearGradient
-              colors={
-                callStatus === 'pending'
-                  ? ['#94A3B8', '#64748B']
-                  : ['#34D399', '#10B981', '#059669']
-              }
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={[s.actionRailBtn, (requestingCall || callStatus === 'pending') && s.actionRailBtnDisabled]}
-            >
-              <View style={s.actionRailIcon}>
-                <Ionicons
-                  name={callStatus === 'pending' ? 'time' : 'call'}
-                  size={20}
-                  color="#FFF"
-                />
-              </View>
-              <Text style={s.actionRailLabel}>
-                {callStatus === 'pending' ? 'Wait' : 'Call'}
-              </Text>
-              <Text style={s.actionRailRate}>₹{hostRates.voiceRatePerMin}/m</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+          {privateCallsEnabled && (
+            <>
+              <TouchableOpacity
+                style={[s.actionRailBtnWrap, { shadowColor: callStatus === 'pending' ? '#64748B' : '#10B981' }]}
+                onPress={handleVoiceCall}
+                disabled={hostBusy || requestingCall || callStatus === 'pending'}
+                activeOpacity={0.88}
+              >
+                <LinearGradient
+                  colors={
+                    callStatus === 'pending'
+                      ? ['#94A3B8', '#64748B']
+                      : ['#34D399', '#10B981', '#059669']
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                  style={[s.actionRailBtn, (requestingCall || callStatus === 'pending') && s.actionRailBtnDisabled]}
+                >
+                  <View style={s.actionRailIcon}>
+                    <Ionicons
+                      name={callStatus === 'pending' ? 'time' : 'call'}
+                      size={20}
+                      color="#FFF"
+                    />
+                  </View>
+                  <Text style={s.actionRailLabel}>
+                    {callStatus === 'pending' ? 'Wait' : 'Call'}
+                  </Text>
+                  <Text style={s.actionRailRate}>₹{hostRates.voiceRatePerMin}/m</Text>
+                </LinearGradient>
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[s.actionRailBtnWrap, { shadowColor: videoCallStatus === 'pending' ? '#64748B' : '#A855F7' }]}
-            onPress={handleVideoCall}
-            disabled={hostBusy || requestingVideoCall || videoCallStatus === 'pending'}
-            activeOpacity={0.88}
-          >
-            <LinearGradient
-              colors={
-                videoCallStatus === 'pending'
-                  ? ['#94A3B8', '#64748B']
-                  : ['#C084FC', '#A855F7', '#7C3AED']
-              }
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={[s.actionRailBtn, (requestingVideoCall || videoCallStatus === 'pending') && s.actionRailBtnDisabled]}
-            >
-              <View style={s.actionRailIcon}>
-                <Ionicons
-                  name={videoCallStatus === 'pending' ? 'time' : 'videocam'}
-                  size={20}
-                  color="#FFF"
-                />
-              </View>
-              <Text style={s.actionRailLabel}>
-                {videoCallStatus === 'pending' ? 'Wait' : 'Video'}
-              </Text>
-              <Text style={s.actionRailRate}>₹{hostRates.videoRatePerMin}/m</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.actionRailBtnWrap, { shadowColor: videoCallStatus === 'pending' ? '#64748B' : '#A855F7' }]}
+                onPress={handleVideoCall}
+                disabled={hostBusy || requestingVideoCall || videoCallStatus === 'pending'}
+                activeOpacity={0.88}
+              >
+                <LinearGradient
+                  colors={
+                    videoCallStatus === 'pending'
+                      ? ['#94A3B8', '#64748B']
+                      : ['#C084FC', '#A855F7', '#7C3AED']
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                  style={[s.actionRailBtn, (requestingVideoCall || videoCallStatus === 'pending') && s.actionRailBtnDisabled]}
+                >
+                  <View style={s.actionRailIcon}>
+                    <Ionicons
+                      name={videoCallStatus === 'pending' ? 'time' : 'videocam'}
+                      size={20}
+                      color="#FFF"
+                    />
+                  </View>
+                  <Text style={s.actionRailLabel}>
+                    {videoCallStatus === 'pending' ? 'Wait' : 'Video'}
+                  </Text>
+                  <Text style={s.actionRailRate}>₹{hostRates.videoRatePerMin}/m</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </>
+          )}
 
           <TouchableOpacity
             style={[s.actionRailBtnWrap, {
@@ -1226,7 +1295,7 @@ export default function LiveWatchRoom({
       )}
 
       {/* Talk billing status */}
-      {isViewer && hostBusy && !canChat && talkStatus === 'idle' && callStatus === 'idle' && (
+      {isViewer && hostBusy && !canChat && talkStatus === 'idle' && callStatus === 'idle' && videoCallStatus === 'idle' && (
         <View style={s.talkBanner}>
           <Text style={s.talkBannerText}>Host is busy in a private session</Text>
         </View>
@@ -1403,6 +1472,19 @@ const s = StyleSheet.create({
   followingBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
 
   // Close
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerVideoBtn: { borderRadius: 18, overflow: 'hidden' },
+  headerVideoBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  headerVideoBtnText: { color: '#FFF', fontSize: 11, fontWeight: '800' },
   closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
 
   talkBanner: {

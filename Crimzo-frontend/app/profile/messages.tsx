@@ -103,7 +103,7 @@ function bumpConversationList(
 
 export default function MessagesScreen() {
   const { user, token, updateUser } = useAuth();
-  const { startVoiceCall } = useVideoCall();
+  const { startVoiceCall, startCall } = useVideoCall();
   const router = useRouter();
   const params = useLocalSearchParams<{ userId?: string; username?: string }>();
   const insets = useSafeAreaInsets();
@@ -461,6 +461,16 @@ export default function MessagesScreen() {
               style={styles.callHeaderBtn}
             >
               <Ionicons name="call" size={22} color="#25D366" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => void startCall(
+                selectedChat.user_id,
+                selectedChat.username,
+                selectedChat.avatar,
+              )}
+              style={styles.callHeaderBtn}
+            >
+              <Ionicons name="videocam" size={22} color="#A855F7" />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowGift(true)} style={styles.giftHeaderBtn}>
               <Ionicons name="diamond" size={22} color="#00BFFF" />

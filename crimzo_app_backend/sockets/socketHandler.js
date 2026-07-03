@@ -822,8 +822,13 @@ module.exports = (io) => {
           "voice_rate_per_min_inr chat_rate_per_min_inr",
         );
         const calleeRates = resolveUserRates(callee, billingSettings);
-        callRate = calleeRates.voiceRatePerMin;
-        beansPerMin = calleeRates.voiceBeansPerMin;
+        callRate = callMode === "video"
+          ? calleeRates.videoRatePerMin
+          : calleeRates.voiceRatePerMin;
+        beansPerMin = callMode === "video"
+          ? calleeRates.videoBeansPerMin
+          : calleeRates.voiceBeansPerMin;
+        const callLabel = callMode === "video" ? "Video call" : "Voice call";
         if (billingSettings.videoCallBillingEnabled && callRate > 0) {
           const caller = await User.findById(callerId).select(
             "wallet_balance username",
@@ -832,7 +837,7 @@ module.exports = (io) => {
           if (balance < callRate) {
             const errorPayload = {
               code: "INSUFFICIENT_BALANCE",
-              message: `Please recharge your wallet first. Voice call costs ₹${callRate}/min.`,
+              message: `Please recharge your wallet first. ${callLabel} costs ₹${callRate}/min.`,
               ratePerMin: callRate,
               beansPerMin,
               wallet_balance: balance,

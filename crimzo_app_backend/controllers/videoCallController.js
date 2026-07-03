@@ -9,26 +9,44 @@ const { chargeCallMinute, InsufficientWalletError } = require('../utils/liveTalk
 const { getIo, userRoom } = require('../utils/socketEmitter');
 const { syncHostBusyFromCallChannel } = require('../utils/liveHostBusy');
 
-async function getPeerVoiceRate(peerId, settings) {
-  if (!peerId) return settings.videoCallRatePerMin;
-  const peer = await User.findById(peerId).select('voice_rate_per_min_inr chat_rate_per_min_inr');
-  if (!peer) return settings.videoCallRatePerMin;
-  return resolveUserRates(peer, settings).voiceRatePerMin;
+function isVideoCallChannel(channelName) {
+  const ch = String(channelName || '');
+  return ch.startsWith('vc_live_vid_')
+    || (ch.startsWith('vc_') && !ch.startsWith('vc_voice_') && !ch.startsWith('vc_live_'));
+}
+
+async function getPeerCallRates(peerId, settings, options = {}) {
+  const { channelName, callMode } = options;
+  const peer = peerId
+    ? await User.findById(peerId).select('voice_rate_per_min_inr chat_rate_per_min_inr')
+    : null;
+  const rates = resolveUserRates(peer, settings);
+  const useVideo = callMode === 'video'
+    || (callMode !== 'voice' && channelName && isVideoCallChannel(channelName));
+  if (useVideo) {
+    return {
+      rate: rates.videoRatePerMin,
+      beansPerMin: rates.videoBeansPerMin,
+      callType: 'video',
+    };
+  }
+  return {
+    rate: rates.voiceRatePerMin,
+    beansPerMin: rates.voiceBeansPerMin,
+    callType: 'voice',
+  };
 }
 
 exports.getRateInfo = async (req, res) => {
   try {
     const settings = await getBillingSettings();
     const peerId = req.query.peerId;
-    const rate = peerId ? await getPeerVoiceRate(peerId, settings) : settings.videoCallRatePerMin;
+    const callMode = req.query.callMode;
+    const { rate, beansPerMin } = await getPeerCallRates(peerId, settings, { callMode });
     const user = await User.findById(req.user.id).select('wallet_balance');
     if (!user) return res.status(404).json({ error: 'User not found' });
     const payload = buildVideoCallBalancePayload(user.wallet_balance, settings, rate);
-    if (peerId) {
-      const peer = await User.findById(peerId).select('voice_rate_per_min_inr chat_rate_per_min_inr');
-      const peerRates = resolveUserRates(peer, settings);
-      payload.beansPerMin = peerRates.voiceBeansPerMin;
-    }
+    if (peerId) payload.beansPerMin = beansPerMin;
     res.json({ success: true, ...payload });
   } catch (error) {
     console.error('Video call rate info error:', error);
@@ -40,17 +58,16 @@ exports.checkEligibility = async (req, res) => {
   try {
     const settings = await getBillingSettings();
     const peerId = req.query.peerId || req.body?.peerId;
-    const rate = peerId ? await getPeerVoiceRate(peerId, settings) : settings.videoCallRatePerMin;
+    const callMode = req.query.callMode || req.body?.callMode;
+    const { rate, beansPerMin, callType } = await getPeerCallRates(peerId, settings, { callMode });
     const user = await User.findById(req.user.id).select('wallet_balance');
     if (!user) return res.status(404).json({ error: 'User not found' });
     const payload = buildVideoCallBalancePayload(user.wallet_balance, settings, rate);
-    if (peerId) {
-      const peer = await User.findById(peerId).select('voice_rate_per_min_inr chat_rate_per_min_inr');
-      payload.beansPerMin = resolveUserRates(peer, settings).voiceBeansPerMin;
-    }
+    if (peerId) payload.beansPerMin = beansPerMin;
     if (!payload.canCall) {
+      const label = callType === 'video' ? 'Video call' : 'Voice call';
       return res.status(400).json({
-        error: 'Please recharge your wallet first. Video call costs ₹' + payload.ratePerMin + '/min.',
+        error: `Please recharge your wallet first. ${label} costs ₹${payload.ratePerMin}/min.`,
         code: 'INSUFFICIENT_BALANCE',
         ...payload,
       });
@@ -80,7 +97,7 @@ exports.startSession = async (req, res) => {
       });
     }
 
-    const rate = await getPeerVoiceRate(peerId, settings);
+    const { rate } = await getPeerCallRates(peerId, settings, { channelName });
 
     if (!settings.videoCallBillingEnabled || rate <= 0) {
       return res.json({
@@ -190,7 +207,8 @@ exports.tickBilling = async (req, res) => {
       return res.status(404).json({ error: 'Active call session not found' });
     }
 
-    const rate = session.ratePerMin || await getPeerVoiceRate(session.peerId, settings);
+    const rate = session.ratePerMin
+      || (await getPeerCallRates(session.peerId, settings, { channelName })).rate;
 
     if (!settings.videoCallBillingEnabled || rate <= 0) {
       return res.json({
