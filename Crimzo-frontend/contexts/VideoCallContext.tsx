@@ -204,7 +204,10 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
       socket.disconnect();
       socketRef.current = null;
     };
-CONST_MARKER    async (
+  }, [token, user?.id, user?.username, router, clearRingTimeout]);
+
+  const startCallWithMode = useCallback(
+    async (
       peerId: string | number,
       peerName: string,
       peerAvatar: string | null | undefined,
