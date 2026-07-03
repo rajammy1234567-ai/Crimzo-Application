@@ -1241,7 +1241,7 @@ export default function VideoCallScreen() {
 
       {connected && isAgoraNativeLinked && camOn && localUid > 0 && (
         <View style={s.localPip}>
-          <RtcSurfaceView style={s.localVideo} canvas={{ uid: localUid }} />
+          <RtcSurfaceView style={s.localVideo} canvas={{ uid: 0 }} />
         </View>
       )}
 

@@ -450,22 +450,6 @@ export default function UserProfileScreen() {
               )}
             </TouchableOpacity>
           )}
-          {profile.canInteract && (
-            <>
-              <TouchableOpacity
-                style={s.callIconBtn}
-                onPress={() => void startVoiceCall(profile.id, profile.username, profile.avatar)}
-              >
-                <Ionicons name="call" size={20} color="#25D366" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={s.callIconBtn}
-                onPress={() => void startCall(profile.id, profile.username, profile.avatar)}
-              >
-                <Ionicons name="videocam" size={20} color="#A855F7" />
-              </TouchableOpacity>
-            </>
-          )}
           <TouchableOpacity
             style={[s.messageBtn, !profile.canInteract && s.actionDisabled]}
             onPress={handleMessage}

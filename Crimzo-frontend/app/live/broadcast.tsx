@@ -44,6 +44,7 @@ import { subscribe } from '../../lib/realtimeSync';
 import { shareLiveStream } from '../../lib/liveShare';
 import LiveFilterPanel from '../../components/LiveFilterPanel';
 import GiftSplashOverlay from '../../components/GiftSplashOverlay';
+import JoinNotificationOverlay from '../../components/JoinNotificationOverlay';
 import HostDailyEarningsChip from '../../components/live/HostDailyEarningsChip';
 import LivePkLauncher from '../../components/live/LivePkLauncher';
 
@@ -948,8 +949,6 @@ export default function BroadcastScreen() {
   return (
     <View style={st.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-      <GiftSplashOverlay />
-
 
       {/* ═══ CAMERA VIEW ═══ */}
       <View style={st.cameraWrap}>
@@ -1372,6 +1371,9 @@ export default function BroadcastScreen() {
           setSessionId(null);
         }}
       />
+
+      <GiftSplashOverlay />
+      <JoinNotificationOverlay />
     </View>
   );
 }

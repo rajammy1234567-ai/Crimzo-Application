@@ -30,6 +30,7 @@ import PrivateTalkChat from '../components/PrivateTalkChat';
 import HostBusyOverlay from '../components/HostBusyOverlay';
 import StickerPanel from '../components/StickerPanel';
 import GiftSplashOverlay from '../components/GiftSplashOverlay';
+import JoinNotificationOverlay from '../components/JoinNotificationOverlay';
 import HostDailyEarningsChip from './live/HostDailyEarningsChip';
 
 import {
@@ -1050,7 +1051,7 @@ export default function LiveWatchRoom({
   return (
     <View style={s.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-      {isActive ? <GiftSplashOverlay /> : null}
+      {/* GiftSplashOverlay moved to bottom */}
 
 
       {/* ═══ STREAM VIDEO ═══ */}

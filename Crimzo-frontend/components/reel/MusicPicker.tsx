@@ -9,8 +9,9 @@ import {
   FlatList,
   ActivityIndicator,
   Image,
-  RefreshControl,
+  Animated,
   Pressable,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,8 +21,9 @@ import { apiGet, resolveMediaUrl, ApiError } from '../../lib/apiClient';
 import { appAlert } from '../../lib/appAlert';
 import { playReelMusic, stopReelMusic } from '../../lib/reelMusicPlayer';
 import { importSoundFromGalleryVideo } from '../../lib/reelSoundImport';
-import { reelStudioColors } from './reelStudioTheme';
 import type { ReelSound, SoundLanguage } from '../../lib/reelTypes';
+
+const { height: SCREEN_H } = Dimensions.get('window');
 
 type TabId = 'trending' | 'browse';
 
@@ -53,15 +55,50 @@ function formatDuration(ms: number) {
   return `${min}:${sec.toString().padStart(2, '0')}`;
 }
 
-function languageLabel(code: string, languages: SoundLanguage[]) {
-  return languages.find((l) => l.code === code)?.label || code;
+// Animated waveform for now-playing
+function WaveformBars({ playing }: { playing: boolean }) {
+  const bars = useRef(
+    Array.from({ length: 5 }, () => new Animated.Value(0.3))
+  ).current;
+
+  useEffect(() => {
+    if (!playing) {
+      bars.forEach((b) => Animated.timing(b, { toValue: 0.3, duration: 200, useNativeDriver: false }).start());
+      return;
+    }
+    const anims = bars.map((b, i) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(b, { toValue: 1, duration: 250 + i * 60, useNativeDriver: false }),
+          Animated.timing(b, { toValue: 0.3, duration: 250 + i * 60, useNativeDriver: false }),
+        ])
+      )
+    );
+    anims.forEach((a) => a.start());
+    return () => anims.forEach((a) => a.stop());
+  }, [playing]);
+
+  return (
+    <View style={wf.container}>
+      {bars.map((b, i) => (
+        <Animated.View
+          key={i}
+          style={[wf.bar, { height: b.interpolate({ inputRange: [0, 1], outputRange: [4, 16] }) }]}
+        />
+      ))}
+    </View>
+  );
 }
+
+const wf = StyleSheet.create({
+  container: { flexDirection: 'row', alignItems: 'center', gap: 2, height: 20 },
+  bar: { width: 3, borderRadius: 2, backgroundColor: '#FF2D55' },
+});
 
 const RESOLVABLE_SOURCES = new Set(['audius', 'epidemic', 'soundstripe']);
 
 async function resolvePreviewUrl(sound: ReelSound, token?: string | null) {
   let previewUrl = resolveMediaUrl(sound.audio_url);
-
   if (sound.external_id && RESOLVABLE_SOURCES.has(sound.source) && token) {
     try {
       const resolved = await apiGet<{ audio_url?: string }>(
@@ -69,33 +106,42 @@ async function resolvePreviewUrl(sound: ReelSound, token?: string | null) {
         token,
       );
       if (resolved.audio_url) previewUrl = resolveMediaUrl(resolved.audio_url);
-    } catch {
-      // fallback
-    }
+    } catch { /* fallback */ }
   }
-
   return previewUrl;
 }
 
-export default function MusicPicker({
-  visible,
-  token,
-  selectedId,
-  musicFirstMode,
-  onClose,
-  onSelect,
-}: Props) {
+export default function MusicPicker({ visible, token, selectedId, musicFirstMode, onClose, onSelect }: Props) {
   const insets = useSafeAreaInsets();
+  const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
+
   const [sounds, setSounds] = useState<ReelSound[]>([]);
   const [languages, setLanguages] = useState<SoundLanguage[]>(FALLBACK_LANGUAGES);
   const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<TabId>('trending');
   const [language, setLanguage] = useState('all');
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const requestIdRef = useRef(0);
+
+  // Slide in/out animation
+  useEffect(() => {
+    if (visible) {
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        bounciness: 4,
+        speed: 14,
+      }).start();
+    } else {
+      Animated.timing(slideAnim, {
+        toValue: SCREEN_H,
+        duration: 260,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [visible]);
 
   const stopPreview = useCallback(async () => {
     await stopReelMusic();
@@ -106,49 +152,31 @@ export default function MusicPicker({
     search: string;
     activeTab: TabId;
     activeLanguage: string;
-    isRefresh?: boolean;
   }) => {
     if (!token) return;
-
     const reqId = ++requestIdRef.current;
-    if (opts.isRefresh) setRefreshing(true);
-    else setLoading(true);
-
+    setLoading(true);
     try {
       const params = new URLSearchParams();
       params.set('tab', opts.activeTab);
       params.set('language', opts.activeLanguage);
       params.set('limit', '50');
       if (opts.search.trim()) params.set('q', opts.search.trim());
-
-      const data = await apiGet<{
-        sounds: ReelSound[];
-        languages?: SoundLanguage[];
-      }>(`/api/sounds/browse?${params.toString()}`, token);
-
+      const data = await apiGet<{ sounds: ReelSound[]; languages?: SoundLanguage[] }>(
+        `/api/sounds/browse?${params.toString()}`, token,
+      );
       if (reqId !== requestIdRef.current) return;
-
       setSounds(data.sounds || []);
       if (data.languages?.length) setLanguages(data.languages);
-    } catch (e) {
-      console.error('Fetch sounds error:', e);
+    } catch {
       if (reqId === requestIdRef.current) setSounds([]);
     } finally {
-      if (reqId === requestIdRef.current) {
-        setLoading(false);
-        setRefreshing(false);
-      }
+      if (reqId === requestIdRef.current) setLoading(false);
     }
   }, [token]);
 
   useEffect(() => {
-    if (!visible) {
-      void stopPreview();
-      setQuery('');
-      setTab('trending');
-      setLanguage('all');
-      return;
-    }
+    if (!visible) { void stopPreview(); setQuery(''); setTab('trending'); setLanguage('all'); return; }
     void stopPreview();
     void fetchSounds({ search: '', activeTab: 'trending', activeLanguage: 'all' });
   }, [visible, fetchSounds, stopPreview]);
@@ -157,30 +185,18 @@ export default function MusicPicker({
     if (!visible) return;
     const timer = setTimeout(() => {
       void fetchSounds({ search: query, activeTab: tab, activeLanguage: language });
-    }, query ? 280 : 0);
+    }, query ? 300 : 0);
     return () => clearTimeout(timer);
   }, [query, tab, language, visible, fetchSounds]);
 
   const playPreview = async (sound: ReelSound) => {
-    if (previewId === sound.id) {
-      await stopPreview();
-      return;
-    }
-
+    if (previewId === sound.id) { await stopPreview(); return; }
     await stopPreview();
     try {
-      const previewUrl = await resolvePreviewUrl(sound, token);
+      const url = await resolvePreviewUrl(sound, token);
       setPreviewId(sound.id);
-      await playReelMusic({
-        url: previewUrl,
-        loop: false,
-        volume: 0.95,
-        onFinish: () => setPreviewId(null),
-      });
-    } catch (e) {
-      console.error('Preview sound error:', e);
-      setPreviewId(null);
-    }
+      await playReelMusic({ url, loop: false, volume: 0.95, onFinish: () => setPreviewId(null) });
+    } catch { setPreviewId(null); }
   };
 
   const handleSelect = async (sound: ReelSound | null) => {
@@ -189,43 +205,24 @@ export default function MusicPicker({
     onClose();
   };
 
-  const onRefresh = () => {
-    void fetchSounds({ search: query, activeTab: tab, activeLanguage: language, isRefresh: true });
-  };
-
   const importFromLibrary = async () => {
     if (!token || importing) return;
-
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         appAlert('Permission Required', 'Please allow gallery access to import sound from a video.');
         return;
       }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['videos'],
-        allowsEditing: false,
-        quality: 1,
-      });
-
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'], allowsEditing: false, quality: 1 });
       if (result.canceled || !result.assets?.length) return;
-
       const asset = result.assets[0];
       await stopPreview();
       setImporting(true);
-
       const sound = await importSoundFromGalleryVideo(
-        {
-          uri: asset.uri,
-          fileName: asset.fileName,
-          mimeType: asset.mimeType,
-          duration: asset.duration,
-        },
+        { uri: asset.uri, fileName: asset.fileName, mimeType: asset.mimeType, duration: asset.duration },
         token,
         asset.fileName ? asset.fileName.replace(/\.[^.]+$/, '') : 'Imported Sound',
       );
-
       onSelect(sound);
       onClose();
     } catch (e: unknown) {
@@ -234,405 +231,445 @@ export default function MusicPicker({
         msg = e.message;
         const hint = (e.data as { hint?: string } | undefined)?.hint;
         if (hint) msg = `${msg}\n\n${hint}`;
-      } else if (e instanceof Error && e.message) {
-        msg = e.message;
-      }
+      } else if (e instanceof Error && e.message) { msg = e.message; }
       appAlert('Import Failed', msg);
-    } finally {
-      setImporting(false);
-    }
+    } finally { setImporting(false); }
   };
 
-  const renderSound = ({ item }: { item: ReelSound }) => {
-    const selected = selectedId === item.id;
-    const playing = previewId === item.id;
+  const renderSound = ({ item, index }: { item: ReelSound; index: number }) => {
+    const isSelected = selectedId === item.id;
+    const isPlaying = previewId === item.id;
 
     return (
       <Pressable
-        style={[styles.soundCard, selected && styles.soundCardSelected, playing && styles.soundCardPlaying]}
+        style={[s.track, isSelected && s.trackSelected, isPlaying && s.trackPlaying]}
         onPress={() => void handleSelect(item)}
+        android_ripple={{ color: 'rgba(255,45,85,0.12)' }}
       >
-        <View style={styles.soundCardLeft}>
+        {/* Cover art */}
+        <View style={s.coverWrap}>
           {item.cover_url ? (
-            <Image source={{ uri: resolveMediaUrl(item.cover_url) }} style={styles.coverArt} />
+            <Image source={{ uri: resolveMediaUrl(item.cover_url) }} style={s.cover} />
           ) : (
-            <LinearGradient colors={['#FF2D55', '#9333EA']} style={styles.coverFallback}>
-              <Ionicons name="musical-notes" size={20} color="#FFF" />
+            <LinearGradient
+              colors={isSelected ? ['#FF2D55', '#9333EA'] : ['#1C1C2E', '#2A2A3E']}
+              style={s.cover}
+            >
+              <Ionicons name="musical-notes" size={18} color={isSelected ? '#FFF' : '#666'} />
             </LinearGradient>
           )}
-          {playing && (
-            <View style={styles.playingDot}>
-              <Ionicons name="volume-high" size={12} color="#FFF" />
+          {isPlaying && (
+            <View style={s.playingOverlay}>
+              <WaveformBars playing={isPlaying} />
             </View>
           )}
         </View>
 
-        <View style={styles.soundMeta}>
-          <View style={styles.titleRow}>
-            <Text style={styles.soundTitle} numberOfLines={1}>{item.title}</Text>
-            {item.is_licensed && (
-              <View style={styles.licensedBadge}>
-                <Text style={styles.licensedBadgeText}>Licensed</Text>
+        {/* Info */}
+        <View style={s.trackInfo}>
+          <View style={s.titleRow}>
+            <Text style={[s.trackTitle, isSelected && s.trackTitleSelected]} numberOfLines={1}>
+              {item.title}
+            </Text>
+            {item.is_trending && !item.is_licensed && (
+              <View style={s.hotBadge}>
+                <Text style={s.hotBadgeText}>🔥</Text>
               </View>
             )}
-            {item.is_trending && !item.is_licensed && (
-              <View style={styles.trendingBadge}>
-                <Text style={styles.trendingBadgeText}>Hot</Text>
+            {item.is_licensed && (
+              <View style={s.licensedBadge}>
+                <Ionicons name="shield-checkmark" size={9} color="#A5B4FC" />
+                <Text style={s.licensedText}>Licensed</Text>
               </View>
             )}
           </View>
-          <Text style={styles.soundArtist} numberOfLines={1}>
-            {item.artist}
-          </Text>
-          <Text style={styles.soundMetaLine} numberOfLines={1}>
-            {formatDuration(item.duration_ms)}
-            {item.language && item.language !== 'all' ? ` · ${languageLabel(item.language, languages)}` : ''}
-            {(item.reels_count || 0) > 0 ? ` · ${item.reels_count} reels` : ''}
-          </Text>
+          <Text style={s.trackArtist} numberOfLines={1}>{item.artist}</Text>
+          <View style={s.trackMeta}>
+            <Text style={s.metaText}>{formatDuration(item.duration_ms)}</Text>
+            {(item.reels_count ?? 0) > 0 && (
+              <>
+                <View style={s.metaDot} />
+                <Text style={s.metaText}>{(item.reels_count ?? 0).toLocaleString()} reels</Text>
+              </>
+            )}
+          </View>
         </View>
 
-        <TouchableOpacity
-          style={[styles.previewBtn, playing && styles.previewBtnActive]}
-          onPress={(e) => {
-            e.stopPropagation?.();
-            void playPreview(item);
-          }}
-        >
-          <Ionicons name={playing ? 'pause' : 'play'} size={16} color="#FFF" />
-        </TouchableOpacity>
+        {/* Actions */}
+        <View style={s.trackActions}>
+          <TouchableOpacity
+            style={[s.previewBtn, isPlaying && s.previewBtnActive]}
+            onPress={(e) => { e.stopPropagation?.(); void playPreview(item); }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name={isPlaying ? 'pause' : 'play'} size={15} color="#FFF" />
+          </TouchableOpacity>
 
-        {selected ? (
-          <View style={styles.selectedBadge}>
-            <Ionicons name="checkmark" size={13} color="#FFF" />
-          </View>
-        ) : (
-          <Ionicons name="add-circle-outline" size={20} color="rgba(255,255,255,0.35)" />
-        )}
+          {isSelected ? (
+            <View style={s.checkBadge}>
+              <Ionicons name="checkmark" size={14} color="#FFF" />
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={s.addBtn}
+              onPress={() => void handleSelect(item)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="add" size={18} color="rgba(255,255,255,0.6)" />
+            </TouchableOpacity>
+          )}
+        </View>
       </Pressable>
     );
   };
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} animationType="slide" transparent statusBarTranslucent onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
+    <Modal visible={visible} animationType="none" transparent statusBarTranslucent onRequestClose={onClose}>
+      {/* Backdrop */}
+      <Pressable style={s.backdrop} onPress={onClose} />
 
-      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-        <View style={styles.handleWrap}>
-          <View style={styles.handle} />
+      <Animated.View style={[s.sheet, { transform: [{ translateY: slideAnim }], paddingBottom: Math.max(insets.bottom, 20) }]}>
+        {/* Handle */}
+        <View style={s.handleWrap}>
+          <View style={s.handle} />
         </View>
 
-        <View style={styles.header}>
-          <Text style={styles.title}>Music</Text>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Ionicons name="close" size={18} color="#FFF" />
+        {/* Header */}
+        <View style={s.header}>
+          <TouchableOpacity style={s.closeBtn} onPress={onClose}>
+            <Ionicons name="chevron-down" size={20} color="#FFF" />
           </TouchableOpacity>
-        </View>
-
-        <View style={styles.quickRow}>
+          <Text style={s.headerTitle}>Add Music</Text>
           <TouchableOpacity
-            style={[styles.quickChip, !selectedId && styles.quickChipActive]}
-            onPress={() => void handleSelect(null)}
-            activeOpacity={0.8}
-            accessibilityLabel="No music"
-          >
-            <Ionicons name="volume-mute" size={16} color="#FFF" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.quickChip, styles.quickChipImport, importing && styles.quickChipBusy]}
+            style={[s.importBtn, importing && s.importBtnBusy]}
             onPress={() => void importFromLibrary()}
-            activeOpacity={0.8}
             disabled={importing || !token}
-            accessibilityLabel="Import from library"
           >
-            {importing ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <Ionicons name="folder-open-outline" size={16} color="#FFF" />
-            )}
+            {importing
+              ? <ActivityIndicator size="small" color="#FFF" />
+              : <><Ionicons name="folder-open-outline" size={14} color="#FFF" /><Text style={s.importBtnText}>Import</Text></>
+            }
           </TouchableOpacity>
         </View>
 
-        <View style={styles.searchRow}>
-          <Ionicons name="search" size={18} color={reelStudioColors.textMuted} />
+        {/* Search bar */}
+        <View style={s.searchBar}>
+          <Ionicons name="search" size={16} color="rgba(255,255,255,0.4)" />
           <TextInput
-            style={styles.searchInput}
+            style={s.searchInput}
             placeholder="Search songs, artists..."
-            placeholderTextColor={reelStudioColors.textSubtle}
+            placeholderTextColor="rgba(255,255,255,0.3)"
             value={query}
             onChangeText={setQuery}
             autoCorrect={false}
+            returnKeyType="search"
           />
           {query.length > 0 && (
-            <TouchableOpacity onPress={() => setQuery('')}>
-              <Ionicons name="close-circle" size={18} color={reelStudioColors.textSubtle} />
+            <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close-circle" size={16} color="rgba(255,255,255,0.4)" />
             </TouchableOpacity>
           )}
         </View>
 
-        <View style={styles.tabRow}>
+        {/* Tabs */}
+        <View style={s.tabRow}>
           {(['trending', 'browse'] as TabId[]).map((t) => (
             <TouchableOpacity
               key={t}
-              style={[styles.mainTab, tab === t && styles.mainTabActive]}
+              style={[s.tab, tab === t && s.tabActive]}
               onPress={() => setTab(t)}
-              accessibilityLabel={t === 'trending' ? 'Trending' : 'Browse'}
             >
               <Ionicons
-                name={t === 'trending' ? 'flame' : 'grid'}
-                size={15}
-                color={tab === t ? '#FFF' : reelStudioColors.textMuted}
+                name={t === 'trending' ? 'flame' : 'musical-notes'}
+                size={13}
+                color={tab === t ? '#FFF' : 'rgba(255,255,255,0.4)'}
+                style={{ marginRight: 4 }}
               />
+              <Text style={[s.tabText, tab === t && s.tabTextActive]}>
+                {t === 'trending' ? 'Trending' : 'All Music'}
+              </Text>
             </TouchableOpacity>
           ))}
-          <TouchableOpacity style={styles.refreshBtn} onPress={onRefresh}>
-            <Ionicons name="refresh" size={15} color="#FFF" />
+
+          {/* No music chip */}
+          <TouchableOpacity
+            style={[s.noMusicChip, !selectedId && s.noMusicChipActive]}
+            onPress={() => void handleSelect(null)}
+          >
+            <Ionicons name="volume-mute" size={13} color={!selectedId ? '#FFF' : 'rgba(255,255,255,0.4)'} />
           </TouchableOpacity>
         </View>
 
+        {/* Language filters */}
         <FlatList
           horizontal
           data={languages}
           keyExtractor={(item) => item.code}
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.languageRow}
+          contentContainerStyle={s.langRow}
           renderItem={({ item }) => (
             <TouchableOpacity
-              style={[styles.langChip, language === item.code && styles.langChipActive]}
+              style={[s.langChip, language === item.code && s.langChipActive]}
               onPress={() => setLanguage(item.code)}
             >
-              <Text style={[styles.langChipText, language === item.code && styles.langChipTextActive]}>
+              <Text style={[s.langChipText, language === item.code && s.langChipTextActive]}>
                 {item.emoji ? `${item.emoji} ` : ''}{item.label}
               </Text>
             </TouchableOpacity>
           )}
         />
 
+        {/* Sounds list */}
         {loading && sounds.length === 0 ? (
-          <View style={styles.loadingBox}>
-            <ActivityIndicator size="large" color={reelStudioColors.primary} />
-            <Text style={styles.loadingHint}>Finding songs...</Text>
+          <View style={s.loadingBox}>
+            <ActivityIndicator size="large" color="#FF2D55" />
+            <Text style={s.loadingText}>Finding songs...</Text>
           </View>
         ) : (
           <FlatList
             data={sounds}
             keyExtractor={(item) => item.id}
             renderItem={renderSound}
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={s.listContent}
             showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={reelStudioColors.primary} />
-            }
+            ItemSeparatorComponent={() => <View style={s.separator} />}
             ListEmptyComponent={
-              <Text style={styles.emptyText}>
-                {query ? 'No songs found. Try another search.' : 'No songs here yet.'}
-              </Text>
+              <View style={s.emptyBox}>
+                <Ionicons name="musical-notes-outline" size={44} color="rgba(255,255,255,0.12)" />
+                <Text style={s.emptyText}>
+                  {query ? 'No songs found. Try another search.' : 'No songs here yet.'}
+                </Text>
+              </View>
             }
           />
         )}
-      </View>
+      </Animated.View>
     </Modal>
   );
 }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
   },
   sheet: {
-    maxHeight: '88%',
-    minHeight: '72%',
-    backgroundColor: '#12121A',
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
+    backgroundColor: '#0E0E16',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: SCREEN_H * 0.88,
+    minHeight: SCREEN_H * 0.65,
     borderWidth: 1,
     borderBottomWidth: 0,
-    borderColor: reelStudioColors.border,
+    borderColor: 'rgba(255,255,255,0.06)',
   },
-  handleWrap: { alignItems: 'center', paddingTop: 10, paddingBottom: 4 },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-  },
+  handleWrap: { alignItems: 'center', paddingTop: 10, paddingBottom: 2 },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.18)' },
+
+  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingBottom: 8,
+    paddingVertical: 12,
   },
-  title: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   closeBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: reelStudioColors.surface,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.07)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  quickRow: {
+  headerTitle: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  importBtn: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    marginBottom: 10,
-    gap: 8,
-  },
-  quickChip: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: reelStudioColors.surface,
-    borderWidth: 1,
-    borderColor: reelStudioColors.border,
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(99,102,241,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.35)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
-  quickChipActive: {
-    borderColor: reelStudioColors.primary,
-    backgroundColor: reelStudioColors.primarySoft,
-  },
-  quickChipImport: {
-    borderColor: 'rgba(99,102,241,0.4)',
-    backgroundColor: 'rgba(99,102,241,0.12)',
-  },
-  quickChipBusy: { opacity: 0.6 },
-  searchRow: {
+  importBtnBusy: { opacity: 0.5 },
+  importBtnText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
+
+  // Search
+  searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginHorizontal: 16,
-    marginBottom: 8,
-    backgroundColor: reelStudioColors.surface,
-    borderRadius: 12,
+    marginBottom: 10,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 14,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderWidth: 1,
-    borderColor: reelStudioColors.border,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   searchInput: { flex: 1, color: '#FFF', fontSize: 14 },
+
+  // Tabs
   tabRow: {
     flexDirection: 'row',
-    gap: 6,
+    alignItems: 'center',
     paddingHorizontal: 16,
-    marginBottom: 6,
-    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
   },
-  mainTab: {
-    width: 34,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: reelStudioColors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mainTabActive: {
-    backgroundColor: reelStudioColors.primary,
-  },
-  refreshBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: reelStudioColors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 'auto',
-  },
-  languageRow: { paddingHorizontal: 16, gap: 6, paddingBottom: 8 },
-  langChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: reelStudioColors.surface,
-    borderWidth: 1,
-    borderColor: reelStudioColors.border,
-  },
-  langChipActive: { backgroundColor: reelStudioColors.primary, borderColor: reelStudioColors.primary },
-  langChipText: { color: reelStudioColors.textMuted, fontSize: 12, fontWeight: '600' },
-  langChipTextActive: { color: '#FFF' },
-  loadingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, minHeight: 120 },
-  loadingHint: { color: reelStudioColors.textMuted, fontSize: 13 },
-  listContent: { paddingHorizontal: 16, paddingBottom: 16, gap: 6 },
-  emptyText: {
-    color: reelStudioColors.textMuted,
-    textAlign: 'center',
-    marginTop: 32,
-    fontSize: 14,
-    paddingHorizontal: 24,
-  },
-  soundCard: {
+  tab: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: reelStudioColors.surface,
-    borderRadius: 12,
-    padding: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.05)',
     borderWidth: 1,
-    borderColor: reelStudioColors.border,
+    borderColor: 'rgba(255,255,255,0.07)',
   },
-  soundCardSelected: {
-    borderColor: reelStudioColors.primary,
-    backgroundColor: reelStudioColors.primarySoft,
+  tabActive: {
+    backgroundColor: '#FF2D55',
+    borderColor: '#FF2D55',
   },
-  soundCardPlaying: {
-    borderColor: 'rgba(255,45,85,0.55)',
-  },
-  soundCardLeft: { position: 'relative' },
-  coverArt: { width: 44, height: 44, borderRadius: 8, backgroundColor: '#1a1a1a' },
-  coverFallback: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
+  tabText: { color: 'rgba(255,255,255,0.45)', fontSize: 13, fontWeight: '600' },
+  tabTextActive: { color: '#FFF' },
+  noMusicChip: {
+    marginLeft: 'auto',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  playingDot: {
-    position: 'absolute',
-    right: -4,
-    bottom: -4,
-    width: 20,
-    height: 20,
+  noMusicChipActive: {
+    backgroundColor: 'rgba(255,45,85,0.2)',
+    borderColor: '#FF2D55',
+  },
+
+  // Language
+  langRow: { paddingHorizontal: 16, gap: 6, paddingBottom: 10 },
+  langChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  langChipActive: {
+    backgroundColor: 'rgba(255,45,85,0.18)',
+    borderColor: '#FF2D55',
+  },
+  langChipText: { color: 'rgba(255,255,255,0.45)', fontSize: 12, fontWeight: '600' },
+  langChipTextActive: { color: '#FF2D55' },
+
+  // Loading / Empty
+  loadingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, minHeight: 180 },
+  loadingText: { color: 'rgba(255,255,255,0.4)', fontSize: 14 },
+  emptyBox: { alignItems: 'center', paddingVertical: 48, gap: 12 },
+  emptyText: { color: 'rgba(255,255,255,0.35)', fontSize: 14, textAlign: 'center', paddingHorizontal: 32 },
+
+  listContent: { paddingHorizontal: 12, paddingBottom: 20 },
+  separator: { height: 1, backgroundColor: 'rgba(255,255,255,0.04)', marginHorizontal: 16 },
+
+  // Track card
+  track: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 14,
+    marginHorizontal: 4,
+  },
+  trackSelected: {
+    backgroundColor: 'rgba(255,45,85,0.1)',
+  },
+  trackPlaying: {
+    backgroundColor: 'rgba(255,45,85,0.07)',
+  },
+
+  // Cover art
+  coverWrap: { position: 'relative' },
+  cover: {
+    width: 48,
+    height: 48,
     borderRadius: 10,
-    backgroundColor: reelStudioColors.primary,
+    backgroundColor: '#1C1C2E',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#12121A',
   },
-  soundMeta: { flex: 1 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  soundTitle: { color: '#FFF', fontSize: 13, fontWeight: '600', flexShrink: 1 },
+  playingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Track info
+  trackInfo: { flex: 1 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'nowrap' },
+  trackTitle: { color: '#FFF', fontSize: 14, fontWeight: '600', flexShrink: 1 },
+  trackTitleSelected: { color: '#FF2D55' },
+  trackArtist: { color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 2 },
+  trackMeta: { flexDirection: 'row', alignItems: 'center', marginTop: 3, gap: 4 },
+  metaText: { color: 'rgba(255,255,255,0.3)', fontSize: 11 },
+  metaDot: { width: 2.5, height: 2.5, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.2)' },
+
+  hotBadge: {
+    backgroundColor: 'rgba(255,100,0,0.15)',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  hotBadgeText: { fontSize: 9 },
   licensedBadge: {
-    backgroundColor: 'rgba(99,102,241,0.22)',
-    paddingHorizontal: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: 'rgba(99,102,241,0.15)',
+    paddingHorizontal: 5,
     paddingVertical: 2,
     borderRadius: 6,
   },
-  licensedBadgeText: { color: '#A5B4FC', fontSize: 10, fontWeight: '700' },
-  trendingBadge: {
-    backgroundColor: 'rgba(255,45,85,0.22)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  trendingBadgeText: { color: reelStudioColors.primary, fontSize: 10, fontWeight: '700' },
-  soundArtist: { color: 'rgba(255,255,255,0.65)', fontSize: 11, marginTop: 1, fontWeight: '500' },
-  soundMetaLine: { color: reelStudioColors.textMuted, fontSize: 10, marginTop: 2 },
+  licensedText: { color: '#A5B4FC', fontSize: 9, fontWeight: '700' },
+
+  // Actions
+  trackActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   previewBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  previewBtnActive: { backgroundColor: reelStudioColors.primary },
-  selectedBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: reelStudioColors.primary,
+  previewBtnActive: { backgroundColor: '#FF2D55' },
+  checkBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FF2D55',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },

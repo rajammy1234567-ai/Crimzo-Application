@@ -452,26 +452,6 @@ export default function MessagesScreen() {
             )}
           </View>
           <View style={styles.headerActions}>
-            <TouchableOpacity
-              onPress={() => void startVoiceCall(
-                selectedChat.user_id,
-                selectedChat.username,
-                selectedChat.avatar,
-              )}
-              style={styles.callHeaderBtn}
-            >
-              <Ionicons name="call" size={22} color="#25D366" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => void startCall(
-                selectedChat.user_id,
-                selectedChat.username,
-                selectedChat.avatar,
-              )}
-              style={styles.callHeaderBtn}
-            >
-              <Ionicons name="videocam" size={22} color="#A855F7" />
-            </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowGift(true)} style={styles.giftHeaderBtn}>
               <Ionicons name="diamond" size={22} color="#00BFFF" />
             </TouchableOpacity>

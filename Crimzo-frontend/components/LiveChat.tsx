@@ -198,15 +198,30 @@ export default function LiveChat({
 }: LiveChatProps) {
     const insets = useSafeAreaInsets();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const insets = useSafeAreaInsets();
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputText, setInputText] = useState('');
     const [socket, setSocket] = useState<any>(null);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
     const flatListRef = useRef<FlatList>(null);
 
-    // Keyboard tracking
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
+    // Keyboard tracking — measure actual height to lift input above keyboard
     useEffect(() => {
-        const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardVisible(true));
-        const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardVisible(false));
+        const show = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+            (e) => {
+                setKeyboardVisible(true);
+                setKeyboardHeight(e.endCoordinates.height);
+            },
+        );
+        const hide = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+            () => {
+                setKeyboardVisible(false);
+                setKeyboardHeight(0);
+            },
+        );
         return () => { show.remove(); hide.remove(); };
     }, []);
 
@@ -234,6 +249,11 @@ export default function LiveChat({
                 }
             };
             const onSystem = (data: { message?: string; username?: string }) => {
+                if (data.username && data.message?.includes('joined')) {
+                    import('../components/JoinNotificationOverlay').then((m) => {
+                        m.publishJoinNotification(data.username || 'User');
+                    });
+                }
                 setMessages((prev) => appendChatMessage(prev, {
                     id: `sys_${Date.now()}`,
                     type: 'system',
@@ -338,19 +358,9 @@ export default function LiveChat({
     }, [userId, isHost, hostUserId]);
 
     const keyExtractor = useCallback((item: { msg: ChatMessage; opacity: number }) => item.msg.id, []);
-    const bottomPad = keyboardVisible ? 0 : Math.max(insets.bottom, 12);
-
-    return (
-        <KeyboardAvoidingView
-            behavior={KEYBOARD_BEHAVIOR}
-            style={cs.container}
-            keyboardVerticalOffset={0}
-        >
-            {/* Messages */}
-            <FlatList
-                ref={flatListRef}
-                data={visibleMessages}
-                renderItem={renderMessage}
+    // When keyboard is up, lift the input by the keyboard height (minus safe area already accounted for)
+    const bottomPad = keyboardVisible
+        ? Math.max(keyboardHeight - (insets.bottom || 0), 0)
                 keyExtractor={keyExtractor}
                 style={cs.msgList}
                 contentContainerStyle={cs.msgListContent}
