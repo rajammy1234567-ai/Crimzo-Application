@@ -92,6 +92,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
                 calleeName: user.username,
                 channelName: data.channelName,
               });
+              publish('video_call_accepted', { channelName: data.channelName });
               setIncomingCall(null);
               router.push({
                 pathname: '/call',
@@ -282,6 +283,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
       calleeName: user.username,
       channelName: incomingCall.channelName,
     });
+    publish('video_call_accepted', { channelName: incomingCall.channelName });
     router.push({
       pathname: '/call',
       params: {

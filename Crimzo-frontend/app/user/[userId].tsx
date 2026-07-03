@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { appAlert } from '../../lib/appAlert';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, ActivityIndicator, StatusBar, Dimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -39,9 +39,11 @@ export default function UserProfileScreen() {
   const [listData, setListData] = useState<FollowUser[]>([]);
   const [listLoading, setListLoading] = useState(false);
 
-  const fetchProfile = useCallback(async () => {
+  const hasLoadedOnce = useRef(false);
+
+  const fetchProfile = useCallback(async (opts?: { silent?: boolean }) => {
     if (!token || !userId) return;
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     try {
       const profileRes = await apiGet<{ profile?: any }>(
         `/api/user/profile/full?userId=${userId}`,
@@ -71,6 +73,7 @@ export default function UserProfileScreen() {
       router.back();
     } finally {
       setLoading(false);
+      hasLoadedOnce.current = true;
     }
   }, [token, userId, router]);
 
@@ -119,7 +122,7 @@ export default function UserProfileScreen() {
         router.replace('/(tabs)/profile');
         return;
       }
-      fetchProfile();
+      fetchProfile({ silent: hasLoadedOnce.current });
     }, [fetchProfile, userId, me?.id, router]),
   );
 

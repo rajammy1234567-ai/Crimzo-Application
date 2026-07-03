@@ -168,6 +168,7 @@ export default function VideoCallScreen() {
   const remoteUidRef = useRef<number | null>(null);
   const endCallRef = useRef<(reason?: EndCallReason) => void>(() => {});
   const initAgoraRef = useRef<() => Promise<void>>(async () => {});
+  const initCallBillingRef = useRef<() => Promise<void>>(async () => {});
   const finalizeBillingRef = useRef<() => Promise<void>>(async () => {});
   const peerNameRef = useRef(peerName);
   const isCallerRef = useRef(isCaller);
@@ -191,13 +192,15 @@ export default function VideoCallScreen() {
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [showGifts, setShowGifts] = useState(false);
   const [giftBanner, setGiftBanner] = useState<string | null>(null);
+  const [billingActive, setBillingActive] = useState(false);
 
   const micOnRef = useRef(micOn);
   const speakerOnRef = useRef(speakerOn);
   const camOnRef = useRef(camOn);
 
   const connected = callPhase === 'connected';
-  const showPreCallUI = callPhase === 'ringing' || callPhase === 'connecting';
+  const needsDevBuild = callPhase === 'needs_dev_build';
+  const showPreCallUI = callPhase === 'ringing' || callPhase === 'connecting' || needsDevBuild;
   const showRemoteVideo = isVideoMode && connected && remoteUid != null && remoteCamOn && isAgoraNativeLinked;
   const showGiftsOnCall = params.fromLive === '1';
   const expectedRemoteUid = peerId ? toAgoraUid(peerId) : undefined;
@@ -234,6 +237,9 @@ export default function VideoCallScreen() {
         remoteUid: remoteUidRef.current ?? undefined,
         role,
       });
+      if (isCallerRef.current && isAgoraNativeLinked && !billingStartedRef.current) {
+        void initCallBillingRef.current();
+      }
     }
   }, [channelName, localUid, role, clearConnectFallback]);
 
@@ -246,7 +252,7 @@ export default function VideoCallScreen() {
       logAgoraCall('connect_fallback', { fallbackUid, channelName });
       markRemotePeer(engineRef.current, fallbackUid, audioOpts());
       markConnected(fallbackUid);
-    }, 2800);
+    }, 1500);
   }, [audioOpts, channelName, clearConnectFallback, markConnected]);
 
   const clearRingTimeout = useCallback(() => {
@@ -376,6 +382,7 @@ export default function VideoCallScreen() {
       if (session.totalCharged != null) setTotalCharged(session.totalCharged);
       if (session.sessionId) {
         sessionIdRef.current = session.sessionId;
+        setBillingActive(true);
         startBillingLoop();
       }
     } catch (e) {
@@ -416,8 +423,15 @@ export default function VideoCallScreen() {
     initAgoraInProgressRef.current = true;
 
     try {
+      if (!isAgoraNativeLinked) {
+        logAgoraCall('init:expo_go_blocked', { channelName });
+        setLoading(false);
+        setCallPhase('needs_dev_build');
+        return;
+      }
+
       logAgoraCall('init:start', { channelName, role, fromLive: params.fromLive === '1', peerId });
-      await hardResetAgoraRtc(params.fromLive === '1' ? 1100 : 500);
+      await hardResetAgoraRtc(params.fromLive === '1' ? 600 : 250);
       await prepareVoiceCallAudio();
       const perms = await ensureRtcPermissions();
       if (!perms.mic) {
@@ -443,16 +457,6 @@ export default function VideoCallScreen() {
 
       const uid = creds.uid || toAgoraUid(user.id);
       setLocalUid(uid);
-
-      if (!isAgoraNativeLinked) {
-        setLoading(false);
-        setCallPhase('connected');
-        appAlert(
-          'Dev Build Required',
-          'Real video needs a custom dev build (react-native-agora). Signaling works — install dev build for camera.',
-        );
-        return;
-      }
 
       const engine = createAgoraRtcEngine();
       engine.initialize({
@@ -499,7 +503,6 @@ export default function VideoCallScreen() {
           }
           setRemoteCamOn(true);
           tryActivateCall(engine, remoteUserUid);
-          if (isCallerRef.current) void initCallBilling();
         },
         onFirstRemoteAudioDecoded: (_conn: unknown, uid: number) => {
           markRemotePeer(engine, uid, audioOpts());
@@ -574,6 +577,7 @@ export default function VideoCallScreen() {
   }, [channelName, token, user?.id, role, peerId, initCallBilling, endCall, router, tryActivateCall, audioOpts, expectedRemoteUid, scheduleConnectFallback, isVideoMode, camOn, params.fromLive, markConnected]);
 
   endCallRef.current = endCall;
+  initCallBillingRef.current = initCallBilling;
   finalizeBillingRef.current = finalizeBilling;
   initAgoraRef.current = initAgora;
   peerNameRef.current = peerName;
@@ -686,7 +690,12 @@ export default function VideoCallScreen() {
   }, [channelName, clearRingTimeout]);
 
   useEffect(() => {
-    if (connected || callPhase === 'ringing') return;
+    if (callPhase !== 'connecting' || engineRef.current || initAgoraInProgressRef.current) return;
+    void initAgoraRef.current();
+  }, [callPhase]);
+
+  useEffect(() => {
+    if (connected || callPhase === 'ringing' || needsDevBuild) return;
     const timeout = setTimeout(() => {
       if (callEndedRef.current || remoteUidRef.current) return;
       appAlert(
@@ -835,7 +844,7 @@ export default function VideoCallScreen() {
             ₹{ratePerMin}/min{beansPerMin ? ` · they earn ${beansPerMin} beans/min` : ''}
           </Text>
         )}
-        {connected && isCaller && (
+        {connected && isCaller && billingActive && (
           <Text style={s.billingLine}>
             ₹{totalCharged || ratePerMin} charged · ₹{ratePerMin}/min
             {walletBalance != null ? ` · bal ₹${walletBalance.toLocaleString('en-IN')}` : ''}
@@ -843,6 +852,11 @@ export default function VideoCallScreen() {
         )}
         {connected && !isCaller && beansPerMin != null && (
           <Text style={s.billingLine}>Earning {beansPerMin} beans/min</Text>
+        )}
+        {needsDevBuild && (
+          <Text style={s.devBuildHint}>
+            Expo Go mein call/audio kaam nahi karta. Crimzo dev build install karo.
+          </Text>
         )}
       </View>
 
@@ -946,6 +960,14 @@ const s = StyleSheet.create({
   statusLive: { color: '#25D366', fontSize: 20, fontWeight: '600' },
   phaseHint: { color: 'rgba(255,255,255,0.45)', fontSize: 13, marginTop: 6 },
   rateHint: { color: 'rgba(255,215,0,0.85)', fontSize: 13, fontWeight: '600', marginTop: 10 },
+  devBuildHint: {
+    color: 'rgba(255,180,80,0.95)',
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 12,
+    lineHeight: 18,
+    paddingHorizontal: 12,
+  },
   billingLine: { color: 'rgba(255,255,255,0.55)', fontSize: 12, marginTop: 8 },
   giftBanner: {
     position: 'absolute',

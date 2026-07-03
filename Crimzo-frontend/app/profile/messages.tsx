@@ -122,6 +122,8 @@ export default function MessagesScreen() {
   const selectedChatRef = useRef<Conversation | null>(null);
   const chatListRef = useRef<FlatList>(null);
   const giftInFlightRef = useRef(false);
+  const messageCacheRef = useRef<Map<string, Message[]>>(new Map());
+  const [initialListLoad, setInitialListLoad] = useState(true);
 
   useEffect(() => {
     selectedChatRef.current = selectedChat;
@@ -162,8 +164,15 @@ export default function MessagesScreen() {
         setChatMessages((prev) => {
           if (!isIncoming) return prev;
           if (prev.some((m) => String(m.id) === String(msg.id))) return prev;
-          return [...prev, msg];
+          const next = [...prev, msg];
+          messageCacheRef.current.set(partnerId, next);
+          return next;
         });
+      } else if (isIncoming) {
+        const cached = messageCacheRef.current.get(partnerId) || [];
+        if (!cached.some((m) => String(m.id) === String(msg.id))) {
+          messageCacheRef.current.set(partnerId, [...cached, msg]);
+        }
       }
     });
   }, [user?.id]);
@@ -190,6 +199,7 @@ export default function MessagesScreen() {
       console.error('Fetch conversations error:', e);
     } finally {
       setLoading(false);
+      setInitialListLoad(false);
     }
   }, [token]);
 
@@ -216,17 +226,17 @@ export default function MessagesScreen() {
   }, [fetchConversations, fetchFriends]);
 
   useEffect(() => {
-    if (!params.userId || loading) return;
+    if (!params.userId || initialListLoad) return;
     const uid = String(params.userId);
     if (openedParamUserRef.current === uid) return;
     openedParamUserRef.current = uid;
 
     const existing = conversations.find((c) => String(c.user_id) === uid);
     if (existing) {
-      openChat(existing);
+      void openChat(existing);
       return;
     }
-    openChat({
+    void openChat({
       user_id: uid as unknown as number,
       username: params.username ? decodeURIComponent(params.username) : 'User',
       avatar: null,
@@ -235,7 +245,7 @@ export default function MessagesScreen() {
       unread_count: 0,
       is_online: false,
     });
-  }, [params.userId, params.username, loading, conversations]);
+  }, [params.userId, params.username, initialListLoad, conversations]);
 
   const openChatFromFriend = (friend: Friend) => {
     const existing = conversations.find((c) => String(c.user_id) === friend.id);
@@ -255,7 +265,15 @@ export default function MessagesScreen() {
   };
 
   const openChat = async (conv: Conversation) => {
+    const partnerId = String(conv.user_id);
     setSelectedChat(conv);
+    const cached = messageCacheRef.current.get(partnerId);
+    if (cached) {
+      setChatMessages(cached);
+      setChatLoading(false);
+      return;
+    }
+    setChatMessages([]);
     setChatLoading(true);
     try {
       const data = await apiGet<{ success?: boolean; messages?: Message[] }>(
@@ -263,7 +281,9 @@ export default function MessagesScreen() {
         token,
       );
       if (data.success) {
-        setChatMessages((data.messages || []).map(normalizeMessage));
+        const msgs = (data.messages || []).map(normalizeMessage);
+        messageCacheRef.current.set(partnerId, msgs);
+        setChatMessages(msgs);
       }
     } catch (e) {
       console.error('Fetch messages error:', e);
@@ -373,9 +393,11 @@ export default function MessagesScreen() {
       );
       if (data.success && data.message) {
         const serverMsg = normalizeMessage(data.message);
-        setChatMessages((prev) =>
-          prev.map((m) => (m.id === optimistic.id ? serverMsg : m)),
-        );
+        setChatMessages((prev) => {
+          const next = prev.map((m) => (m.id === optimistic.id ? serverMsg : m));
+          messageCacheRef.current.set(String(selectedChat.user_id), next);
+          return next;
+        });
         setConversations((prev) => bumpConversationList(prev, String(selectedChat.user_id), {
           last_message: serverMsg.content,
           last_time: serverMsg.created_at,
@@ -579,7 +601,7 @@ export default function MessagesScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      {loading ? (
+      {initialListLoad ? (
         <View style={styles.centerFull}>
           <ActivityIndicator size="large" color="#FF2D55" />
         </View>

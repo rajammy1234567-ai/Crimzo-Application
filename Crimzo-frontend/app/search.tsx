@@ -43,16 +43,18 @@ export default function SearchScreen() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const runSearch = useCallback(async (q: string) => {
-    if (!token || !q.trim()) {
+    const trimmed = q.trim();
+    if (!token || trimmed.length < 2) {
       setResults([]);
       setSearched(false);
+      setLoading(false);
       return;
     }
     setLoading(true);
     setSearched(true);
     try {
       const data = await apiGet<{ users?: SearchUser[] }>(
-        `/api/user/search?q=${encodeURIComponent(q.trim())}`,
+        `/api/user/search?q=${encodeURIComponent(trimmed)}`,
         token,
       );
       setResults(data.users || []);
@@ -66,7 +68,7 @@ export default function SearchScreen() {
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => runSearch(query), 350);
+    debounceRef.current = setTimeout(() => runSearch(query), 500);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
@@ -132,14 +134,11 @@ export default function SearchScreen() {
               <Ionicons name="close-circle" size={18} color="rgba(255,255,255,0.35)" />
             </TouchableOpacity>
           )}
+          {loading && <ActivityIndicator size="small" color="#FF2D55" />}
         </View>
       </View>
 
-      {loading ? (
-        <View style={s.center}>
-          <ActivityIndicator size="large" color="#FF2D55" />
-        </View>
-      ) : !searched || !query.trim() ? (
+      {!searched || query.trim().length < 2 ? (
         <View style={s.center}>
           <Ionicons name="search-outline" size={56} color="rgba(255,255,255,0.12)" />
           <Text style={s.hintTitle}>Search Crimzo</Text>
