@@ -873,6 +873,9 @@ module.exports = (io) => {
     socket.on("video_call_accept", (data) => {
       const { callerId, calleeId, calleeName, channelName } = data || {};
       if (!callerId || !channelName) return;
+      console.log(
+        `[VideoCall] accept from ${calleeId} -> caller ${callerId} channel=${channelName}`,
+      );
       io.to(userRoom(callerId)).emit("video_call_accepted", {
         callerId,
         calleeId,

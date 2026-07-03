@@ -602,6 +602,15 @@ export default function VideoCallScreen() {
         error?: string;
       }>("/api/agora/call-token", { channelName, role, peerId }, token);
 
+      // DEBUG: log Agora credential response for troubleshooting
+      console.log("[VideoCall] Agora creds response:", {
+        success: creds?.success,
+        appId: creds?.appId,
+        hasToken: Boolean(creds?.token),
+        uid: creds?.uid,
+        error: creds?.error,
+      });
+
       if (!creds.success || !creds.token || !creds.appId) {
         throw new Error(creds.error || "Could not get call credentials");
       }
@@ -753,6 +762,11 @@ export default function VideoCallScreen() {
         }
       ).enableAudioVolumeIndication?.(400, 3, true);
 
+      console.log("[VideoCall] joining Agora channel", {
+        channelName,
+        uid,
+        appId: creds.appId,
+      });
       engine.joinChannel(creds.token, channelName, uid, joinOpts);
       configurePublisherAudio(engine, { speakerphone: speakerOnRef.current });
       if (!isVideoMode || !camOn) {
