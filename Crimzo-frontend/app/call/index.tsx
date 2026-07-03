@@ -45,10 +45,13 @@ import {
 } from '../../components/agoraImports';
 import {
   ensureRtcPermissions,
+  buildCallJoinOptions,
+  configurePublisherAudio,
   configureRemoteSubscriber,
   finalizeCallAudioAfterJoin,
   markRemotePeer,
   prepareVoiceCallAudio,
+  resetExpoAudioAfterLive,
   shouldConfigureRemoteAudio,
 } from '../../lib/agoraRtcHelpers';
 import { logAgoraCall } from '../../lib/agoraCallDiagnostics';
@@ -57,8 +60,9 @@ import {
   hardResetAgoraRtc,
   releaseAgoraEngine,
   trackAgoraEngine,
+  waitForAgoraReleaseIdle,
 } from '../../lib/agoraEngineRelease';
-import { clearCallHandoff } from '../../lib/agoraCallHandoff';
+import { clearCallHandoff, isCallHandoffInProgress } from '../../lib/agoraCallHandoff';
 import StickerPanel from '../../components/StickerPanel';
 import GiftSplashOverlay from '../../components/GiftSplashOverlay';
 
@@ -175,6 +179,8 @@ export default function VideoCallScreen() {
   const initAgoraInProgressRef = useRef(false);
   const agoraHandlerRef = useRef<Record<string, unknown> | null>(null);
   const connectFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const remoteConfirmedRef = useRef(false);
+  const connectedPhaseRef = useRef(false);
 
   const [loading, setLoading] = useState(true);
   const [callPhase, setCallPhase] = useState<CallPhase>(
@@ -219,41 +225,52 @@ export default function VideoCallScreen() {
   const audioOpts = useCallback(() => ({
     speakerphone: speakerOnRef.current,
     publishVideo: isVideoMode && camOnRef.current,
+    subscribeVideo: isVideoMode,
     micEnabled: micOnRef.current,
   }), [isVideoMode]);
 
-  const markConnected = useCallback((remoteUserUid?: number) => {
-    if (remoteUserUid) {
-      remoteUidRef.current = remoteUserUid;
-      setRemoteUid(remoteUserUid);
-    }
-    if (localJoinedRef.current && remoteUidRef.current) {
-      setCallPhase('connected');
-      setLoading(false);
-      clearConnectFallback();
-      logAgoraCall('connected', {
-        channelName,
-        localUid: localUid || undefined,
-        remoteUid: remoteUidRef.current ?? undefined,
-        role,
-      });
-      if (isCallerRef.current && isAgoraNativeLinked && !billingStartedRef.current) {
-        void initCallBillingRef.current();
-      }
+  const confirmRemotePeer = useCallback((remoteUserUid: number) => {
+    if (!remoteUserUid || callEndedRef.current) return;
+    remoteUidRef.current = remoteUserUid;
+    setRemoteUid(remoteUserUid);
+    remoteConfirmedRef.current = true;
+  }, []);
+
+  const markConnected = useCallback(() => {
+    if (connectedPhaseRef.current) return;
+    if (!localJoinedRef.current || !remoteUidRef.current || !remoteConfirmedRef.current) return;
+    connectedPhaseRef.current = true;
+    setCallPhase('connected');
+    setLoading(false);
+    clearConnectFallback();
+    logAgoraCall('connected', {
+      channelName,
+      localUid: localUid || undefined,
+      remoteUid: remoteUidRef.current ?? undefined,
+      role,
+    });
+    if (isCallerRef.current && isAgoraNativeLinked && !billingStartedRef.current) {
+      void initCallBillingRef.current();
     }
   }, [channelName, localUid, role, clearConnectFallback]);
 
-  const scheduleConnectFallback = useCallback((engine: IRtcEngine, fallbackUid?: number) => {
+  const handleRemotePresence = useCallback((engine: IRtcEngine, remoteUserUid: number) => {
+    if (!remoteUserUid) return;
+    confirmRemotePeer(remoteUserUid);
+    markRemotePeer(engine, remoteUserUid, audioOpts());
+    if (localJoinedRef.current) markConnected();
+  }, [audioOpts, confirmRemotePeer, markConnected]);
+
+  const scheduleConnectFallback = useCallback((fallbackUid?: number) => {
     clearConnectFallback();
     if (!fallbackUid) return;
     connectFallbackTimerRef.current = setTimeout(() => {
-      if (callEndedRef.current || remoteUidRef.current) return;
+      if (callEndedRef.current || remoteConfirmedRef.current) return;
       if (!localJoinedRef.current || !engineRef.current) return;
       logAgoraCall('connect_fallback', { fallbackUid, channelName });
-      markRemotePeer(engineRef.current, fallbackUid, audioOpts());
-      markConnected(fallbackUid);
-    }, 1500);
-  }, [audioOpts, channelName, clearConnectFallback, markConnected]);
+      handleRemotePresence(engineRef.current, fallbackUid);
+    }, 3000);
+  }, [channelName, clearConnectFallback, handleRemotePresence]);
 
   const clearRingTimeout = useCallback(() => {
     if (ringTimeoutRef.current) {
@@ -285,6 +302,8 @@ export default function VideoCallScreen() {
   const endCall = useCallback((reason?: EndCallReason) => {
     if (callEndedRef.current) return;
     callEndedRef.current = true;
+    connectedPhaseRef.current = false;
+    remoteConfirmedRef.current = false;
     clearRingTimeout();
     clearConnectFallback();
     clearBillingTimer();
@@ -398,25 +417,31 @@ export default function VideoCallScreen() {
     }
   }, [token, channelName, peerId, role, startBillingLoop, updateUser, ratePerMin, endCall]);
 
-  const tryActivateCall = useCallback((engine: IRtcEngine, remoteUserUid?: number) => {
-    const resolvedRemote = remoteUserUid ?? remoteUidRef.current ?? expectedRemoteUid;
-    if (resolvedRemote) {
-      markRemotePeer(engine, resolvedRemote, audioOpts());
-    } else {
-      finalizeCallAudioAfterJoin(engine, { ...audioOpts(), expectedRemoteUid: undefined });
+  const prepareLocalCallMedia = useCallback((engine: IRtcEngine) => {
+    finalizeCallAudioAfterJoin(engine, {
+      ...audioOpts(),
+      expectedRemoteUid: remoteUidRef.current ?? expectedRemoteUid,
+    });
+    const subscribeUid = remoteUidRef.current ?? expectedRemoteUid;
+    if (subscribeUid) {
+      markRemotePeer(engine, subscribeUid, audioOpts());
     }
+  }, [audioOpts, expectedRemoteUid]);
 
-    if (localJoinedRef.current && resolvedRemote) {
-      markConnected(resolvedRemote);
+  const tryActivateCall = useCallback((engine: IRtcEngine, remoteUserUid?: number) => {
+    if (remoteUserUid) {
+      handleRemotePresence(engine, remoteUserUid);
       return;
     }
+
+    prepareLocalCallMedia(engine);
 
     if (localJoinedRef.current) {
       setCallPhase('connecting');
       setLoading(false);
-      scheduleConnectFallback(engine, expectedRemoteUid);
+      scheduleConnectFallback(expectedRemoteUid);
     }
-  }, [audioOpts, expectedRemoteUid, markConnected, scheduleConnectFallback]);
+  }, [expectedRemoteUid, handleRemotePresence, prepareLocalCallMedia, scheduleConnectFallback]);
 
   const initAgora = useCallback(async () => {
     if (!channelName || !token || !user?.id || engineRef.current || initAgoraInProgressRef.current) return;
@@ -431,7 +456,12 @@ export default function VideoCallScreen() {
       }
 
       logAgoraCall('init:start', { channelName, role, fromLive: params.fromLive === '1', peerId });
-      await hardResetAgoraRtc(params.fromLive === '1' ? 600 : 250);
+      if (params.fromLive === '1' || isCallHandoffInProgress()) {
+        await waitForAgoraReleaseIdle(800);
+        await resetExpoAudioAfterLive();
+      } else {
+        await hardResetAgoraRtc(200);
+      }
       await prepareVoiceCallAudio();
       const perms = await ensureRtcPermissions();
       if (!perms.mic) {
@@ -457,42 +487,43 @@ export default function VideoCallScreen() {
 
       const uid = creds.uid || toAgoraUid(user.id);
       setLocalUid(uid);
+      const joinOpts = buildCallJoinOptions({
+        ...audioOpts(),
+        publishVideo: isVideoMode && camOn,
+        subscribeVideo: isVideoMode,
+      });
 
       const engine = createAgoraRtcEngine();
       engine.initialize({
         appId: creds.appId,
         channelProfile: ChannelProfileType.ChannelProfileCommunication,
       });
-      if (isVideoMode) {
-        engine.enableVideo();
-        if (params.fromLive !== '1') {
-          engine.startPreview();
-        } else {
-          await new Promise<void>((resolve) => setTimeout(resolve, 400));
-          try {
-            engine.startPreview();
-          } catch (previewErr) {
-            console.warn('[VideoCall] startPreview deferred:', previewErr);
-          }
-        }
-      } else {
-        engine.disableVideo();
-      }
-      engine.enableAudio();
-      engine.setClientRole(ClientRoleType.ClientRoleBroadcaster);
-      finalizeCallAudioAfterJoin(engine, { ...audioOpts(), expectedRemoteUid });
 
       const handler = {
         onJoinChannelSuccess: () => {
           logAgoraCall('local_joined', { uid, channelName });
           localJoinedRef.current = true;
-          finalizeCallAudioAfterJoin(engine, { ...audioOpts(), expectedRemoteUid });
-          tryActivateCall(engine, remoteUidRef.current ?? expectedRemoteUid);
+          setLoading(false);
+          setCallPhase((prev) => (prev === 'ringing' ? prev : 'connecting'));
+          configurePublisherAudio(engine, { speakerphone: speakerOnRef.current });
+          finalizeCallAudioAfterJoin(engine, {
+            ...audioOpts(),
+            expectedRemoteUid: remoteUidRef.current ?? expectedRemoteUid,
+          });
+          if (remoteUidRef.current) {
+            tryActivateCall(engine, remoteUidRef.current);
+          } else {
+            tryActivateCall(engine);
+          }
         },
         onConnectionStateChanged: (_conn: unknown, state: number) => {
           if (state === ConnectionStateType.ConnectionStateConnected) {
             localJoinedRef.current = true;
-            tryActivateCall(engine, remoteUidRef.current ?? expectedRemoteUid);
+            configurePublisherAudio(engine, { speakerphone: speakerOnRef.current });
+            finalizeCallAudioAfterJoin(engine, {
+              ...audioOpts(),
+              expectedRemoteUid: remoteUidRef.current ?? expectedRemoteUid,
+            });
           }
         },
         onUserJoined: (_conn: unknown, remoteUserUid: number) => {
@@ -504,24 +535,40 @@ export default function VideoCallScreen() {
           setRemoteCamOn(true);
           tryActivateCall(engine, remoteUserUid);
         },
-        onFirstRemoteAudioDecoded: (_conn: unknown, uid: number) => {
-          markRemotePeer(engine, uid, audioOpts());
-          if (localJoinedRef.current) markConnected(uid);
+        onFirstRemoteAudioDecoded: (_conn: unknown, remoteUserUid: number) => {
+          handleRemotePresence(engine, remoteUserUid);
         },
-        onFirstRemoteAudioFrame: (_conn: unknown, uid: number) => {
-          markRemotePeer(engine, uid, audioOpts());
+        onFirstRemoteAudioFrame: (_conn: unknown, remoteUserUid: number) => {
+          handleRemotePresence(engine, remoteUserUid);
         },
-        onRemoteAudioStateChanged: (_conn: unknown, uid: number, state: number) => {
+        onRemoteAudioStateChanged: (_conn: unknown, remoteUserUid: number, state: number) => {
           if (shouldConfigureRemoteAudio(state)) {
-            markRemotePeer(engine, uid, audioOpts());
-            if (localJoinedRef.current) markConnected(uid);
+            handleRemotePresence(engine, remoteUserUid);
           }
         },
-        onUserMuteAudio: (_conn: unknown, uid: number, muted: boolean) => {
-          if (!muted) markRemotePeer(engine, uid, audioOpts());
+        onRemoteVideoStateChanged: (_conn: unknown, remoteUserUid: number, state: number) => {
+          if (isVideoMode && state === 2) {
+            handleRemotePresence(engine, remoteUserUid);
+          }
         },
-        onUserMuteVideo: (_conn: unknown, uid: number, muted: boolean) => {
-          if (uid === remoteUidRef.current) setRemoteCamOn(!muted);
+        onAudioVolumeIndication: (
+          _conn: unknown,
+          speakers: Array<{ uid?: number; volume?: number }>,
+        ) => {
+          if (remoteConfirmedRef.current) return;
+          for (const speaker of speakers || []) {
+            const speakerUid = speaker?.uid ?? 0;
+            if (speakerUid > 0 && (speaker.volume ?? 0) > 0) {
+              handleRemotePresence(engine, speakerUid);
+              break;
+            }
+          }
+        },
+        onUserMuteAudio: (_conn: unknown, remoteUid: number, muted: boolean) => {
+          if (!muted) markRemotePeer(engine, remoteUid, audioOpts());
+        },
+        onUserMuteVideo: (_conn: unknown, remoteUid: number, muted: boolean) => {
+          if (remoteUid === remoteUidRef.current) setRemoteCamOn(!muted);
         },
         onUserOffline: () => {
           if (offlineGraceRef.current) clearTimeout(offlineGraceRef.current);
@@ -530,26 +577,40 @@ export default function VideoCallScreen() {
             endCallRef.current('remote_ended');
           }, 1500);
         },
-        onError: (err: unknown) => {
-          console.error('[VideoCall] Agora error:', err);
-          logAgoraCall('agora_error', { err: String(err) });
+        onError: (err: unknown, msg?: unknown) => {
+          console.error('[VideoCall] Agora error:', err, msg);
+          logAgoraCall('agora_error', { err: String(err), msg: String(msg ?? '') });
         },
       };
       agoraHandlerRef.current = handler;
       engine.registerEventHandler(handler);
 
-      engine.joinChannel(creds.token, channelName, uid, {
-        clientRoleType: ClientRoleType.ClientRoleBroadcaster,
-        publishMicrophoneTrack: true,
-        publishCameraTrack: isVideoMode && camOn,
-        autoSubscribeAudio: true,
-        autoSubscribeVideo: isVideoMode,
-      });
-      finalizeCallAudioAfterJoin(engine, { ...audioOpts(), expectedRemoteUid });
-      scheduleConnectFallback(engine, expectedRemoteUid);
+      engine.enableAudio();
+      if (isVideoMode) {
+        engine.enableVideo();
+        if (params.fromLive !== '1') {
+          engine.startPreview();
+        } else {
+          await new Promise<void>((resolve) => setTimeout(resolve, 350));
+          try {
+            engine.startPreview();
+          } catch (previewErr) {
+            console.warn('[VideoCall] startPreview deferred:', previewErr);
+          }
+        }
+      }
+      (engine as IRtcEngine & { enableAudioVolumeIndication?: (interval: number, smooth: number, reportVad: boolean) => number })
+        .enableAudioVolumeIndication?.(400, 3, true);
+
+      engine.joinChannel(creds.token, channelName, uid, joinOpts);
+      configurePublisherAudio(engine, { speakerphone: speakerOnRef.current });
+      if (!isVideoMode || !camOn) {
+        engine.muteLocalVideoStream(!camOn || !isVideoMode);
+      }
 
       engineRef.current = engine;
       trackAgoraEngine(engine);
+      scheduleConnectFallback(expectedRemoteUid);
     } catch (e: unknown) {
       const msg = e instanceof ApiError
         ? e.message
@@ -574,7 +635,7 @@ export default function VideoCallScreen() {
     } finally {
       initAgoraInProgressRef.current = false;
     }
-  }, [channelName, token, user?.id, role, peerId, initCallBilling, endCall, router, tryActivateCall, audioOpts, expectedRemoteUid, scheduleConnectFallback, isVideoMode, camOn, params.fromLive, markConnected]);
+  }, [channelName, token, user?.id, role, peerId, endCall, router, tryActivateCall, audioOpts, expectedRemoteUid, scheduleConnectFallback, isVideoMode, camOn, params.fromLive, prepareLocalCallMedia, handleRemotePresence]);
 
   endCallRef.current = endCall;
   initCallBillingRef.current = initCallBilling;
@@ -695,6 +756,19 @@ export default function VideoCallScreen() {
   }, [callPhase]);
 
   useEffect(() => {
+    if (callPhase !== 'connecting' || !engineRef.current || !expectedRemoteUid || remoteConfirmedRef.current) {
+      return;
+    }
+    const retrySubscribe = setInterval(() => {
+      if (callEndedRef.current || remoteConfirmedRef.current || !engineRef.current || !localJoinedRef.current) {
+        return;
+      }
+      handleRemotePresence(engineRef.current, expectedRemoteUid);
+    }, 2000);
+    return () => clearInterval(retrySubscribe);
+  }, [callPhase, expectedRemoteUid, handleRemotePresence]);
+
+  useEffect(() => {
     if (connected || callPhase === 'ringing' || needsDevBuild) return;
     const timeout = setTimeout(() => {
       if (callEndedRef.current || remoteUidRef.current) return;
@@ -719,21 +793,21 @@ export default function VideoCallScreen() {
   }, [connected]);
 
   useEffect(() => {
-    if (!connected || !engineRef.current) return;
-    const engine = engineRef.current;
-    const remoteUid = remoteUidRef.current ?? expectedRemoteUid;
-    if (remoteUid) markRemotePeer(engine, remoteUid, audioOpts());
+    if (needsDevBuild || callPhase === 'ringing' || callPhase === 'ended' || !engineRef.current) return;
     const keepAlive = setInterval(() => {
       if (!engineRef.current || callEndedRef.current) return;
       const activeRemoteUid = remoteUidRef.current ?? expectedRemoteUid;
+      configurePublisherAudio(engineRef.current, { speakerphone: speakerOnRef.current });
       finalizeCallAudioAfterJoin(engineRef.current, {
         ...audioOpts(),
         expectedRemoteUid: activeRemoteUid,
       });
-      if (activeRemoteUid) configureRemoteSubscriber(engineRef.current, activeRemoteUid);
-    }, 4000);
+      if (activeRemoteUid) {
+        markRemotePeer(engineRef.current, activeRemoteUid, audioOpts());
+      }
+    }, 3000);
     return () => clearInterval(keepAlive);
-  }, [connected, audioOpts, expectedRemoteUid]);
+  }, [callPhase, needsDevBuild, audioOpts, expectedRemoteUid]);
 
   const toggleMic = () => {
     setMicOn((prev) => {
@@ -749,13 +823,12 @@ export default function VideoCallScreen() {
       } else {
         eng?.muteLocalAudioStream(true);
         (eng as IRtcEngine & { updateChannelMediaOptions?: (o: Record<string, unknown>) => void })
-          ?.updateChannelMediaOptions?.({
-            clientRoleType: ClientRoleType.ClientRoleBroadcaster,
-            publishMicrophoneTrack: false,
-            publishCameraTrack: isVideoMode && camOnRef.current,
-            autoSubscribeAudio: true,
-            autoSubscribeVideo: isVideoMode,
-          });
+          ?.updateChannelMediaOptions?.(buildCallJoinOptions({
+            ...audioOpts(),
+            micEnabled: false,
+            publishVideo: isVideoMode && camOnRef.current,
+            subscribeVideo: isVideoMode,
+          }));
       }
       return nextOn;
     });

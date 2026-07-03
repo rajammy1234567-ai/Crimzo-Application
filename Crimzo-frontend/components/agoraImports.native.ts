@@ -6,13 +6,24 @@ function isAgoraNativeModuleLinked(): boolean {
     return false;
   }
 
+  try {
+    const agora = require('react-native-agora');
+    if (typeof agora?.createAgoraRtcEngine !== 'function') {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+
   // @ts-expect-error __turboModuleProxy is set when the new architecture is enabled
   if (global.__turboModuleProxy != null) {
     try {
       const { TurboModuleRegistry } = require('react-native');
-      return TurboModuleRegistry.get('AgoraRtcNg') != null;
+      if (TurboModuleRegistry.get('AgoraRtcNg') != null) {
+        return true;
+      }
     } catch {
-      return false;
+      // fall through to NativeModules check
     }
   }
 

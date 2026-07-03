@@ -10,7 +10,6 @@ import {
   isInsufficientBalanceError,
   VIDEO_CALL_RATE_PER_MIN,
 } from '../lib/videoCallBilling';
-import { CALL_RING_TIMEOUT_MS } from '../lib/videoCallUi';
 import { publish } from '../lib/realtimeSync';
 
 export type CallMode = 'voice' | 'video';
@@ -105,6 +104,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
                   ratePerMin: data.ratePerMin != null ? String(data.ratePerMin) : '',
                   beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : '',
                   callMode,
+                  accepted: '1',
                 },
               } as any);
             },
@@ -237,16 +237,6 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
     });
 
     clearRingTimeout();
-    ringTimeoutRef.current = setTimeout(() => {
-      socketRef.current?.emit('video_call_reject', {
-        callerId: user.id,
-        calleeId: peerId,
-        reason: 'no_answer',
-      });
-      publish('video_call_rejected', { peerId: String(peerId) });
-      appAlert('No Answer', `${peerName} did not answer.`, [{ text: 'OK' }]);
-      if (router.canGoBack()) router.back();
-    }, CALL_RING_TIMEOUT_MS);
 
     router.push({
       pathname: '/call',
@@ -295,6 +285,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
         ratePerMin: incomingCall.ratePerMin != null ? String(incomingCall.ratePerMin) : '',
         beansPerMin: incomingCall.beansPerMin != null ? String(incomingCall.beansPerMin) : '',
         callMode: incomingCall.callMode || 'video',
+        accepted: '1',
       },
     } as any);
     setIncomingCall(null);

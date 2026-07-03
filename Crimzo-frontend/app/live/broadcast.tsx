@@ -325,7 +325,11 @@ export default function BroadcastScreen() {
       await resetExpoAudioAfterLive();
       await prepareVoiceCallAudio();
       const prepared = await prepareAgoraCallHandoff(eng, channelName);
-      if (!prepared) return;
+      if (!prepared) {
+        setNavigatingToCall(false);
+        appAlert('Call Error', 'Could not switch to private call. Please try again.');
+        return;
+      }
 
       router.replace({
         pathname: '/call',

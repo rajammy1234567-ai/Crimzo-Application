@@ -63,7 +63,7 @@ export function callPhaseHint(phase: CallPhase, isCaller: boolean): string | nul
     return isCaller ? 'Waiting for answer' : 'Incoming call';
   }
   if (phase === 'connecting') {
-    return 'Setting up secure connection';
+    return 'Waiting for the other person to join';
   }
   if (phase === 'connected') {
     return 'End-to-end encrypted';

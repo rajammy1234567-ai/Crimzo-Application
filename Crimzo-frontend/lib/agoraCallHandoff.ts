@@ -86,5 +86,6 @@ export async function prepareAgoraCallHandoff(
     return true;
   } finally {
     handoffPromise = null;
+    handoffInProgress = false;
   }
 }

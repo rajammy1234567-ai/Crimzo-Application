@@ -20,6 +20,27 @@ function isLivePrivateCallChannel(channelName) {
   return ch.startsWith('vc_live_') || ch.startsWith('vc_live_vid_');
 }
 
+function isVideoCallChannel(channelName) {
+  const ch = String(channelName || '');
+  return ch.startsWith('vc_live_vid_')
+    || (ch.startsWith('vc_') && !ch.startsWith('vc_voice_') && !ch.startsWith('vc_live_'));
+}
+
+function resolveCallRates(peerRates, channelName) {
+  if (isVideoCallChannel(channelName)) {
+    return {
+      callRate: peerRates.videoRatePerMin,
+      beansPerMin: peerRates.videoBeansPerMin,
+      callType: 'video',
+    };
+  }
+  return {
+    callRate: peerRates.voiceRatePerMin,
+    beansPerMin: peerRates.voiceBeansPerMin,
+    callType: 'voice',
+  };
+}
+
 /** 1-on-1 video call token (Communication channel — both users publish) */
 exports.generateCallToken = async (req, res) => {
   try {
@@ -43,18 +64,22 @@ exports.generateCallToken = async (req, res) => {
     const billingSettings = await getBillingSettings();
     let callRate = billingSettings.videoCallRatePerMin;
     let beansPerMin = 0;
+    let callType = 'voice';
     if (peerId) {
       const peer = await User.findById(peerId).select('voice_rate_per_min_inr chat_rate_per_min_inr');
       const peerRates = resolveUserRates(peer, billingSettings);
-      callRate = peerRates.voiceRatePerMin;
-      beansPerMin = peerRates.voiceBeansPerMin;
+      const resolved = resolveCallRates(peerRates, channelName);
+      callRate = resolved.callRate;
+      beansPerMin = resolved.beansPerMin;
+      callType = resolved.callType;
     }
     if (role === 'caller' && billingSettings.videoCallBillingEnabled && callRate > 0) {
       const caller = await User.findById(req.user.id).select('wallet_balance');
       const balance = caller?.wallet_balance || 0;
       if (balance < callRate) {
+        const label = callType === 'video' ? 'Video call' : 'Voice call';
         return res.status(400).json({
-          error: `Please recharge your wallet first. Voice call costs ₹${callRate}/min.`,
+          error: `Please recharge your wallet first. ${label} costs ₹${callRate}/min.`,
           code: 'INSUFFICIENT_BALANCE',
           ratePerMin: callRate,
           beansPerMin,
@@ -89,6 +114,7 @@ exports.generateCallToken = async (req, res) => {
       uid,
       appId: creds.appId,
       mode: 'communication',
+      callType,
       ratePerMin: callRate,
       beansPerMin,
       billingEnabled: billingSettings.videoCallBillingEnabled,

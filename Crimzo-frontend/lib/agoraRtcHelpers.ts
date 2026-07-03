@@ -4,7 +4,6 @@ import type { IRtcEngine } from '../components/agoraImports';
 import {
   AudioProfileType,
   AudioScenarioType,
-  ClientRoleType,
   RemoteAudioState,
 } from '../components/agoraImports';
 
@@ -81,6 +80,27 @@ export async function resetExpoAudioAfterLive(): Promise<void> {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+export type CallMediaOptions = {
+  speakerphone?: boolean;
+  publishVideo?: boolean;
+  subscribeVideo?: boolean;
+  micEnabled?: boolean;
+  expectedRemoteUid?: number;
+};
+
+/** Channel media options for 1-on-1 Communication profile calls. */
+export function buildCallJoinOptions(options: CallMediaOptions = {}) {
+  const micEnabled = options.micEnabled !== false;
+  const publishVideo = !!options.publishVideo;
+  const subscribeVideo = options.subscribeVideo ?? publishVideo;
+  return {
+    publishMicrophoneTrack: micEnabled,
+    publishCameraTrack: publishVideo,
+    autoSubscribeAudio: true,
+    autoSubscribeVideo: subscribeVideo,
+  };
+}
+
 /** Apply Agora audio profile tuned for 1-on-1 calls (publish + subscribe). */
 export function configureCallAudioEngine(
   engine: IRtcEngine | null,
@@ -90,8 +110,8 @@ export function configureCallAudioEngine(
   const eng = engine as EngineAudioApi;
 
   try {
-    const scenario = (AudioScenarioType as { AudioScenarioDefault?: number }).AudioScenarioDefault
-      ?? AudioScenarioType.AudioScenarioChatroom;
+    const scenario = AudioScenarioType.AudioScenarioChatroom
+      ?? (AudioScenarioType as { AudioScenarioDefault?: number }).AudioScenarioDefault;
     eng.setAudioProfile?.(
       AudioProfileType.AudioProfileSpeechStandard,
       scenario,
@@ -155,19 +175,13 @@ type ChannelMediaEngine = IRtcEngine & {
 /** After joining a 1-on-1 call channel, force broadcaster role + mic publish + remote subscribe. */
 export function finalizeCallAudioAfterJoin(
   engine: IRtcEngine | null,
-  options?: {
-    speakerphone?: boolean;
-    publishVideo?: boolean;
-    micEnabled?: boolean;
-    expectedRemoteUid?: number;
-  },
+  options?: CallMediaOptions,
 ) {
   if (!engine) return;
   const eng = engine as EngineAudioApi & ChannelMediaEngine;
   const micEnabled = options?.micEnabled !== false;
 
   try {
-    eng.setClientRole?.(ClientRoleType.ClientRoleBroadcaster);
     eng.enableAudio?.();
     eng.enableLocalAudio?.(micEnabled);
     eng.muteLocalAudioStream?.(!micEnabled);
@@ -182,13 +196,7 @@ export function finalizeCallAudioAfterJoin(
         engAudio.setDefaultAudioRouteToSpeakerphone?.(true);
       }
     }
-    eng.updateChannelMediaOptions?.({
-      clientRoleType: ClientRoleType.ClientRoleBroadcaster,
-      publishMicrophoneTrack: micEnabled,
-      publishCameraTrack: !!options?.publishVideo,
-      autoSubscribeAudio: true,
-      autoSubscribeVideo: !!options?.publishVideo,
-    });
+    eng.updateChannelMediaOptions?.(buildCallJoinOptions(options));
     if (options?.expectedRemoteUid) {
       configureRemoteSubscriber(engine, options.expectedRemoteUid);
     }
