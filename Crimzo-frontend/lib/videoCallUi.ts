@@ -18,6 +18,25 @@ export function exitCallToHome(router: Router) {
   router.replace('/(tabs)/home');
 }
 
+type ExitLiveCallOptions = {
+  role?: string;
+  sessionId?: string;
+};
+
+/** After a live private call, return viewer/host to their live screen when possible. */
+export function exitCallAfterLive(router: Router, options: ExitLiveCallOptions = {}) {
+  const sessionId = String(options.sessionId || '').trim();
+  if (sessionId) {
+    if (options.role === 'caller') {
+      router.replace(`/live/watch?sessionId=${encodeURIComponent(sessionId)}` as never);
+      return;
+    }
+    router.replace('/live/broadcast' as never);
+    return;
+  }
+  exitCallToHome(router);
+}
+
 export function formatCallDuration(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;

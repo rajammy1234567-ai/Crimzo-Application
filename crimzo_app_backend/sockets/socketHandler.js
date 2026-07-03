@@ -716,7 +716,8 @@ module.exports = (io) => {
 
     // ── 1-on-1 video call signaling ──
     socket.on('video_call_invite', async (data) => {
-      const { calleeId, callerAvatar, channelName } = data || {};
+      const { calleeId, callerAvatar, channelName, callMode: rawCallMode } = data || {};
+      const callMode = rawCallMode === 'voice' ? 'voice' : 'video';
       const callerId = socket.authenticatedUserId;
       const callerName = socket.authenticatedUsername;
       if (!calleeId || !callerId || !channelName) return;
@@ -765,6 +766,7 @@ module.exports = (io) => {
         callerName: callerName || 'Someone',
         callerAvatar: callerAvatar || null,
         channelName,
+        callMode,
         ratePerMin: callRate,
         beansPerMin,
       });

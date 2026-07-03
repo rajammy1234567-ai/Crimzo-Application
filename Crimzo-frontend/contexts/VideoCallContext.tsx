@@ -13,11 +13,14 @@ import {
 import { CALL_RING_TIMEOUT_MS } from '../lib/videoCallUi';
 import { publish } from '../lib/realtimeSync';
 
+export type CallMode = 'voice' | 'video';
+
 export type IncomingCall = {
   callerId: string;
   callerName: string;
   callerAvatar: string | null;
   channelName: string;
+  callMode?: CallMode;
   ratePerMin?: number;
   beansPerMin?: number;
 };
@@ -25,6 +28,7 @@ export type IncomingCall = {
 type VideoCallContextValue = {
   incomingCall: IncomingCall | null;
   startCall: (peerId: string | number, peerName: string, peerAvatar?: string | null) => void;
+  startVoiceCall: (peerId: string | number, peerName: string, peerAvatar?: string | null) => void;
   acceptCall: () => void;
   rejectCall: () => void;
   clearIncoming: () => void;
@@ -60,12 +64,15 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
 
     socket.on('video_call_incoming', (data: IncomingCall & { ratePerMin?: number; beansPerMin?: number }) => {
       if (!data?.channelName || !data?.callerId) return;
-      setIncomingCall(data);
+      const callMode: CallMode = data.callMode === 'voice' ? 'voice' : 'video';
+      const incoming: IncomingCall = { ...data, callMode };
+      setIncomingCall(incoming);
       const rateLine = data.ratePerMin
         ? `\n\nThey pay ₹${data.ratePerMin}/min${data.beansPerMin ? ` · you earn ${data.beansPerMin} beans/min` : ''}`
         : '';
+      const callLabel = callMode === 'voice' ? 'Voice Call' : 'Video Call';
       appAlert(
-        'Incoming Video Call',
+        `Incoming ${callLabel}`,
         `${data.callerName} is calling you${rateLine}`,
         [
           {
@@ -96,6 +103,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
                   peerAvatar: data.callerAvatar || '',
                   ratePerMin: data.ratePerMin != null ? String(data.ratePerMin) : '',
                   beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : '',
+                  callMode,
                 },
               } as any);
             },
@@ -151,11 +159,19 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
     };
   }, [token, user?.id, user?.username, router, clearRingTimeout]);
 
-  const startCall = useCallback(async (peerId: string | number, peerName: string, peerAvatar?: string | null) => {
+  const startCallWithMode = useCallback(async (
+    peerId: string | number,
+    peerName: string,
+    peerAvatar: string | null | undefined,
+    callMode: CallMode,
+  ) => {
     if (!user?.id || !socketRef.current || !token) {
       appAlert('Error', 'Could not start call. Check your connection.');
       return;
     }
+
+    const isVoice = callMode === 'voice';
+    const callLabel = isVoice ? 'voice call' : 'video call';
 
     try {
       const interaction = await apiGet<{
@@ -168,7 +184,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
       if (!allowed) {
         appAlert(
           'Follow First',
-          interaction.reason || 'Follow each other to start a video call.',
+          interaction.reason || `Follow each other to start a ${callLabel}.`,
         );
         return;
       }
@@ -176,7 +192,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
       const status = getApiErrorStatus(e);
       const message = getApiErrorMessage(e);
       if (status === 403) {
-        appAlert('Follow First', message || 'Follow each other to start a video call.');
+        appAlert('Follow First', message || `Follow each other to start a ${callLabel}.`);
         return;
       }
       appAlert('Error', message || 'Could not verify call permissions. Check your connection.');
@@ -196,7 +212,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
         const beansLine = data.beansPerMin ? `\nThey earn ${data.beansPerMin} beans/min` : '';
         appAlert(
           'Recharge Required',
-          `Please recharge your wallet first for video calls.\n\nRate: ₹${rate}/min${beansLine}\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
+          `Please recharge your wallet first for ${callLabel}s.\n\nRate: ₹${rate}/min${beansLine}\nBalance: ₹${(data.wallet_balance || 0).toLocaleString('en-IN')}`,
           [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Add Money', onPress: () => router.push('/profile/wallet' as any) },
@@ -208,13 +224,15 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const channelName = `vc_${Date.now()}_${user.id}_${peerId}`;
+    const channelPrefix = isVoice ? 'vc_voice_' : 'vc_';
+    const channelName = `${channelPrefix}${Date.now()}_${user.id}_${peerId}`;
     socketRef.current.emit('video_call_invite', {
       calleeId: peerId,
       callerId: user.id,
       callerName: user.username,
       callerAvatar: user.avatar || null,
       channelName,
+      callMode,
     });
 
     clearRingTimeout();
@@ -239,9 +257,22 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
         peerAvatar: peerAvatar || '',
         ratePerMin: String(ratePerMin),
         beansPerMin: beansPerMin != null ? String(beansPerMin) : '',
+        callMode,
       },
     } as any);
   }, [user?.id, user?.username, user?.avatar, token, router, clearRingTimeout]);
+
+  const startCall = useCallback(
+    (peerId: string | number, peerName: string, peerAvatar?: string | null) =>
+      void startCallWithMode(peerId, peerName, peerAvatar, 'video'),
+    [startCallWithMode],
+  );
+
+  const startVoiceCall = useCallback(
+    (peerId: string | number, peerName: string, peerAvatar?: string | null) =>
+      void startCallWithMode(peerId, peerName, peerAvatar, 'voice'),
+    [startCallWithMode],
+  );
 
   const acceptCall = useCallback(() => {
     if (!incomingCall || !socketRef.current || !user?.id) return;
@@ -261,6 +292,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
         peerAvatar: incomingCall.callerAvatar || '',
         ratePerMin: incomingCall.ratePerMin != null ? String(incomingCall.ratePerMin) : '',
         beansPerMin: incomingCall.beansPerMin != null ? String(incomingCall.beansPerMin) : '',
+        callMode: incomingCall.callMode || 'video',
       },
     } as any);
     setIncomingCall(null);
@@ -276,7 +308,7 @@ export function VideoCallProvider({ children }: { children: React.ReactNode }) {
   const clearIncoming = useCallback(() => setIncomingCall(null), []);
 
   return (
-    <VideoCallContext.Provider value={{ incomingCall, startCall, acceptCall, rejectCall, clearIncoming }}>
+    <VideoCallContext.Provider value={{ incomingCall, startCall, startVoiceCall, acceptCall, rejectCall, clearIncoming }}>
       {children}
     </VideoCallContext.Provider>
   );

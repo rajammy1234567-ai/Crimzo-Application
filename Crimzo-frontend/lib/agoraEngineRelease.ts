@@ -32,21 +32,43 @@ export async function releaseTrackedAgoraEngine(): Promise<void> {
 type EngineWithPreview = IRtcEngine & {
   stopPreview?: () => void;
   disableVideo?: () => void;
+  disableAudio?: () => void;
+  muteLocalAudioStream?: (mute: boolean) => void;
+  muteLocalVideoStream?: (mute: boolean) => void;
+  unregisterEventHandler?: (handler?: unknown) => void;
 };
 
 /** Leave channel, wait for native teardown, then release the SDK instance. */
-export async function releaseAgoraEngine(engine: IRtcEngine | null): Promise<void> {
+export async function releaseAgoraEngine(
+  engine: IRtcEngine | null,
+  options?: { eventHandler?: unknown; settleMs?: number },
+): Promise<void> {
   if (!engine) return;
+  const settleMs = options?.settleMs ?? 450;
   await enqueueRelease(async () => {
     if (trackedEngine === engine) trackedEngine = null;
 
+    const eng = engine as EngineWithPreview;
+
     try {
-      (engine as EngineWithPreview).stopPreview?.();
+      eng.unregisterEventHandler?.(options?.eventHandler);
+    } catch {
+      // ignore
+    }
+    try {
+      eng.stopPreview?.();
     } catch {
       // already stopped
     }
     try {
-      (engine as EngineWithPreview).disableVideo?.();
+      eng.muteLocalAudioStream?.(true);
+      eng.muteLocalVideoStream?.(true);
+    } catch {
+      // ignore
+    }
+    try {
+      eng.disableVideo?.();
+      eng.disableAudio?.();
     } catch {
       // ignore
     }
@@ -56,7 +78,7 @@ export async function releaseAgoraEngine(engine: IRtcEngine | null): Promise<voi
       // already left
     }
 
-    await sleep(550);
+    await sleep(650);
 
     try {
       engine.release();
@@ -64,6 +86,12 @@ export async function releaseAgoraEngine(engine: IRtcEngine | null): Promise<voi
       // already released
     }
 
-    await sleep(450);
+    await sleep(settleMs);
   });
+}
+
+/** Hard reset: release tracked engine and wait for native queue to drain. */
+export async function hardResetAgoraRtc(extraSettleMs = 600): Promise<void> {
+  await releaseTrackedAgoraEngine();
+  await waitForAgoraReleaseIdle(extraSettleMs);
 }

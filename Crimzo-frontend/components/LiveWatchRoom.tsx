@@ -41,6 +41,7 @@ import {
   type IRtcEngine,
 } from '../components/agoraImports';
 import { toAgoraUid } from '../lib/agoraUid';
+import { prepareVoiceCallAudio, resetExpoAudioAfterLive } from '../lib/agoraRtcHelpers';
 import { releaseAgoraEngine, trackAgoraEngine } from '../lib/agoraEngineRelease';
 import {
   hasNavigatedToCallChannel,
@@ -350,6 +351,8 @@ export default function LiveWatchRoom({
         try { socketRef.current.emit('leave_live', { sessionId }); } catch { /* ignore */ }
       }
 
+      await resetExpoAudioAfterLive();
+      await prepareVoiceCallAudio();
       const prepared = await prepareAgoraCallHandoff(eng, channelName);
       if (!prepared) return;
 
@@ -450,13 +453,23 @@ export default function LiveWatchRoom({
         setVideoCallStatus('pending');
       }
       if (status.acceptedCall?.channelName) {
-        if (status.acceptedCall.callType === 'video') setVideoCallStatus('accepted');
+        const callType = (status.acceptedCall.callType === 'video' ? 'video' : 'voice') as 'voice' | 'video';
+        if (callType === 'video') setVideoCallStatus('accepted');
         else setCallStatus('accepted');
+        void joinAcceptedCall({
+          channelName: status.acceptedCall.channelName,
+          hostId: streamData?.hostId,
+          hostName: streamData?.hostUsername,
+          hostAvatar: streamData?.hostAvatar,
+          ratePerMin: callType === 'video' ? hostRates.videoRatePerMin : hostRates.voiceRatePerMin,
+          beansPerMin: callType === 'video' ? hostRates.videoBeansPerMin : hostRates.voiceBeansPerMin,
+          callType,
+        });
       }
     } catch {
       // non-fatal
     }
-  }, [token, sessionId, user?.id]);
+  }, [token, sessionId, user?.id, joinAcceptedCall, streamData, hostRates]);
 
   const sendTalkRequest = useCallback(async () => {
     if (!token || !sessionId || requestingTalk) return;
@@ -661,6 +674,14 @@ export default function LiveWatchRoom({
       void refreshCallStatus();
     }
   }, [loading, streamData, token, sessionId, refreshTalkStatus, refreshCallStatus]);
+
+  useEffect(() => {
+    if (callStatus !== 'pending' && videoCallStatus !== 'pending') return;
+    const poll = setInterval(() => {
+      void refreshCallStatus();
+    }, 3000);
+    return () => clearInterval(poll);
+  }, [callStatus, videoCallStatus, refreshCallStatus]);
 
   // Check follow status with host
   useEffect(() => {
@@ -933,7 +954,7 @@ export default function LiveWatchRoom({
     }
     if (callStatus === 'pending') return;
     if (callStatus === 'accepted') {
-      appAlert('Call Ready', 'Your call request was accepted. Joining the private call...');
+      void refreshCallStatus();
       return;
     }
     appAlert(
@@ -954,7 +975,7 @@ export default function LiveWatchRoom({
     }
     if (videoCallStatus === 'pending') return;
     if (videoCallStatus === 'accepted') {
-      appAlert('Video Call Ready', 'Your video call request was accepted. Joining...');
+      void refreshCallStatus();
       return;
     }
     appAlert(

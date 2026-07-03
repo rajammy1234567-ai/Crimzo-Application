@@ -1,9 +1,10 @@
 import type { IRtcEngine } from '../components/agoraImports';
 import {
+  hardResetAgoraRtc,
   releaseAgoraEngine,
-  releaseTrackedAgoraEngine,
-  waitForAgoraReleaseIdle,
 } from './agoraEngineRelease';
+import { prepareVoiceCallAudio, resetExpoAudioAfterLive } from './agoraRtcHelpers';
+import { logAgoraCall } from './agoraCallDiagnostics';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const UI_SETTLE_MS = 120;
@@ -54,6 +55,7 @@ export async function prepareAgoraCallHandoff(
   if (channelName) lastHandoffChannel = channelName;
 
   handoffPromise = (async () => {
+    logAgoraCall('handoff:start', { channelName, hasLocalEngine: !!localEngine });
     await sleep(UI_SETTLE_MS);
 
     const engine = localEngine ?? null;
@@ -69,12 +71,14 @@ export async function prepareAgoraCallHandoff(
       } catch {
         // ignore
       }
-      await releaseAgoraEngine(engine);
-    } else {
-      await releaseTrackedAgoraEngine();
+      await releaseAgoraEngine(engine, { settleMs: 700 });
     }
 
-    await waitForAgoraReleaseIdle(800);
+    // Always drain tracked/live engines — never reuse live RTC for private call.
+    await hardResetAgoraRtc(900);
+    await resetExpoAudioAfterLive();
+    await prepareVoiceCallAudio();
+    logAgoraCall('handoff:ready', { channelName });
   })();
 
   try {

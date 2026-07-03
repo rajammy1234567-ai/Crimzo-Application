@@ -31,7 +31,7 @@ export const ConnectionStateType = {
 } as const;
 
 export const AudioProfileType = { AudioProfileSpeechStandard: 1 } as const;
-export const AudioScenarioType = { AudioScenarioChatroom: 5 } as const;
+export const AudioScenarioType = { AudioScenarioDefault: 0, AudioScenarioChatroom: 5 } as const;
 export const RemoteAudioState = {
   RemoteAudioStateStarting: 1,
   RemoteAudioStateDecoding: 2,
@@ -43,6 +43,8 @@ const engineStub = {
   setClientRole: (_role: any) => {},
   enableVideo: () => {},
   enableAudio: () => {},
+  disableAudio: () => {},
+  unregisterEventHandler: (_handler?: unknown) => {},
   enableLocalVideo: (_enabled: boolean) => {},
   enableLocalAudio: (_enabled: boolean) => {},
   registerEventHandler: (_handler: any) => {},
@@ -53,6 +55,7 @@ const engineStub = {
   muteLocalAudioStream: (_mute: boolean) => {},
   muteLocalVideoStream: (_mute: boolean) => {},
   switchCamera: () => {},
+  updateChannelMediaOptions: (_opts: any) => 0,
   setBeautyEffectOptions: (_enabled: boolean, _options: Record<string, number>) => 0,
   setColorEnhanceOptions: (_enabled: boolean, _options: Record<string, number>) => 0,
 };

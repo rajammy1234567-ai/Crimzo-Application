@@ -4,10 +4,12 @@ import type { IRtcEngine } from '../components/agoraImports';
 import {
   AudioProfileType,
   AudioScenarioType,
+  ClientRoleType,
   RemoteAudioState,
 } from '../components/agoraImports';
 
 type EngineAudioApi = IRtcEngine & {
+  setClientRole?: (role: number) => void;
   enableLocalAudio?: (enabled: boolean) => void;
   setEnableSpeakerphone?: (enabled: boolean) => void;
   setDefaultAudioRouteToSpeakerphone?: (defaultToSpeaker: boolean) => void;
@@ -49,13 +51,35 @@ export async function prepareVoiceCallAudio(): Promise<void> {
       playsInSilentModeIOS: true,
       staysActiveInBackground: false,
       interruptionModeIOS: 1,
-      shouldDuckAndroid: true,
+      interruptionModeAndroid: 1,
+      shouldDuckAndroid: false,
       playThroughEarpieceAndroid: false,
     });
   } catch (err) {
     console.warn('[Agora] prepareVoiceCallAudio failed:', err);
   }
 }
+
+/** Drop live-playback audio session before starting a 2-way call (Expo ↔ Agora handoff). */
+export async function resetExpoAudioAfterLive(): Promise<void> {
+  try {
+    await Audio.setIsEnabledAsync(true);
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: false,
+      interruptionModeIOS: 1,
+      interruptionModeAndroid: 1,
+      shouldDuckAndroid: false,
+      playThroughEarpieceAndroid: false,
+    });
+    await sleep(80);
+  } catch (err) {
+    console.warn('[Agora] resetExpoAudioAfterLive failed:', err);
+  }
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Apply Agora audio profile tuned for 1-on-1 calls (publish + subscribe). */
 export function configureCallAudioEngine(
@@ -66,11 +90,13 @@ export function configureCallAudioEngine(
   const eng = engine as EngineAudioApi;
 
   try {
+    const scenario = (AudioScenarioType as { AudioScenarioDefault?: number }).AudioScenarioDefault
+      ?? AudioScenarioType.AudioScenarioChatroom;
     eng.setAudioProfile?.(
       AudioProfileType.AudioProfileSpeechStandard,
-      AudioScenarioType.AudioScenarioChatroom,
+      scenario,
     );
-    eng.setAudioScenario?.(AudioScenarioType.AudioScenarioChatroom);
+    eng.setAudioScenario?.(scenario);
     eng.muteAllRemoteAudioStreams?.(false);
     eng.adjustPlaybackSignalVolume?.(100);
     configurePublisherAudio(engine, options);
@@ -120,4 +146,66 @@ export function configureRemoteSubscriber(engine: IRtcEngine | null, remoteUid: 
 export function shouldConfigureRemoteAudio(state: number): boolean {
   return state === RemoteAudioState.RemoteAudioStateStarting
     || state === RemoteAudioState.RemoteAudioStateDecoding;
+}
+
+type ChannelMediaEngine = IRtcEngine & {
+  updateChannelMediaOptions?: (options: Record<string, unknown>) => number;
+};
+
+/** After joining a 1-on-1 call channel, force broadcaster role + mic publish + remote subscribe. */
+export function finalizeCallAudioAfterJoin(
+  engine: IRtcEngine | null,
+  options?: {
+    speakerphone?: boolean;
+    publishVideo?: boolean;
+    micEnabled?: boolean;
+    expectedRemoteUid?: number;
+  },
+) {
+  if (!engine) return;
+  const eng = engine as EngineAudioApi & ChannelMediaEngine;
+  const micEnabled = options?.micEnabled !== false;
+
+  try {
+    eng.setClientRole?.(ClientRoleType.ClientRoleBroadcaster);
+    eng.enableAudio?.();
+    eng.enableLocalAudio?.(micEnabled);
+    eng.muteLocalAudioStream?.(!micEnabled);
+    if (micEnabled) {
+      configureCallAudioEngine(engine, { speakerphone: options?.speakerphone });
+    } else {
+      const engAudio = engine as EngineAudioApi;
+      engAudio.muteAllRemoteAudioStreams?.(false);
+      engAudio.adjustPlaybackSignalVolume?.(100);
+      if (options?.speakerphone !== false) {
+        engAudio.setEnableSpeakerphone?.(true);
+        engAudio.setDefaultAudioRouteToSpeakerphone?.(true);
+      }
+    }
+    eng.updateChannelMediaOptions?.({
+      clientRoleType: ClientRoleType.ClientRoleBroadcaster,
+      publishMicrophoneTrack: micEnabled,
+      publishCameraTrack: !!options?.publishVideo,
+      autoSubscribeAudio: true,
+      autoSubscribeVideo: !!options?.publishVideo,
+    });
+    if (options?.expectedRemoteUid) {
+      configureRemoteSubscriber(engine, options.expectedRemoteUid);
+    }
+  } catch (err) {
+    console.warn('[Agora] finalizeCallAudioAfterJoin failed:', err);
+  }
+}
+
+export function markRemotePeer(
+  engine: IRtcEngine | null,
+  remoteUid: number,
+  options?: { speakerphone?: boolean; publishVideo?: boolean; micEnabled?: boolean },
+): void {
+  if (!remoteUid) return;
+  finalizeCallAudioAfterJoin(engine, {
+    ...options,
+    expectedRemoteUid: remoteUid,
+  });
+  configureRemoteSubscriber(engine, remoteUid);
 }

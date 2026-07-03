@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, TouchableOpacity, FlatList, Image, StatusBar, A
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
+import { useVideoCall } from '../../contexts/VideoCallContext';
 import { KEYBOARD_BEHAVIOR } from '../../components/KeyboardAware';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -102,6 +103,7 @@ function bumpConversationList(
 
 export default function MessagesScreen() {
   const { user, token, updateUser } = useAuth();
+  const { startVoiceCall } = useVideoCall();
   const router = useRouter();
   const params = useLocalSearchParams<{ userId?: string; username?: string }>();
   const insets = useSafeAreaInsets();
@@ -427,9 +429,21 @@ export default function MessagesScreen() {
               <Text style={styles.onlineText}>Online</Text>
             )}
           </View>
-          <TouchableOpacity onPress={() => setShowGift(true)} style={styles.giftHeaderBtn}>
-            <Ionicons name="diamond" size={22} color="#00BFFF" />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              onPress={() => void startVoiceCall(
+                selectedChat.user_id,
+                selectedChat.username,
+                selectedChat.avatar,
+              )}
+              style={styles.callHeaderBtn}
+            >
+              <Ionicons name="call" size={22} color="#25D366" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowGift(true)} style={styles.giftHeaderBtn}>
+              <Ionicons name="diamond" size={22} color="#00BFFF" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <KeyboardAvoidingView
@@ -982,6 +996,19 @@ const styles = StyleSheet.create({
   },
   sendBtnActive: {
     backgroundColor: '#FF2D55',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  callHeaderBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(37,211,102,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   giftHeaderBtn: {
     width: 40, height: 40, borderRadius: 20,

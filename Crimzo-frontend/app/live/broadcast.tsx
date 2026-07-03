@@ -18,7 +18,7 @@ import {
   isAgoraNativeLinked,
   type IRtcEngine,
 } from '../../components/agoraImports';
-import { ensureRtcPermissions, configurePublisherAudio } from '../../lib/agoraRtcHelpers';
+import { ensureRtcPermissions, configurePublisherAudio, prepareVoiceCallAudio, resetExpoAudioAfterLive } from '../../lib/agoraRtcHelpers';
 import { toAgoraUid } from '../../lib/agoraUid';
 import { releaseAgoraEngine, trackAgoraEngine } from '../../lib/agoraEngineRelease';
 import {
@@ -322,6 +322,8 @@ export default function BroadcastScreen() {
       engineRef.current = null;
       setAgoraReady(false);
 
+      await resetExpoAudioAfterLive();
+      await prepareVoiceCallAudio();
       const prepared = await prepareAgoraCallHandoff(eng, channelName);
       if (!prepared) return;
 
