@@ -198,8 +198,6 @@ export default function LiveChat({
 }: LiveChatProps) {
     const insets = useSafeAreaInsets();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
-    const insets = useSafeAreaInsets();
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputText, setInputText] = useState('');
     const [socket, setSocket] = useState<any>(null);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -361,6 +359,19 @@ export default function LiveChat({
     // When keyboard is up, lift the input by the keyboard height (minus safe area already accounted for)
     const bottomPad = keyboardVisible
         ? Math.max(keyboardHeight - (insets.bottom || 0), 0)
+        : Math.max(insets.bottom, 12);
+
+    return (
+        <KeyboardAvoidingView
+            behavior={KEYBOARD_BEHAVIOR}
+            style={cs.container}
+            keyboardVerticalOffset={0}
+        >
+            {/* Messages */}
+            <FlatList
+                ref={flatListRef}
+                data={visibleMessages}
+                renderItem={renderMessage}
                 keyExtractor={keyExtractor}
                 style={cs.msgList}
                 contentContainerStyle={cs.msgListContent}
