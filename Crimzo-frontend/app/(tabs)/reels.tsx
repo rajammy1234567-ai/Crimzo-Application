@@ -1088,9 +1088,9 @@ export default function ReelsScreen() {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FF2D55" progressViewOffset={60} />
         }
-        removeClippedSubviews={Platform.OS === 'android'}
-        maxToRenderPerBatch={1}
-        windowSize={2}
+        removeClippedSubviews={false}
+        maxToRenderPerBatch={2}
+        windowSize={3}
         initialNumToRender={1}
         extraData={`${activeIndex}-${reelHeight}`}
       />

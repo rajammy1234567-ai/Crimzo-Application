@@ -90,9 +90,13 @@ exports.requestCall = async (req, res) => {
       call_type: callType,
     });
 
-    const channelPrefix = callType === 'video' ? 'vc_live_vid_' : 'vc_live_';
+    // Agora channel names MUST be <= 64 characters.
+    // vc_l_v_ (7) + 6 (short sid) + 6 (short req) + 13 (timestamp) + 2 (_) = 34 chars
+    const channelPrefix = callType === 'video' ? 'vc_l_v_' : 'vc_l_';
+    const shortSid = String(sessionId).slice(-6);
+    const shortReq = String(requesterId).slice(-6);
     const channelName = request?.channel_name
-      || `${channelPrefix}${sessionId}_${requesterId}_${Date.now()}`;
+      || `${channelPrefix}${shortSid}_${shortReq}_${Date.now()}`;
 
     if (!request) {
       request = await LiveCallRequest.create({

@@ -27,9 +27,8 @@ export function shouldSkipLiveEngineTeardown(): boolean {
 }
 
 export function clearCallHandoff(channelName?: string): void {
-  if (!channelName || lastHandoffChannel === channelName) {
-    lastHandoffChannel = null;
-  }
+  // Always reset — allows retry of the same channel after a failed or ended call
+  lastHandoffChannel = null;
   handoffInProgress = false;
 }
 
@@ -42,7 +41,8 @@ export async function prepareAgoraCallHandoff(
   localEngine?: IRtcEngine | null,
   channelName?: string,
 ): Promise<boolean> {
-  if (channelName && lastHandoffChannel === channelName) {
+  // Only block duplicate if handoff is actively in progress right now
+  if (channelName && lastHandoffChannel === channelName && handoffInProgress) {
     return false;
   }
 

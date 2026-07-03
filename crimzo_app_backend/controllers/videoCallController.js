@@ -11,8 +11,8 @@ const { syncHostBusyFromCallChannel } = require('../utils/liveHostBusy');
 
 function isVideoCallChannel(channelName) {
   const ch = String(channelName || '');
-  return ch.startsWith('vc_live_vid_')
-    || (ch.startsWith('vc_') && !ch.startsWith('vc_voice_') && !ch.startsWith('vc_live_'));
+  return ch.startsWith('vc_live_vid_') || ch.startsWith('vc_l_v_')
+    || (ch.startsWith('vc_') && !ch.startsWith('vc_voice_') && !ch.startsWith('vc_live_') && !ch.startsWith('vc_l_') && !ch.startsWith('vc_l_v_'));
 }
 
 async function getPeerCallRates(peerId, settings, options = {}) {

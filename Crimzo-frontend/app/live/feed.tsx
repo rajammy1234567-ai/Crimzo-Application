@@ -165,7 +165,7 @@ export default function LiveFeedScreen() {
         windowSize={3}
         maxToRenderPerBatch={2}
         initialNumToRender={1}
-        removeClippedSubviews
+        removeClippedSubviews={false}
       />
     </View>
   );

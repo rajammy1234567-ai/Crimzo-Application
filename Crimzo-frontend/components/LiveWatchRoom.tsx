@@ -348,7 +348,7 @@ export default function LiveWatchRoom({
     callType?: 'voice' | 'video';
   }) => {
     const channelName = data?.channelName;
-    if (!channelName || joiningCallRef.current || hasNavigatedToCallChannel(channelName)) return;
+    if (!channelName || joiningCallRef.current) return;
     joiningCallRef.current = true;
     setNavigatingToCall(true);
 
@@ -363,12 +363,11 @@ export default function LiveWatchRoom({
         try { socketRef.current.emit('leave_live', { sessionId }); } catch { /* ignore */ }
       }
 
-      await resetExpoAudioAfterLive();
-      await prepareVoiceCallAudio();
+      // prepareAgoraCallHandoff handles audio reset + engine teardown internally
       const prepared = await prepareAgoraCallHandoff(eng, channelName);
-      if (!prepared) {
-        setNavigatingToCall(false);
-        appAlert('Call Error', 'Could not switch to private call. Please try again.');
+      if (!prepared && hasNavigatedToCallChannel(channelName)) {
+        // Already navigated to this call — avoid double push
+        joiningCallRef.current = false;
         return;
       }
 
@@ -392,6 +391,11 @@ export default function LiveWatchRoom({
           sessionId: String(sessionId || ''),
         },
       } as any);
+    } catch (e) {
+      console.error('[Watch] joinAcceptedCall error:', e);
+      setNavigatingToCall(false);
+      joiningCallRef.current = false;
+      appAlert('Call Error', 'Could not switch to private call. Please try again.');
     } finally {
       joiningCallRef.current = false;
     }
@@ -575,6 +579,8 @@ export default function LiveWatchRoom({
     remoteUidRef.current = null;
     setRemoteUid(null);
     setAgoraReady(false);
+    setNavigatingToCall(false);
+    joiningCallRef.current = false;
     setStreamData(null);
     setLoading(true);
     setStreamEnded(false);

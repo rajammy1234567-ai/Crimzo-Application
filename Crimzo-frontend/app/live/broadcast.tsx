@@ -313,7 +313,7 @@ export default function BroadcastScreen() {
     callType?: 'voice' | 'video';
   }) => {
     const channelName = data?.channelName;
-    if (!channelName || !data?.requesterId || joiningCallRef.current || hasNavigatedToCallChannel(channelName)) {
+    if (!channelName || !data?.requesterId || joiningCallRef.current) {
       return;
     }
     joiningCallRef.current = true;
@@ -324,12 +324,11 @@ export default function BroadcastScreen() {
       engineRef.current = null;
       setAgoraReady(false);
 
-      await resetExpoAudioAfterLive();
-      await prepareVoiceCallAudio();
+      // prepareAgoraCallHandoff handles audio reset + engine teardown internally
       const prepared = await prepareAgoraCallHandoff(eng, channelName);
-      if (!prepared) {
-        setNavigatingToCall(false);
-        appAlert('Call Error', 'Could not switch to private call. Please try again.');
+      if (!prepared && hasNavigatedToCallChannel(channelName)) {
+        // Already navigated — avoid double push
+        joiningCallRef.current = false;
         return;
       }
 
@@ -349,6 +348,11 @@ export default function BroadcastScreen() {
           sessionId: sessionId || '',
         },
       } as any);
+    } catch (e) {
+      console.error('[Broadcast] joinAcceptedCallAsHost error:', e);
+      setNavigatingToCall(false);
+      joiningCallRef.current = false;
+      appAlert('Call Error', 'Could not switch to private call. Please try again.');
     } finally {
       joiningCallRef.current = false;
     }
@@ -826,6 +830,8 @@ export default function BroadcastScreen() {
 
   useEffect(() => {
     return subscribe('live_call_screen_ended', () => {
+      setNavigatingToCall(false);
+      joiningCallRef.current = false;
       const media = liveBroadcastMediaRef.current;
       if (!isLive || !media || engineRef.current) return;
       void initBroadcastMedia(
