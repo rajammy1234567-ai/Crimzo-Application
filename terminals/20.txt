@@ -1,0 +1,16 @@
+---
+pid: 16992
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "Set-Location \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\"; npx expo lint components/LiveChat.tsx 2>&1"
+started_at: 2026-07-03T20:08:59.871Z
+running_for_ms: 289992   
+---
+env: load .env
+env: export EXPO_PUBLIC_BACKEND_URL EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID
+
+D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend\components\LiveChat.tsx
+   17:8  warning  Using exported name 'io' as identifier for default import                                                  import/no-named-as-default
+  315:8  warning  React Hook useEffect has a missing dependency: 'userId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+✖ 2 problems (0 errors, 2 warnings)
+

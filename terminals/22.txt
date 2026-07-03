@@ -1,0 +1,29 @@
+---
+pid: 9932
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "Set-Location \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\"; npx expo export:embed --eager --platform android --dev false 2>&1 | Select-Object -Last 30"
+started_at: 2026-07-03T20:11:14.448Z
+running_for_ms: 154997   
+---
+env: load .env
+env: export EXPO_PUBLIC_BACKEND_URL EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID
+Starting Metro Bundler
+Android node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+| (node:12116) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+Android node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:14068) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+Android node_modules\expo-router\entry.js ▓▓░░░░░░░░░░░░░░ 16.0% ( 50/200)
+Android node_modules\expo-router\entry.js ▓▓▓▓▓▓░░░░░░░░░░ 39.4% (298/475)
+Android node_modules\expo-router\entry.js ▓▓▓▓▓▓▓▓▓░░░░░░░ 56.8% (487/658)
+Android node_modules\expo-router\entry.js ▓▓▓▓▓▓▓▓▓░░░░░░░ 56.8% (509/709)
+Android node_modules\expo-router\entry.js ▓▓▓▓▓▓▓▓▓░░░░░░░ 56.8% (589/800)
+Android node_modules\expo-router\entry.js ▓▓▓▓▓▓▓▓▓▓░░░░░░ 64.7% (719/894)
+Android node_modules\expo-router\entry.js ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 73.3% ( 922/1077)
+Android node_modules\expo-router\entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 83.9% (1096/1203)
+Android node_modules\expo-router\entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 98.1% (1249/1289)
+Android Bundled 37958ms node_modules\expo-router\entry.js (1354 modules)
+Writing bundle output to: C:\Users\WELCOME\AppData\Local\Temp\cgw8uco1yyf\index.js
+Copying 48 asset files
+Done writing bundle output

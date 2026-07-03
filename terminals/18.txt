@@ -1,0 +1,7 @@
+---
+pid: 6916
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "Set-Location \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\"; npx tsc --noEmit 2>&1 | Select-Object -First 30"
+started_at: 2026-07-03T20:03:59.557Z
+running_for_ms: 589994   
+---
