@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import {
     ShieldAlert, ShieldCheck, Diamond as DiamondIcon, Users as UsersIcon,
-    Plus, Minus, Receipt, ArrowDownLeft, ArrowUpRight,
+    Plus, Minus, Receipt, ArrowDownLeft, ArrowUpRight, IndianRupee, Building2,
 } from 'lucide-react';
 import { api, authHeaders } from '../lib/api';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -17,7 +17,7 @@ import { Modal } from '../components/ui/Modal';
 import { TableSkeleton } from '../components/ui/LoadingState';
 import { EmptyState } from '../components/ui/EmptyState';
 import { formatDate, formatNumber } from '../lib/utils';
-import type { User, UserTransactionRow, UserTransactionSummary } from '../types';
+import type { User, UserTransactionRow, UserTransactionSummary, LinkedAccount } from '../types';
 
 const Users = () => {
     const [users, setUsers] = useState<User[]>([]);
@@ -38,6 +38,8 @@ const Users = () => {
     const [txLoading, setTxLoading] = useState(false);
     const [txRows, setTxRows] = useState<UserTransactionRow[]>([]);
     const [txSummary, setTxSummary] = useState<UserTransactionSummary | null>(null);
+    const [txLinkedAccount, setTxLinkedAccount] = useState<LinkedAccount | null>(null);
+    const [txWalletBalance, setTxWalletBalance] = useState(0);
     const [txFilter, setTxFilter] = useState<'all' | 'deposits' | 'withdrawals'>('all');
 
     const fetchUsers = async () => {
@@ -107,12 +109,16 @@ const Users = () => {
         setTxLoading(true);
         setTxRows([]);
         setTxSummary(null);
+        setTxLinkedAccount(null);
+        setTxWalletBalance(user.wallet_balance || 0);
         try {
             const res = await api.get(`/users/${user.id || user._id}/transactions`, {
                 headers: authHeaders(token),
                 params: { limit: 80 },
             });
             const list = Array.isArray(res.data?.transactions) ? res.data.transactions : [];
+            setTxLinkedAccount(res.data?.user?.linkedAccount ?? user.linked_account ?? null);
+            setTxWalletBalance(Number(res.data?.user?.walletBalance ?? user.wallet_balance ?? 0));
             setTxRows(list.map((row: Record<string, unknown>) => ({
                 id: String(row.id ?? ''),
                 category: (row.category as UserTransactionRow['category']) || 'deposit',
@@ -158,7 +164,7 @@ const Users = () => {
         <div>
             <PageHeader
                 title="Users Management"
-                description="Search, monitor, ban/unban users, and manage diamond balances."
+                description="Search users, view wallet top-ups, linked bank/UPI accounts, and manage diamonds."
                 breadcrumbs={[{ label: 'Dashboard', to: '/dashboard' }, { label: 'Users' }]}
                 stats={[
                     { label: 'Showing', value: users.length },
@@ -195,7 +201,9 @@ const Users = () => {
                             <tr>
                                 <th>Crimzo ID</th>
                                 <th>User</th>
-                                <th>Country</th>
+                                <th>Total Added</th>
+                                <th>Wallet</th>
+                                <th>Account</th>
                                 <th>Diamonds</th>
                                 <th>Joined</th>
                                 <th>Status</th>
@@ -204,10 +212,10 @@ const Users = () => {
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan={7}><TableSkeleton rows={6} /></td></tr>
+                                <tr><td colSpan={9}><TableSkeleton rows={6} /></td></tr>
                             ) : users.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7}>
+                                    <td colSpan={9}>
                                         <EmptyState
                                             icon={UsersIcon}
                                             title="No users found"
@@ -225,8 +233,37 @@ const Users = () => {
                                     <td>
                                         <p className="font-semibold text-white">{u.username}</p>
                                         <p className="text-xs text-gray-500">{u.email}</p>
+                                        <p className="text-xs text-gray-600">{u.country || '—'}</p>
                                     </td>
-                                    <td className="text-gray-400">{u.country || '—'}</td>
+                                    <td>
+                                        <span className="inline-flex items-center gap-1 font-bold text-emerald-400 tabular-nums">
+                                            ₹{formatNumber(u.total_deposited || 0)}
+                                        </span>
+                                        {(u.deposit_count || 0) > 0 && (
+                                            <p className="text-[10px] text-gray-600 mt-0.5">{u.deposit_count} deposit{u.deposit_count === 1 ? '' : 's'}</p>
+                                        )}
+                                    </td>
+                                    <td>
+                                        <span className="inline-flex items-center gap-1 font-semibold text-white tabular-nums">
+                                            ₹{formatNumber(u.wallet_balance || 0)}
+                                            <IndianRupee size={12} className="text-amber-400" />
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {u.linked_account ? (
+                                            <div className="max-w-[140px]">
+                                                <p className="text-xs text-white truncate flex items-center gap-1">
+                                                    <Building2 size={12} className="text-violet-400 shrink-0" />
+                                                    {u.linked_account.display}
+                                                </p>
+                                                <Badge variant={u.linked_account.status === 'verified' ? 'success' : 'warning'}>
+                                                    {u.linked_account.status}
+                                                </Badge>
+                                            </div>
+                                        ) : (
+                                            <span className="text-xs text-gray-600">Not linked</span>
+                                        )}
+                                    </td>
                                     <td>
                                         <span className="inline-flex items-center gap-1 font-semibold text-white tabular-nums">
                                             {formatNumber(u.diamonds)}
@@ -340,10 +377,40 @@ const Users = () => {
                                 <p className="text-xs text-gray-600 font-mono mt-0.5">{txModal.crimzo_id}</p>
                             </div>
                             <div className="text-right text-xs text-gray-500">
-                                <p>💎 {formatNumber(txModal.diamonds)}</p>
+                                <p className="text-amber-300 font-semibold">₹{formatNumber(txWalletBalance)} wallet</p>
+                                <p className="mt-1">💎 {formatNumber(txModal.diamonds)}</p>
                                 <p className="mt-1">🫘 {formatNumber(txModal.beans || 0)}</p>
                             </div>
                         </div>
+
+                        {txLinkedAccount && (
+                            <div className="p-4 rounded-xl bg-violet-500/5 border border-violet-500/20">
+                                <p className="text-xs uppercase tracking-wider text-violet-400/80 font-bold mb-2 flex items-center gap-2">
+                                    <Building2 size={14} />
+                                    Linked {txLinkedAccount.type} account
+                                </p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                                    {txLinkedAccount.accountHolderName && (
+                                        <p><span className="text-gray-500">Name:</span> <span className="text-white">{txLinkedAccount.accountHolderName}</span></p>
+                                    )}
+                                    {txLinkedAccount.linkedPhone && (
+                                        <p><span className="text-gray-500">Phone:</span> <span className="text-white">{txLinkedAccount.linkedPhone}</span></p>
+                                    )}
+                                    {txLinkedAccount.upiId && (
+                                        <p className="sm:col-span-2"><span className="text-gray-500">UPI:</span> <span className="text-white font-mono">{txLinkedAccount.upiId}</span></p>
+                                    )}
+                                    {txLinkedAccount.bankName && (
+                                        <p><span className="text-gray-500">Bank:</span> <span className="text-white">{txLinkedAccount.bankName}</span></p>
+                                    )}
+                                    {txLinkedAccount.accountNumber && (
+                                        <p><span className="text-gray-500">A/C:</span> <span className="text-white font-mono">{txLinkedAccount.accountNumber}</span></p>
+                                    )}
+                                    {txLinkedAccount.ifsc && (
+                                        <p><span className="text-gray-500">IFSC:</span> <span className="text-white font-mono">{txLinkedAccount.ifsc}</span></p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
 
                         {txSummary && (
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

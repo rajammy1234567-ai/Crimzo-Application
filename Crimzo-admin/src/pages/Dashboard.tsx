@@ -13,6 +13,7 @@ import { formatNumber } from '../lib/utils';
 
 const quickLinks = [
     { to: '/withdrawals', label: 'Withdrawals', desc: 'Review & approve payout requests', color: 'text-amber-400', highlightKey: 'withdrawals' as const },
+    { to: '/wallet', label: 'Wallet Deposits', desc: 'Who added how much + bank/UPI details', color: 'text-emerald-400' },
     { to: '/users', label: 'Manage Users', desc: 'Ban, search, adjust diamonds', color: 'text-blue-400' },
     { to: '/streams', label: 'Live Streams', desc: 'Monitor & terminate active streams', color: 'text-red-400' },
     { to: '/reels', label: 'Reels Moderation', desc: 'Review & remove content', color: 'text-purple-400' },

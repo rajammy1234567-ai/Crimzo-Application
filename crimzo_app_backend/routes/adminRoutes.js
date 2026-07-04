@@ -23,7 +23,8 @@ router.get('/withdrawals', adminController.getWithdrawals);
 router.put('/withdrawals/:id/complete', adminController.completeWithdrawal);
 router.put('/withdrawals/:id/reject', adminController.rejectWithdrawal);
 
-// Users
+// Users & wallet
+router.get('/wallet/deposits', adminController.getWalletDeposits);
 router.get('/users', adminController.getUsers);
 router.get('/users/:id/transactions', adminController.getUserTransactions);
 router.put('/users/:id/ban', adminController.toggleBanUser);

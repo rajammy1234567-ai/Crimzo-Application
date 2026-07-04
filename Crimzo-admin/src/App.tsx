@@ -13,6 +13,7 @@ import Reels from './pages/Reels';
 import Stickers from './pages/Stickers';
 import Billing from './pages/Billing';
 import Withdrawals from './pages/Withdrawals';
+import WalletDeposits from './pages/WalletDeposits';
 import Tasks from './pages/Tasks';
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
               <Route path="reels" element={<Reels />} />
               <Route path="stickers" element={<Stickers />} />
               <Route path="billing" element={<Billing />} />
+              <Route path="wallet" element={<WalletDeposits />} />
               <Route path="withdrawals" element={<Withdrawals />} />
               <Route path="tasks" element={<Tasks />} />
 

@@ -1,0 +1,25 @@
+---
+pid: 15052
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "Set-Location \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-admin\"; npm run build"
+started_at: 2026-07-04T09:42:49.890Z
+running_for_ms: 84999    
+---
+
+> crimzo-admin@0.0.0 build
+> tsc -b && vite build && node -e "require('fs').copyFileSync('dist/index.html','dist/404.html')"
+
+vite v7.3.1 building client environment for production...
+transforming...
+✓ 2479 modules transformed.
+rendering chunks...
+computing gzip size...
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+dist/index.html                   0.46 kB │ gzip:   0.29 kB
+dist/assets/index-HGgOX9hO.css   30.59 kB │ gzip:   6.29 kB
+dist/assets/index-CHmy2-wJ.js   718.64 kB │ gzip: 218.46 kB
+✓ built in 20.27s

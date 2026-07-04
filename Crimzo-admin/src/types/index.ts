@@ -127,6 +127,23 @@ export interface ChartDataPoint {
     count: number;
 }
 
+export interface LinkedAccount {
+    type: string;
+    status: string;
+    display: string;
+    accountHolderName?: string | null;
+    linkedPhone?: string | null;
+    bankName?: string | null;
+    accountNumber?: string | null;
+    accountLast4?: string | null;
+    ifsc?: string | null;
+    upiId?: string | null;
+    cardLast4?: string | null;
+    cardNetwork?: string | null;
+    linkedAt?: string | null;
+    verifiedAt?: string | null;
+}
+
 export interface User {
     id: string;
     _id?: string;
@@ -136,9 +153,47 @@ export interface User {
     country?: string;
     diamonds: number;
     beans?: number;
+    wallet_balance?: number;
+    total_deposited?: number;
+    total_purchased?: number;
+    deposit_count?: number;
+    linked_account?: LinkedAccount | null;
     status?: string;
     is_banned: boolean;
     created_at: string;
+}
+
+export interface WalletDepositRow {
+    id: string;
+    userId?: string;
+    username?: string | null;
+    email?: string | null;
+    crimzoId?: string | null;
+    walletBalance: number;
+    productType: string;
+    productLabel: string;
+    amountInr: number;
+    diamonds: number;
+    beans: number;
+    paymentMethod: string;
+    paymentMethodLabel: string;
+    razorpayPaymentId?: string | null;
+    status: string;
+    paidAt: string;
+    linkedAccount?: LinkedAccount | null;
+}
+
+export interface UserDepositSummaryRow {
+    userId: string;
+    username: string;
+    email: string;
+    crimzoId?: string | null;
+    walletBalance: number;
+    totalDeposited: number;
+    depositCount: number;
+    lastDepositAt?: string | null;
+    productTypes: string[];
+    linkedAccount?: LinkedAccount | null;
 }
 
 export interface UserTransactionRow {

@@ -12,7 +12,81 @@ const {
   updateBillingSettings,
 } = require('../utils/billingSettings');
 const mongoose = require('mongoose');
-const { fetchUserTransactionHistory } = require('../utils/transactionHistory');
+const PaymentOrder = require('../models/PaymentOrder');
+const { fetchUserTransactionHistory, paymentMethodLabel } = require('../utils/transactionHistory');
+
+function formatLinkedAccount(linkedBank) {
+  if (!linkedBank) return null;
+  const hasDetails = linkedBank.account_holder_name
+    || linkedBank.upi_id
+    || linkedBank.account_number
+    || linkedBank.account_last4;
+  if (!hasDetails) return null;
+
+  const type = linkedBank.type || 'bank';
+  let display = '—';
+  if (type === 'upi' && linkedBank.upi_id) {
+    display = linkedBank.upi_id;
+  } else if (linkedBank.account_number) {
+    display = `${linkedBank.bank_name || 'Bank'} · ${linkedBank.account_number}`;
+  } else if (linkedBank.account_last4) {
+    display = `${linkedBank.bank_name || 'Bank'} · ****${linkedBank.account_last4}`;
+  }
+
+  return {
+    type,
+    status: linkedBank.status || 'pending',
+    display,
+    accountHolderName: linkedBank.account_holder_name || null,
+    linkedPhone: linkedBank.linked_phone || null,
+    bankName: linkedBank.bank_name || null,
+    accountNumber: linkedBank.account_number || null,
+    accountLast4: linkedBank.account_last4 || null,
+    ifsc: linkedBank.ifsc || null,
+    upiId: linkedBank.upi_id || null,
+    cardLast4: linkedBank.card_last4 || null,
+    cardNetwork: linkedBank.card_network || null,
+    linkedAt: linkedBank.linked_at || null,
+    verifiedAt: linkedBank.verified_at || null,
+  };
+}
+
+async function buildUserPaymentStatsMap(userIds) {
+  if (!userIds.length) return {};
+
+  const rows = await PaymentOrder.aggregate([
+    {
+      $match: {
+        user_id: { $in: userIds },
+        status: { $in: ['paid', 'dev_mock'] },
+        product_type: { $in: ['wallet_topup', 'diamonds', 'beans'] },
+      },
+    },
+    {
+      $group: {
+        _id: { user_id: '$user_id', product_type: '$product_type' },
+        total: { $sum: '$amount_inr' },
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+
+  const map = {};
+  for (const row of rows) {
+    const uid = row._id.user_id.toString();
+    if (!map[uid]) {
+      map[uid] = { walletTopup: 0, purchased: 0, depositCount: 0, purchaseCount: 0 };
+    }
+    if (row._id.product_type === 'wallet_topup') {
+      map[uid].walletTopup += row.total;
+      map[uid].depositCount += row.count;
+    } else {
+      map[uid].purchased += row.total;
+      map[uid].purchaseCount += row.count;
+    }
+  }
+  return map;
+}
 
 async function aggregateUserEarnings() {
   const [videoByPeer, liveByHost] = await Promise.all([
@@ -248,19 +322,43 @@ exports.getUsers = async (req, res) => {
     else if (statusFilter === 'active') filter.is_banned = { $ne: true };
 
     const users = await User.find(filter)
-      .select('id crimzo_id username email country diamonds beans status is_banned created_at')
+      .select('crimzo_id username email country diamonds beans wallet_balance status is_banned created_at linked_bank')
       .sort({ created_at: -1 })
       .skip(skip)
       .limit(limitNum)
       .lean();
 
     const total = await User.countDocuments(filter);
+    const userIds = users.map((u) => u._id);
+    const paymentStats = await buildUserPaymentStatsMap(userIds);
+
+    const enrichedUsers = users.map((user) => {
+      const id = user._id.toString();
+      const stats = paymentStats[id] || {};
+      return {
+        id,
+        crimzo_id: user.crimzo_id,
+        username: user.username,
+        email: user.email,
+        country: user.country,
+        diamonds: user.diamonds || 0,
+        beans: user.beans || 0,
+        wallet_balance: user.wallet_balance || 0,
+        total_deposited: stats.walletTopup || 0,
+        total_purchased: stats.purchased || 0,
+        deposit_count: stats.depositCount || 0,
+        linked_account: formatLinkedAccount(user.linked_bank),
+        status: user.status,
+        is_banned: user.is_banned,
+        created_at: user.created_at,
+      };
+    });
 
     res.json({
-      users,
+      users: enrichedUsers,
       total,
       page: pageNum,
-      totalPages: Math.ceil(total / limitNum)
+      totalPages: Math.ceil(total / limitNum),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -275,7 +373,7 @@ exports.getUserTransactions = async (req, res) => {
     }
 
     const user = await User.findById(userId)
-      .select('username email crimzo_id diamonds beans wallet_balance created_at')
+      .select('username email crimzo_id diamonds beans wallet_balance created_at linked_bank country')
       .lean();
     if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -289,10 +387,12 @@ exports.getUserTransactions = async (req, res) => {
         username: user.username,
         email: user.email,
         crimzoId: user.crimzo_id,
+        country: user.country || null,
         diamonds: user.diamonds || 0,
         beans: user.beans || 0,
         walletBalance: user.wallet_balance || 0,
         joinedAt: user.created_at,
+        linkedAccount: formatLinkedAccount(user.linked_bank),
       },
       transactions,
       summary,
@@ -300,6 +400,177 @@ exports.getUserTransactions = async (req, res) => {
   } catch (err) {
     console.error('Admin user transactions error:', err);
     res.status(500).json({ error: err.message || 'Failed to load user transactions' });
+  }
+};
+
+exports.getWalletDeposits = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 20,
+      search = '',
+      view = 'transactions',
+      type = 'wallet_topup',
+    } = req.query;
+    const pageNum = Number(page) || 1;
+    const limitNum = Math.min(Number(limit) || 20, 50);
+    const skip = (pageNum - 1) * limitNum;
+
+    const productTypes = type === 'all'
+      ? ['wallet_topup', 'diamonds', 'beans']
+      : ['wallet_topup'];
+
+    let matchingUserIds = null;
+    if (search) {
+      const searchRegex = new RegExp(search, 'i');
+      const matchingUsers = await User.find({
+        $or: [
+          { username: searchRegex },
+          { email: searchRegex },
+          { crimzo_id: searchRegex },
+        ],
+      }).select('_id').lean();
+      matchingUserIds = matchingUsers.map((u) => u._id);
+      if (!matchingUserIds.length) {
+        return res.json({
+          view,
+          deposits: [],
+          userSummaries: [],
+          total: 0,
+          page: pageNum,
+          totalPages: 0,
+          summary: { totalInr: 0, totalCount: 0 },
+        });
+      }
+    }
+
+    const baseMatch = {
+      status: { $in: ['paid', 'dev_mock'] },
+      product_type: { $in: productTypes },
+      ...(matchingUserIds ? { user_id: { $in: matchingUserIds } } : {}),
+    };
+
+    const [summaryAgg] = await PaymentOrder.aggregate([
+      { $match: baseMatch },
+      { $group: { _id: null, totalInr: { $sum: '$amount_inr' }, totalCount: { $sum: 1 } } },
+    ]);
+
+    if (view === 'users') {
+      const pipeline = [
+        { $match: baseMatch },
+        {
+          $group: {
+            _id: '$user_id',
+            totalDeposited: { $sum: '$amount_inr' },
+            depositCount: { $sum: 1 },
+            lastDepositAt: { $max: '$paid_at' },
+            productTypes: { $addToSet: '$product_type' },
+          },
+        },
+        { $sort: { totalDeposited: -1 } },
+        {
+          $facet: {
+            rows: [
+              { $skip: skip },
+              { $limit: limitNum },
+              {
+                $lookup: {
+                  from: 'users',
+                  localField: '_id',
+                  foreignField: '_id',
+                  as: 'user',
+                },
+              },
+              { $unwind: '$user' },
+            ],
+            total: [{ $count: 'count' }],
+          },
+        },
+      ];
+
+      const [result] = await PaymentOrder.aggregate(pipeline);
+      const total = result?.total?.[0]?.count || 0;
+
+      const userSummaries = (result?.rows || []).map((row) => ({
+        userId: row._id.toString(),
+        username: row.user.username,
+        email: row.user.email,
+        crimzoId: row.user.crimzo_id,
+        walletBalance: row.user.wallet_balance || 0,
+        totalDeposited: row.totalDeposited,
+        depositCount: row.depositCount,
+        lastDepositAt: row.lastDepositAt || null,
+        productTypes: row.productTypes || [],
+        linkedAccount: formatLinkedAccount(row.user.linked_bank),
+      }));
+
+      return res.json({
+        view: 'users',
+        userSummaries,
+        deposits: [],
+        total,
+        page: pageNum,
+        totalPages: Math.ceil(total / limitNum),
+        summary: {
+          totalInr: summaryAgg?.totalInr || 0,
+          totalCount: summaryAgg?.totalCount || 0,
+        },
+      });
+    }
+
+    const [orders, total] = await Promise.all([
+      PaymentOrder.find(baseMatch)
+        .populate('user_id', 'username email crimzo_id wallet_balance linked_bank')
+        .sort({ paid_at: -1, created_at: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      PaymentOrder.countDocuments(baseMatch),
+    ]);
+
+    const deposits = orders.map((order) => {
+      const user = order.user_id || {};
+      const productLabels = {
+        wallet_topup: 'Wallet Top-up',
+        diamonds: 'Diamond Purchase',
+        beans: 'Bean Purchase',
+      };
+      return {
+        id: order._id.toString(),
+        userId: user._id?.toString() || order.user_id?.toString(),
+        username: user.username || null,
+        email: user.email || null,
+        crimzoId: user.crimzo_id || null,
+        walletBalance: user.wallet_balance || 0,
+        productType: order.product_type,
+        productLabel: productLabels[order.product_type] || order.product_type,
+        amountInr: order.amount_inr,
+        diamonds: order.diamonds || 0,
+        beans: order.beans || 0,
+        paymentMethod: order.payment_method,
+        paymentMethodLabel: paymentMethodLabel(order.payment_method),
+        razorpayPaymentId: order.razorpay_payment_id || null,
+        status: order.status,
+        paidAt: order.paid_at || order.created_at,
+        linkedAccount: formatLinkedAccount(user.linked_bank),
+      };
+    });
+
+    res.json({
+      view: 'transactions',
+      deposits,
+      userSummaries: [],
+      total,
+      page: pageNum,
+      totalPages: Math.ceil(total / limitNum),
+      summary: {
+        totalInr: summaryAgg?.totalInr || 0,
+        totalCount: summaryAgg?.totalCount || 0,
+      },
+    });
+  } catch (err) {
+    console.error('Admin wallet deposits error:', err);
+    res.status(500).json({ error: err.message || 'Failed to load wallet deposits' });
   }
 };
 

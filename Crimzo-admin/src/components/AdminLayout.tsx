@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { api, authHeaders } from '../lib/api';
 import {
     LayoutDashboard, Users, Radio, Film, Image as ImageIcon, LogOut,
-    Menu, X, Shield, IndianRupee, Banknote, ListChecks,
+    Menu, X, Shield, IndianRupee, Banknote, ListChecks, Wallet,
 } from 'lucide-react';
 import { ErrorBoundary } from './ErrorBoundary';
 
@@ -25,6 +25,7 @@ const navSections = [
     {
         title: 'Monetization',
         items: [
+            { to: '/wallet', icon: Wallet, label: 'Wallet & Deposits', desc: 'Who added how much money' },
             { to: '/billing', icon: IndianRupee, label: 'Billing & Rates', desc: 'Video call + live talk ₹/min' },
             { to: '/tasks', icon: ListChecks, label: 'My Tasks', desc: 'User tasks + rewards' },
         ]
@@ -46,6 +47,7 @@ const pageMeta: Record<string, { title: string; section: string }> = {
     '/reels': { title: 'Reels', section: 'Content & Moderation' },
     '/stickers': { title: 'Stickers & Gifts', section: 'Content & Moderation' },
     '/billing': { title: 'Billing & Rates', section: 'Monetization' },
+    '/wallet': { title: 'Wallet & Deposits', section: 'Monetization' },
     '/withdrawals': { title: 'Withdrawals', section: 'Overview' },
     '/tasks': { title: 'My Tasks', section: 'Monetization' },
 };
