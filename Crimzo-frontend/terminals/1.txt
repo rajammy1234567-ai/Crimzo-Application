@@ -3,7 +3,7 @@ pid: 5464
 cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo\Crimzo-frontend"
 command: "Set-Location \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\\android\"; .\\gradlew.bat assembleRelease 2>&1"
 started_at: 2026-07-04T05:30:51.345Z
-running_for_ms: 334997   
+running_for_ms: 2414998  
 ---
 Starting a Gradle Daemon, 2 busy Daemons could not be reused, use --status for details
 > Task :gradle-plugin:shared:checkKotlinGradlePluginConfigurationErrors SKIPPED
