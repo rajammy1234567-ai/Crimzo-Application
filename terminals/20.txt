@@ -3,7 +3,7 @@ pid: 16992
 cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
 command: "Set-Location \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\"; npx expo lint components/LiveChat.tsx 2>&1"
 started_at: 2026-07-03T20:08:59.871Z
-running_for_ms: 289992   
+running_for_ms: 27229996 
 ---
 env: load .env
 env: export EXPO_PUBLIC_BACKEND_URL EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID

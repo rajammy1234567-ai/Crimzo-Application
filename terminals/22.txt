@@ -3,7 +3,7 @@ pid: 9932
 cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
 command: "Set-Location \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\"; npx expo export:embed --eager --platform android --dev false 2>&1 | Select-Object -Last 30"
 started_at: 2026-07-03T20:11:14.448Z
-running_for_ms: 154997   
+running_for_ms: 27094989 
 ---
 env: load .env
 env: export EXPO_PUBLIC_BACKEND_URL EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID

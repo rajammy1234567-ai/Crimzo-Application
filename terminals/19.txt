@@ -3,5 +3,5 @@ pid: 10688
 cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
 command: "Set-Location \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\"; npx tsc --noEmit --pretty false 2>&1 | Select-String \"LiveChat\""
 started_at: 2026-07-03T20:08:41.962Z
-running_for_ms: 309990   
+running_for_ms: 27244987 
 ---
