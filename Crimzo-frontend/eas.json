@@ -9,7 +9,10 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "NODE_ENV": "production"
+      }
     },
     "apk": {
       "distribution": "internal",
@@ -18,20 +21,22 @@
       "android": {
         "buildType": "apk"
       },
-       "env": {
-    "EXPO_PUBLIC_BACKEND_URL": "https://crimzo-application-backend.onrender.com",
-    "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "822879223763-91agghanm59425oqnipive1hta375itd.apps.googleusercontent.com",
-    "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "822879223763-gdhbhqa0juc7ns7qa994evievpr339gt.apps.googleusercontent.com"
-  }
+      "env": {
+        "NODE_ENV": "production",
+        "EXPO_PUBLIC_BACKEND_URL": "https://crimzo-application-backend.onrender.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "822879223763-91agghanm59425oqnipive1hta375itd.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "822879223763-gdhbhqa0juc7ns7qa994evievpr339gt.apps.googleusercontent.com"
+      }
     },
     "production": {
       "autoIncrement": true,
       "credentialsSource": "local",
       "env": {
-    "EXPO_PUBLIC_BACKEND_URL": "https://crimzo-application-backend.onrender.com",
-    "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "822879223763-91agghanm59425oqnipive1hta375itd.apps.googleusercontent.com",
-    "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "822879223763-gdhbhqa0juc7ns7qa994evievpr339gt.apps.googleusercontent.com"
-  }
+        "NODE_ENV": "production",
+        "EXPO_PUBLIC_BACKEND_URL": "https://crimzo-application-backend.onrender.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "822879223763-91agghanm59425oqnipive1hta375itd.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "822879223763-gdhbhqa0juc7ns7qa994evievpr339gt.apps.googleusercontent.com"
+      }
     }
   },
   "submit": {

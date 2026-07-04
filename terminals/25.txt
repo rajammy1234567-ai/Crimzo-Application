@@ -1,0 +1,10 @@
+---
+pid: 13996
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "cd \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\"; npx eas-cli build:inspect --platform android --stage archive --output \"$env:TEMP\\eas-inspect2\" --profile apk 2>&1 | Select-Object -Last 5; $size = (Get-ChildItem \"$env:TEMP\\eas-inspect2\" -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum; \"Archive size MB: $([math]::Round($size/1MB,1))\""
+started_at: 2026-07-04T06:45:15.371Z
+running_for_ms: 1015005  
+---
+- Copying project directory to C:\Users\WELCOME\AppData\Local\Temp\eas-inspect2
+✔ Project directory saved to C:\Users\WELCOME\AppData\Local\Temp\eas-inspect2
+Archive size MB: 934.3

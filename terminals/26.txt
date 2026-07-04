@@ -1,0 +1,30 @@
+---
+pid: 17672
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "cd \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\"; npx eas-cli build --profile apk --platform android --non-interactive 2>&1"
+started_at: 2026-07-04T06:47:52.498Z
+running_for_ms: 874993   
+---
+Resolved "preview" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
+No environment variables with visibility "Plain text" and "Sensitive" found for the "preview" environment on EAS.
+Environment variables loaded from the "apk" build profile "env" configuration: NODE_ENV, EXPO_PUBLIC_BACKEND_URL, EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID.
+
+You set NODE_ENV=production in the build profile or environment variables. Remember that it will be available during the entire build process. In particular, it will make yarn/npm install only production packages.
+
+
+
+✔ Using local Android credentials (credentials.json)
+
+Bumping expo.android.versionCode from 38 to 39
+
+Compressing project files and uploading to EAS Build. Learn more: https://expo.fyi/eas-build-archive
+- Compressing project files
+Your project archive is 493 MB. You can reduce its size and the time it takes to upload by excluding files that are unnecessary for the build process in .easignore file. Learn more: https://expo.fyi/eas-build-archive
+- Uploading to EAS Build (0 / 493 MB)
+✔ Uploaded to EAS 49s
+- Computing project fingerprint
+⌛️ Computing the project fingerprint is taking longer than expected...
+⏩ To skip this step, set the environment variable: EAS_SKIP_AUTO_FINGERPRINT=1
+✔ Computed project fingerprint
+This account has used its Android builds from the Free plan this month, which will reset in 27 days (on Sat Aug 01 2026). Upgrade your plan for more builds with shorter wait times and longer timeouts, and to run more builds concurrently with a subscription plan. https://expo.dev/accounts/vizi_kids_eas_001/settings/billing
+    Error: build command failed.

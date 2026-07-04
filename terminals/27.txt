@@ -1,0 +1,16 @@
+---
+pid: 9060
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "cd \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\"; npx eas-cli build:inspect --platform android --stage archive --output \"$env:TEMP\\eas-inspect3\" --profile apk 2>&1; Get-ChildItem \"$env:TEMP\\eas-inspect3\" -Recurse -Directory -Filter \"_compress_tmp\" -ErrorAction SilentlyContinue | Select-Object FullName; $s=(Get-ChildItem \"$env:TEMP\\eas-inspect3\" -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum; \"Total MB: $([math]::Round($s/1MB,1))\""
+started_at: 2026-07-04T06:49:55.149Z
+running_for_ms: 734985   
+---
+- Copying project directory to C:\Users\WELCOME\AppData\Local\Temp\eas-inspect3
+✔ Project directory saved to C:\Users\WELCOME\AppData\Local\Temp\eas-inspect3
+
+FullName                                                                                             
+--------                                                                                             
+C:\Users\WELCOME\AppData\Local\Temp\eas-inspect3\Crimzo-frontend\assets\models\golf_gti\_compress_tmp
+Total MB: 934.3
+
+

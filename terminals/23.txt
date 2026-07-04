@@ -1,0 +1,28 @@
+---
+pid: 13860
+cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
+command: "cd \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\"; npx eas-cli build --profile apk --platform android --non-interactive 2>&1"
+started_at: 2026-07-04T06:33:19.578Z
+running_for_ms: 1744994  
+---
+Resolved "preview" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
+No environment variables with visibility "Plain text" and "Sensitive" found for the "preview" environment on EAS.
+Environment variables loaded from the "apk" build profile "env" configuration: NODE_ENV, EXPO_PUBLIC_BACKEND_URL, EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID.
+
+You set NODE_ENV=production in the build profile or environment variables. Remember that it will be available during the entire build process. In particular, it will make yarn/npm install only production packages.
+
+
+
+✔ Using local Android credentials (credentials.json)
+
+Bumping expo.android.versionCode from 37 to 38
+
+Compressing project files and uploading to EAS Build. Learn more: https://expo.fyi/eas-build-archive
+- Compressing project files
+Your project archive is 493 MB. You can reduce its size and the time it takes to upload by excluding files that are unnecessary for the build process in .easignore file. Learn more: https://expo.fyi/eas-build-archive
+- Uploading to EAS Build (0 / 493 MB)
+✖ Uploading to EAS Build (137 MB / 493 MB)
+Failed to upload the project tarball to EAS Build
+
+Reason: request to https://storage.googleapis.com/turtle-v2-projects/production/fb03b75b-a2f7-49c5-9242-cba9fe421b0b/e0e2b52b-b408-4ac1-b052-3cb869a69456?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=www-production%40exponentjs.iam.gserviceaccount.com%2F20260704%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20260704T063408Z&X-Goog-Expires=3600&X-Goog-SignedHeaders=host%3Bx-goog-content-length-range&X-Goog-Signature=2a6a9e303f534be17a792a142f4824af2c49d1d96c4e8417141cd6dd582d706956dda7e24ff636c293778dc804ada157bb5c42691412831e0e7e6ead757739bd8b79fb0729754c03dfd5d863c8537eef5cf8d7353091a973c9c7b2c95d3deef4e49f47c62273c6f5322619b0c2f2f5c2cf2649d81e90999cd4b69d9424a6e234bf4ec477bce5f2fb93cc874f5893e2e932673bfc4fb7addbf6f5d26b6bb754dad25026ecdad415508a6369e0625d349adea13cf8f6a7c3fbb8a4a6d9ca91462533c0a16809ddd40c7920c9fffd2f37ab53f03f28fdfdc23b7f7d2cc5c84ea193dc2cea6d32f08c033b082ff0bc560cbee7cfac76bd2bf724f7ceeeeb164339f8 failed, reason: read ECONNRESET
+    Error: build command failed.

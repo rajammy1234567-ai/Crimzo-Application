@@ -7,7 +7,7 @@
     "icon": "./assets/images/CRIMZO_ICON.png",
     "scheme": "crimzo",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.crimzolive",
@@ -29,7 +29,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.crimzolive",
-      "versionCode": 37,
+      "versionCode": 39,
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",
