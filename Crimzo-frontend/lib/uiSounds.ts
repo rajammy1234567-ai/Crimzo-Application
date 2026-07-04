@@ -1,14 +1,6 @@
 import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import { giftSplashTier } from './giftSplash';
-import {
-  giftMegaWavBase64,
-  giftPopWavBase64,
-  giftReceiveWavBase64,
-  giftSendWavBase64,
-  messageReceiveWavBase64,
-  messageSendWavBase64,
-} from './uiSoundAssets';
 
 type SoundKind =
   | 'messageSend'
@@ -18,14 +10,22 @@ type SoundKind =
   | 'giftReceive'
   | 'giftMega';
 
-const SOURCES: Record<SoundKind, string> = {
-  messageSend: `data:audio/wav;base64,${messageSendWavBase64}`,
-  messageReceive: `data:audio/wav;base64,${messageReceiveWavBase64}`,
-  gift: `data:audio/wav;base64,${giftPopWavBase64}`,
-  giftSend: `data:audio/wav;base64,${giftSendWavBase64}`,
-  giftReceive: `data:audio/wav;base64,${giftReceiveWavBase64}`,
-  giftMega: `data:audio/wav;base64,${giftMegaWavBase64}`,
-};
+// Lazy-load the heavy 162KB base64 assets only when first sound is actually played
+let _sources: Record<SoundKind, string> | null = null;
+function getSources(): Record<SoundKind, string> {
+  if (_sources) return _sources;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const assets = require('./uiSoundAssets');
+  _sources = {
+    messageSend: `data:audio/wav;base64,${assets.messageSendWavBase64}`,
+    messageReceive: `data:audio/wav;base64,${assets.messageReceiveWavBase64}`,
+    gift: `data:audio/wav;base64,${assets.giftPopWavBase64}`,
+    giftSend: `data:audio/wav;base64,${assets.giftSendWavBase64}`,
+    giftReceive: `data:audio/wav;base64,${assets.giftReceiveWavBase64}`,
+    giftMega: `data:audio/wav;base64,${assets.giftMegaWavBase64}`,
+  };
+  return _sources;
+}
 
 const VOLUMES: Record<SoundKind, number> = {
   messageSend: 0.62,
@@ -54,8 +54,9 @@ async function ensureAudioMode() {
 async function loadSound(kind: SoundKind): Promise<Audio.Sound> {
   const cached = soundCache[kind];
   if (cached) return cached;
+  const sources = getSources();
   const { sound } = await Audio.Sound.createAsync(
-    { uri: SOURCES[kind] },
+    { uri: sources[kind] },
     { volume: VOLUMES[kind], shouldPlay: false },
   );
   soundCache[kind] = sound;

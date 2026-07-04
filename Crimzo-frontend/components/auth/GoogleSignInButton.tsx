@@ -135,7 +135,6 @@ export default function GoogleSignInButton({ onSuccess, disabled, variant = 'sec
     webClientId: getGoogleWebClientId(),
     androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
     iosClientId: GOOGLE_IOS_CLIENT_ID || undefined,
-    redirectUri,
     scopes: ['openid', 'profile', 'email'],
   });
 

@@ -33,14 +33,6 @@ for (const scheme of [androidReverseScheme, webReverseScheme]) {
   });
 }
 
-const iosUrlScheme = webReverseScheme || androidReverseScheme;
-const googleSignInPlugin = iosUrlScheme
-  ? [
-      '@react-native-google-signin/google-signin',
-      { iosUrlScheme },
-    ]
-  : '@react-native-google-signin/google-signin';
-
 const backendUrl =
   process.env.EXPO_PUBLIC_BACKEND_URL ||
   'https://crimzo-application-backend.onrender.com';
@@ -54,7 +46,6 @@ module.exports = {
     },
     plugins: [
       ...(base.plugins || []),
-      googleSignInPlugin,
     ],
     android: {
       ...base.android,
