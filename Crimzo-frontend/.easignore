@@ -54,3 +54,7 @@ terminals/
 *.mp4
 *.mov
 doctor_output*.txt
+
+# Required for local Android signing (credentialsSource: local)
+!credentials.json
+!crimzo-upload.jks

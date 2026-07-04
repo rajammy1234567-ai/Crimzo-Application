@@ -3,7 +3,7 @@ pid: 17672
 cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
 command: "cd \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\"; npx eas-cli build --profile apk --platform android --non-interactive 2>&1"
 started_at: 2026-07-04T06:47:52.498Z
-running_for_ms: 874993   
+running_for_ms: 4599992  
 ---
 Resolved "preview" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
 No environment variables with visibility "Plain text" and "Sensitive" found for the "preview" environment on EAS.

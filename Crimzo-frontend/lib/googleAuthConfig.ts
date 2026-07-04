@@ -13,7 +13,7 @@ export const GOOGLE_ANDROID_RELEASE_SHA1 =
 export const ANDROID_PACKAGE = 'com.crimzolive';
 export const APP_SCHEME = Constants.expoConfig?.scheme || 'crimzo';
 
-const expoOwner = Constants.expoConfig?.owner || 'dev_eas_office_viz001';
+const expoOwner = Constants.expoConfig?.owner || 'apk_build_green';
 const expoSlug = Constants.expoConfig?.slug || 'crimzo';
 
 /** Expo Go redirect — add to Google Console Web client authorized redirect URIs */

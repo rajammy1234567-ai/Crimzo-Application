@@ -3,7 +3,7 @@ pid: 18088
 cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
 command: "cd \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\"; npx eas-cli build:inspect --platform android --stage archive --output \"$env:TEMP\\eas-inspect4\" --profile apk 2>&1 | Select-Object -Last 3; Test-Path \"$env:TEMP\\eas-inspect4\\Crimzo-frontend\\assets\\models\\golf_gti\\_compress_tmp\"; (Get-ChildItem \"$env:TEMP\\eas-inspect4\\Crimzo-frontend\" -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum / 1MB"
 started_at: 2026-07-04T06:51:28.608Z
-running_for_ms: 639988   
+running_for_ms: 4369994  
 ---
 - Copying project directory to C:\Users\WELCOME\AppData\Local\Temp\eas-inspect4
 ✔ Project directory saved to C:\Users\WELCOME\AppData\Local\Temp\eas-inspect4

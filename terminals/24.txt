@@ -3,7 +3,7 @@ pid: 5708
 cwd: "D:\Programming\Viz_Official_01\Crimzo\crimzo"
 command: "cd \"D:\\Programming\\Viz_Official_01\\Crimzo\\crimzo\\Crimzo-frontend\"; npx eas-cli build:inspect --platform android --stage archive --output \"$env:TEMP\\eas-inspect\" --profile apk 2>&1 | Select-Object -Last 20"
 started_at: 2026-07-04T06:42:45.645Z
-running_for_ms: 1165008  
+running_for_ms: 4895002  
 ---
 - Copying project directory to C:\Users\WELCOME\AppData\Local\Temp\eas-inspect
 ✔ Project directory saved to C:\Users\WELCOME\AppData\Local\Temp\eas-inspect
