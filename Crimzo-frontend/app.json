@@ -29,7 +29,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.crimzolive",
-      "versionCode": 35,
+      "versionCode": 36,
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",
@@ -121,10 +121,9 @@
     },
     "extra": {
       "router": {},
-       "eas": {
+      "eas": {
         "projectId": "79af4906-a884-4d29-b066-658497b63bdc"
       }
-     
     },
     "owner": "vizi_kids_eas_001"
   }

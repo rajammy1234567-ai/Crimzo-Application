@@ -1,0 +1,28 @@
+# Exclude common heavy or unnecessary files from EAS build archive
+node_modules/
+.yarn/
+.pnpm-store/
+.expo/
+.expo-shared/
+.vscode/
+.idea/
+.git/
+android/
+ios/
+build/
+dist/
+certs/
+terminals/
+**/*.log
+*.keystore
+*.jks
+*.pem
+*.zip
+*.tar.gz
+*.mp4
+*.mov
+doctor_output*.txt
+*.DS_Store
+# Keep src, app and assets required for the build
+!app/
+!assets/
