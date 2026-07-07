@@ -627,22 +627,24 @@ export default function ProfileScreen() {
 
               <TouchableOpacity
                 style={s.engagementItem}
-                onPress={() => router.push('/profile/wallet?tab=diamonds' as any)}
+                onPress={() => router.push('/profile/wallet' as any)}
                 activeOpacity={0.7}
               >
                 <DiamondIcon size={14} />
                 <Text style={s.engagementValue}>{formatCount(user?.diamonds ?? 0)}</Text>
                 <Text style={s.engagementLabel}>Diamonds</Text>
               </TouchableOpacity>
+              
               <View style={s.engagementDivider} />
+              
               <TouchableOpacity
                 style={s.engagementItem}
-                onPress={() => router.push('/profile/wallet?tab=beans' as any)}
+                onPress={() => router.push('/profile/earnings' as any)}
                 activeOpacity={0.7}
               >
-                <BeanIcon size={14} />
-                <Text style={s.engagementValue}>{formatCount(getDisplayBeans(user))}</Text>
-                <Text style={s.engagementLabel}>Beans</Text>
+                <Ionicons name="stats-chart" size={14} color="#34D399" />
+                <Text style={s.engagementValue}>Earnings</Text>
+                <Text style={s.engagementLabel}>History</Text>
               </TouchableOpacity>
             </View>
           </View>

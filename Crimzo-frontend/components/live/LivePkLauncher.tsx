@@ -56,6 +56,8 @@ export default function LivePkLauncher({
   const [waitingBattles, setWaitingBattles] = useState<WaitingBattle[]>([]);
   const [busy, setBusy] = useState(false);
 
+  const [matchingBattleId, setMatchingBattleId] = useState<string | null>(null);
+
   const fetchWaitingBattles = useCallback(async () => {
     if (!token) return;
     setLoadingBattles(true);
@@ -73,8 +75,12 @@ export default function LivePkLauncher({
   }, [token]);
 
   useEffect(() => {
-    if (visible) void fetchWaitingBattles();
+    if (visible) {
+      void fetchWaitingBattles();
+    }
   }, [visible, fetchWaitingBattles]);
+
+
 
   const handoffFromLive = useCallback(async () => {
     const eng = liveEngine ?? null;
@@ -97,6 +103,31 @@ export default function LivePkLauncher({
     },
     [onClose, router],
   );
+
+  // Polling for match
+  useEffect(() => {
+    if (!matchingBattleId || !token) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await apiGet<{ battles?: WaitingBattle[] }>('/api/pk/active', token);
+        const myBattle = res.battles?.find(b => b.battle_id === matchingBattleId || b.battleId === matchingBattleId);
+        
+        if (myBattle && myBattle.status === 'active') {
+          // Match found!
+          clearInterval(interval);
+          setBusy(true);
+          setMatchingBattleId(null);
+          try {
+            await handoffFromLive();
+            navigateToPk(`/pk/battle?mode=host&battleId=${matchingBattleId}`);
+          } catch(e) {}
+        }
+      } catch (e) {
+        // ignore
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [matchingBattleId, token, handoffFromLive, navigateToPk]);
 
   const confirmAndLaunch = useCallback(
     (launch: () => Promise<void>) => {
@@ -134,10 +165,17 @@ export default function LivePkLauncher({
     [busy, handoffFromLive],
   );
 
-  const handleCreatePk = (duration: number) => {
-    confirmAndLaunch(async () => {
-      navigateToPk(`/pk/battle?mode=create&duration=${duration}`);
-    });
+  const handleCreatePk = async (duration: number) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await apiPost<{ battleId: string }>('/api/pk/create', { duration }, token);
+      setMatchingBattleId(res.battleId);
+    } catch (e: any) {
+      appAlert('PK Error', e?.message || 'Could not start PK battle');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleJoinPk = (battle: WaitingBattle) => {
@@ -148,9 +186,27 @@ export default function LivePkLauncher({
     });
   };
 
+  const cancelMatching = async () => {
+    if (!matchingBattleId || !token) return;
+    setBusy(true);
+    try {
+      await apiPost(`/api/pk/end/${matchingBattleId}`, {}, token);
+    } catch (e) {} finally {
+      setMatchingBattleId(null);
+      setBusy(false);
+    }
+  };
+
+  const handleClose = () => {
+    if (matchingBattleId) {
+      void cancelMatching();
+    }
+    onClose();
+  };
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
+      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={handleClose}>
         <View style={s.sheet} onStartShouldSetResponder={() => true}>
           <View style={s.handle} />
           <View style={s.titleRow}>
@@ -163,67 +219,82 @@ export default function LivePkLauncher({
             Challenge another streamer. Gifts during PK add to your score.
           </Text>
 
-          <Text style={s.sectionLabel}>Start new battle</Text>
-          <View style={s.durationRow}>
-            {PK_DURATIONS.map((opt) => (
-              <TouchableOpacity
-                key={opt.value}
-                style={s.durationBtn}
-                disabled={busy}
-                onPress={() => handleCreatePk(opt.value)}
-                activeOpacity={0.85}
-              >
-                <LinearGradient
-                  colors={['#FF9500', '#FF2D55']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={s.durationGrad}
-                >
-                  <Text style={s.durationText}>{opt.label}</Text>
-                </LinearGradient>
+          {matchingBattleId ? (
+            <View style={{ alignItems: 'center', paddingVertical: 30 }}>
+              <ActivityIndicator color="#FF2D55" size="large" />
+              <Text style={{ color: '#FFF', fontSize: 16, marginTop: 16, fontWeight: 'bold' }}>Matching for opponent...</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.6)', marginTop: 8, textAlign: 'center' }}>
+                Your live stream is still active.
+              </Text>
+              <TouchableOpacity onPress={cancelMatching} disabled={busy} style={{ marginTop: 24, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: 'rgba(255,45,85,0.2)', borderRadius: 20 }}>
+                <Text style={{ color: '#FF4466', fontWeight: 'bold' }}>Cancel Matching</Text>
               </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={s.sectionLabel}>Join waiting battle</Text>
-          {loadingBattles ? (
-            <ActivityIndicator color="#FF2D55" style={{ marginVertical: 16 }} />
-          ) : waitingBattles.length === 0 ? (
-            <Text style={s.empty}>No open battles right now — start one!</Text>
+            </View>
           ) : (
-            <ScrollView style={s.list} nestedScrollEnabled>
-              {waitingBattles.map((battle) => {
-                const id = battle.battle_id || battle.battleId || '';
-                return (
+            <>
+              <Text style={s.sectionLabel}>Start new battle</Text>
+              <View style={s.durationRow}>
+                {PK_DURATIONS.map((opt) => (
                   <TouchableOpacity
-                    key={id}
-                    style={s.battleRow}
+                    key={opt.value}
+                    style={s.durationBtn}
                     disabled={busy}
-                    onPress={() => handleJoinPk(battle)}
-                    activeOpacity={0.8}
+                    onPress={() => handleCreatePk(opt.value)}
+                    activeOpacity={0.85}
                   >
-                    <View style={s.battleInfo}>
-                      <Text style={s.battleHost}>
-                        {battle.host1_username || battle.host1?.username || 'Host'}
-                      </Text>
-                      <Text style={s.battleMeta}>
-                        {Math.floor((battle.duration || 300) / 60)} min · Waiting
-                      </Text>
-                    </View>
-                    <View style={s.joinPill}>
-                      <Text style={s.joinText}>Join</Text>
-                      <Ionicons name="chevron-forward" size={14} color="#FF9500" />
-                    </View>
+                    <LinearGradient
+                      colors={['#FF9500', '#FF2D55']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={s.durationGrad}
+                    >
+                      <Text style={s.durationText}>{opt.label}</Text>
+                    </LinearGradient>
                   </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                ))}
+              </View>
+
+              <Text style={s.sectionLabel}>Join waiting battle</Text>
+              {loadingBattles ? (
+                <ActivityIndicator color="#FF2D55" style={{ marginVertical: 16 }} />
+              ) : waitingBattles.length === 0 ? (
+                <Text style={s.empty}>No open battles right now — start one!</Text>
+              ) : (
+                <ScrollView style={s.list} nestedScrollEnabled>
+                  {waitingBattles.map((battle) => {
+                    const id = battle.battle_id || battle.battleId || '';
+                    return (
+                      <TouchableOpacity
+                        key={id}
+                        style={s.battleRow}
+                        disabled={busy}
+                        onPress={() => handleJoinPk(battle)}
+                        activeOpacity={0.8}
+                      >
+                        <View style={s.battleInfo}>
+                          <Text style={s.battleHost}>
+                            {battle.host1_username || battle.host1?.username || 'Host'}
+                          </Text>
+                          <Text style={s.battleMeta}>
+                            {Math.floor((battle.duration || 300) / 60)} min · Waiting
+                          </Text>
+                        </View>
+                        <View style={s.joinPill}>
+                          <Text style={s.joinText}>Join</Text>
+                          <Ionicons name="chevron-forward" size={14} color="#FF9500" />
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              )}
+            </>
           )}
 
-          {busy && (
+          {busy && !matchingBattleId && (
             <View style={s.busyRow}>
               <ActivityIndicator color="#FF2D55" size="small" />
-              <Text style={s.busyText}>Switching to PK...</Text>
+              <Text style={s.busyText}>Please wait...</Text>
             </View>
           )}
         </View>

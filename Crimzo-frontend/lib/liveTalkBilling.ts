@@ -86,7 +86,7 @@ export async function tickLiveTalkBilling(token: string, payload: { sessionId: s
 }
 
 export async function endLiveTalkBilling(token: string, payload: { sessionId: string; talkSessionId?: string }) {
-  return apiPost('/api/live/talk/end', payload, token);
+  return apiPost<{ success?: boolean; minutesCharged?: number; totalCharged?: number; hostBeansEarned?: number }>('/api/live/talk/end', payload, token);
 }
 
 export function isInsufficientBalanceError(e: unknown): e is ApiError {

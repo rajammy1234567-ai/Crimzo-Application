@@ -628,9 +628,9 @@ function CommentsSheet({
       <View style={styles.commentsOverlay}>
         <TouchableOpacity style={styles.commentsBackdrop} onPress={onClose} activeOpacity={1} />
         <KeyboardAvoidingView
-          behavior={KEYBOARD_BEHAVIOR}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
           style={styles.commentsSheetWrap}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 24}
         >
           <View style={[styles.commentsSheet, { paddingBottom: Math.max(insets.bottom, 12) }]}>
             <View style={styles.sheetHandle}>

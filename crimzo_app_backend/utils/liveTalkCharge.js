@@ -15,7 +15,7 @@ class InsufficientWalletError extends Error {
 }
 
 /**
- * Debit viewer wallet; credit host 70% beans and platform (owner) 30% beans.
+ * Debit viewer wallet; credit host 70% diamonds and platform (owner) 30% beans.
  * Viewer still pays full rate INR/min from wallet.
  */
 async function chargeLiveTalkMinute({ talkerId, hostId, rateInr }) {
@@ -23,8 +23,8 @@ async function chargeLiveTalkMinute({ talkerId, hostId, rateInr }) {
   if (rate <= 0) {
     return {
       wallet_balance: 0,
-      hostBeans: 0,
-      beansEarned: 0,
+      hostDiamonds: 0,
+      diamondsEarned: 0,
       platformBeans: 0,
       grossBeans: 0,
     };
@@ -35,7 +35,7 @@ async function chargeLiveTalkMinute({ talkerId, hostId, rateInr }) {
 
   try {
     let talkerWallet;
-    let hostBeans;
+    let hostDiamonds;
 
     await dbSession.withTransaction(async () => {
       const talker = await User.findOneAndUpdate(
@@ -47,9 +47,9 @@ async function chargeLiveTalkMinute({ talkerId, hostId, rateInr }) {
 
       const host = await User.findByIdAndUpdate(
         hostId,
-        { $inc: { beans: receiverBeans } },
+        { $inc: { diamonds: receiverBeans } },
         { new: true, session: dbSession },
-      ).select('beans');
+      ).select('diamonds');
       if (!host) throw new Error('Host not found');
 
       if (platformBeans > 0) {
@@ -61,15 +61,15 @@ async function chargeLiveTalkMinute({ talkerId, hostId, rateInr }) {
       }
 
       talkerWallet = talker.wallet_balance;
-      hostBeans = host.beans;
+      hostDiamonds = host.diamonds;
     });
 
-    emitBalanceUpdate(hostId, { beans: hostBeans });
+    emitBalanceUpdate(hostId, { diamonds: hostDiamonds });
 
     return {
       wallet_balance: talkerWallet,
-      hostBeans,
-      beansEarned: receiverBeans,
+      hostDiamonds,
+      diamondsEarned: receiverBeans,
       platformBeans,
       grossBeans,
     };
@@ -79,7 +79,7 @@ async function chargeLiveTalkMinute({ talkerId, hostId, rateInr }) {
 }
 
 /**
- * Debit caller wallet; credit callee 70% beans and platform (owner) 30% beans.
+ * Debit caller wallet; credit callee 70% diamonds and platform (owner) 30% beans.
  * Caller still pays full rate INR/min from wallet.
  */
 async function chargeCallMinute({ talkerId, hostId, rateInr }) {
@@ -87,8 +87,8 @@ async function chargeCallMinute({ talkerId, hostId, rateInr }) {
   if (rate <= 0) {
     return {
       wallet_balance: 0,
-      hostBeans: 0,
-      beansEarned: 0,
+      hostDiamonds: 0,
+      diamondsEarned: 0,
       platformBeans: 0,
       grossBeans: 0,
     };
@@ -99,7 +99,7 @@ async function chargeCallMinute({ talkerId, hostId, rateInr }) {
 
   try {
     let talkerWallet;
-    let hostBeans;
+    let hostDiamonds;
 
     await dbSession.withTransaction(async () => {
       const talker = await User.findOneAndUpdate(
@@ -111,9 +111,9 @@ async function chargeCallMinute({ talkerId, hostId, rateInr }) {
 
       const host = await User.findByIdAndUpdate(
         hostId,
-        { $inc: { beans: receiverBeans } },
+        { $inc: { diamonds: receiverBeans } },
         { new: true, session: dbSession },
-      ).select('beans');
+      ).select('diamonds');
       if (!host) throw new Error('Callee not found');
 
       if (platformBeans > 0) {
@@ -125,15 +125,15 @@ async function chargeCallMinute({ talkerId, hostId, rateInr }) {
       }
 
       talkerWallet = talker.wallet_balance;
-      hostBeans = host.beans;
+      hostDiamonds = host.diamonds;
     });
 
-    emitBalanceUpdate(hostId, { beans: hostBeans });
+    emitBalanceUpdate(hostId, { diamonds: hostDiamonds });
 
     return {
       wallet_balance: talkerWallet,
-      hostBeans,
-      beansEarned: receiverBeans,
+      hostDiamonds,
+      diamondsEarned: receiverBeans,
       platformBeans,
       grossBeans,
     };

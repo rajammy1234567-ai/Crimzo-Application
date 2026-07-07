@@ -62,6 +62,7 @@ app.use("/api/messages", require("./routes/messageRoutes"));
 app.use("/api/notifications", require("./routes/notificationRoutes"));
 app.use("/api/payments", require("./routes/paymentRoutes"));
 app.use("/api/video-call", require("./routes/videoCallRoutes"));
+app.use("/api/earnings", require("./routes/earningsRoutes"));
 app.use("/api/settings", require("./routes/settingsRoutes"));
 app.use("/api/tasks", require("./routes/taskRoutes"));
 app.use("/api/referral", require("./routes/referralRoutes"));

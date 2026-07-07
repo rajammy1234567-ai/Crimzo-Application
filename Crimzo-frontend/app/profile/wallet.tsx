@@ -102,8 +102,8 @@ export default function WalletScreen() {
     setShowWithdraw(true);
   };
 
-  const initialTab = params.tab === 'beans' ? 'beans' : 'diamonds';
-  const [curTab, setCurTab] = useState<'diamonds' | 'beans'>(initialTab);
+  const initialTab = 'diamonds';
+  const [curTab, setCurTab] = useState<'diamonds'>('diamonds');
   const [subTab, setSubTab] = useState<'recommend' | 'helper'>('recommend');
   const [payMethod, setPayMethod] = useState('upi');
   const [showPayModal, setShowPayModal] = useState(false);
@@ -111,7 +111,7 @@ export default function WalletScreen() {
 
   useEffect(() => {
     if (params.tab === 'beans' || params.tab === 'diamonds') {
-      setCurTab(params.tab);
+      setCurTab('diamonds');
     }
   }, [params.tab]);
 
@@ -245,23 +245,10 @@ export default function WalletScreen() {
 
         {/* currency toggle */}
         <View style={s.curTog}>
-          {(['diamonds', 'beans'] as const).map(t => (
-            <TouchableOpacity
-              key={t}
-              style={[s.curBtn, curTab === t && s.curBtnOn]}
-              onPress={() => setCurTab(t)}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name={t === 'diamonds' ? 'diamond' : 'cafe'}
-                size={15}
-                color={curTab === t ? (t === 'diamonds' ? DIAMOND_COLOR : BEAN_COLOR) : 'rgba(255,255,255,0.45)'}
-              />
-              <Text style={[s.curBtnTxt, curTab === t && s.curBtnTxtOn]}>
-                {t === 'diamonds' ? 'Diamonds' : 'Beans'}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          <TouchableOpacity style={[s.curBtn, s.curBtnOn]} activeOpacity={1}>
+            <Ionicons name="diamond" size={15} color={DIAMOND_COLOR} />
+            <Text style={[s.curBtnTxt, s.curBtnTxtOn]}>Diamonds</Text>
+          </TouchableOpacity>
         </View>
       </LinearGradient>
 

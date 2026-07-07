@@ -328,25 +328,28 @@ export default function VideoCallScreen() {
       const maxAttempts = 12;
 
       const runAttempt = () => {
-        connectFallbackTimerRef.current = setTimeout(() => {
-          if (callEndedRef.current || remoteConfirmedRef.current) return;
-          if (!engineRef.current) return;
+        connectFallbackTimerRef.current = setTimeout(
+          () => {
+            if (callEndedRef.current || remoteConfirmedRef.current) return;
+            if (!engineRef.current) return;
 
-          if (!localJoinedRef.current) {
-            attempts += 1;
-            if (attempts < maxAttempts) {
-              runAttempt();
+            if (!localJoinedRef.current) {
+              attempts += 1;
+              if (attempts < maxAttempts) {
+                runAttempt();
+              }
+              return;
             }
-            return;
-          }
 
-          logAgoraCall("connect_fallback", {
-            fallbackUid,
-            channelName,
-            attempts,
-          });
-          handleRemotePresence(engineRef.current, fallbackUid);
-        }, attempts === 0 ? 2000 : 1000);
+            logAgoraCall("connect_fallback", {
+              fallbackUid,
+              channelName,
+              attempts,
+            });
+            handleRemotePresence(engineRef.current, fallbackUid);
+          },
+          attempts === 0 ? 2000 : 1000,
+        );
       };
 
       runAttempt();
@@ -369,17 +372,27 @@ export default function VideoCallScreen() {
   }, []);
 
   const finalizeBilling = useCallback(async () => {
-    if (!token || !isCaller || !sessionIdRef.current) return;
+    if (!token) return;
     try {
-      await endVideoCallBilling(token, {
+      const result = await endVideoCallBilling(token, {
         channelName,
-        sessionId: sessionIdRef.current,
+        sessionId: sessionIdRef.current || undefined,
       });
+      if (
+        typeof result?.hostBeansEarned === "number" &&
+        result.hostBeansEarned > 0
+      ) {
+        appAlert(
+          "Earnings Update",
+          `You earned ${result.hostBeansEarned} beans from this call.`,
+          [{ text: "OK" }],
+        );
+      }
     } catch {
       // non-fatal on hang up
     }
     sessionIdRef.current = null;
-  }, [token, isCaller, channelName]);
+  }, [token, channelName]);
 
   const endCall = useCallback(
     (reason?: EndCallReason) => {

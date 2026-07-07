@@ -57,7 +57,7 @@ export async function tickVideoCallBilling(
 export async function endVideoCallBilling(
   token: string,
   payload: { channelName: string; sessionId?: string },
-): Promise<{ success?: boolean; minutesCharged?: number; totalCharged?: number }> {
+): Promise<{ success?: boolean; minutesCharged?: number; totalCharged?: number; hostBeansEarned?: number }> {
   return apiPost('/api/video-call/end', payload, token);
 }
 

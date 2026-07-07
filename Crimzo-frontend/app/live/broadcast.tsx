@@ -1,15 +1,35 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { appAlert } from '../../lib/appAlert';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Animated, Easing, Dimensions, StatusBar, Modal, Image, Platform } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { useAuth } from '../../contexts/AuthContext';
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import io from 'socket.io-client';
-import LiveChat from '../../components/LiveChat';
-import PrivateTalkChat from '../../components/PrivateTalkChat';
-import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { appAlert } from "../../lib/appAlert";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  Animated,
+  Easing,
+  Dimensions,
+  StatusBar,
+  Modal,
+  Image,
+  Platform,
+} from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
+import { useAuth } from "../../contexts/AuthContext";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import io from "socket.io-client";
+import LiveChat from "../../components/LiveChat";
+import PrivateTalkChat from "../../components/PrivateTalkChat";
+import {
+  CameraView,
+  useCameraPermissions,
+  useMicrophonePermissions,
+} from "expo-camera";
 import {
   createAgoraRtcEngine,
   ChannelProfileType,
@@ -17,55 +37,60 @@ import {
   RtcSurfaceView,
   isAgoraNativeLinked,
   type IRtcEngine,
-} from '../../components/agoraImports';
-import { ensureRtcPermissions, configurePublisherAudio, prepareVoiceCallAudio, resetExpoAudioAfterLive } from '../../lib/agoraRtcHelpers';
-import { toAgoraUid } from '../../lib/agoraUid';
-import { releaseAgoraEngine, trackAgoraEngine } from '../../lib/agoraEngineRelease';
+} from "../../components/agoraImports";
+import {
+  ensureRtcPermissions,
+  configurePublisherAudio,
+  prepareVoiceCallAudio,
+  resetExpoAudioAfterLive,
+} from "../../lib/agoraRtcHelpers";
+import { toAgoraUid } from "../../lib/agoraUid";
+import {
+  releaseAgoraEngine,
+  trackAgoraEngine,
+} from "../../lib/agoraEngineRelease";
 import {
   hasNavigatedToCallChannel,
   isCallHandoffInProgress,
   prepareAgoraCallHandoff,
   shouldSkipLiveEngineTeardown,
-} from '../../lib/agoraCallHandoff';
+} from "../../lib/agoraCallHandoff";
 
-import { API_URL, apiGet, apiPost, ApiError } from '../../lib/apiClient';
-import { startLiveSession } from '../../lib/liveStart';
+import { API_URL, apiGet, apiPost, ApiError } from "../../lib/apiClient";
+import { startLiveSession } from "../../lib/liveStart";
 import {
   respondLiveTalk,
   getLiveTalkStatus,
   endLiveTalkBilling,
-} from '../../lib/liveTalkBilling';
-import {
-  respondLiveCall,
-  getLiveCallStatus,
-} from '../../lib/liveCallRequest';
-import { resolveRates } from '../../lib/userRates';
-import { subscribe } from '../../lib/realtimeSync';
-import { shareLiveStream } from '../../lib/liveShare';
-import LiveFilterPanel from '../../components/LiveFilterPanel';
-import GiftSplashOverlay from '../../components/GiftSplashOverlay';
-import JoinNotificationOverlay from '../../components/JoinNotificationOverlay';
-import HostDailyEarningsChip from '../../components/live/HostDailyEarningsChip';
-import LivePkLauncher from '../../components/live/LivePkLauncher';
+} from "../../lib/liveTalkBilling";
+import { respondLiveCall, getLiveCallStatus } from "../../lib/liveCallRequest";
+import { resolveRates } from "../../lib/userRates";
+import { subscribe } from "../../lib/realtimeSync";
+import { shareLiveStream } from "../../lib/liveShare";
+import LiveFilterPanel from "../../components/LiveFilterPanel";
+import GiftSplashOverlay from "../../components/GiftSplashOverlay";
+import JoinNotificationOverlay from "../../components/JoinNotificationOverlay";
+import HostDailyEarningsChip from "../../components/live/HostDailyEarningsChip";
+import LivePkLauncher from "../../components/live/LivePkLauncher";
 
 import {
   applyLiveFilterToEngine,
   getLiveFilterPreset,
   type LiveFilterId,
-} from '../../lib/liveFilters';
+} from "../../lib/liveFilters";
 
 const LOADING_SAFETY_MS = 15000;
 
-const { width: SW, height: SH } = Dimensions.get('window');
+const { width: SW, height: SH } = Dimensions.get("window");
 
 // Timer duration options
 const TIMER_OPTIONS = [
-  { label: 'No Limit', value: 0 },
-  { label: '10 Minutes', value: 10 * 60 },
-  { label: '30 Minutes', value: 30 * 60 },
-  { label: '1 Hour', value: 60 * 60 },
-  { label: '2 Hours', value: 2 * 60 * 60 },
-  { label: '3 Hours', value: 3 * 60 * 60 },
+  { label: "No Limit", value: 0 },
+  { label: "10 Minutes", value: 10 * 60 },
+  { label: "30 Minutes", value: 30 * 60 },
+  { label: "1 Hour", value: 60 * 60 },
+  { label: "2 Hours", value: 2 * 60 * 60 },
+  { label: "3 Hours", value: 3 * 60 * 60 },
 ];
 
 // ── Sub-Components ──
@@ -74,51 +99,150 @@ const PulsingDot = React.memo(function PulsingDot() {
   const pulse = useRef(new Animated.Value(1)).current;
   const opac = useRef(new Animated.Value(0.6)).current;
   useEffect(() => {
-    Animated.loop(Animated.parallel([
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 2, duration: 800, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 1, duration: 800, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+    Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(pulse, {
+            toValue: 2,
+            duration: 800,
+            easing: Easing.out(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulse, {
+            toValue: 1,
+            duration: 800,
+            easing: Easing.in(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(opac, {
+            toValue: 0,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opac, {
+            toValue: 0.6,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ]),
       ]),
-      Animated.sequence([
-        Animated.timing(opac, { toValue: 0, duration: 800, useNativeDriver: true }),
-        Animated.timing(opac, { toValue: 0.6, duration: 800, useNativeDriver: true }),
-      ]),
-    ])).start();
+    ).start();
   }, []);
   return (
-    <View style={{ width: 8, height: 8, alignItems: 'center', justifyContent: 'center' }}>
-      <Animated.View style={{ position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF2D55', transform: [{ scale: pulse }], opacity: opac }} />
-      <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: '#FF4466' }} />
+    <View
+      style={{
+        width: 8,
+        height: 8,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Animated.View
+        style={{
+          position: "absolute",
+          width: 8,
+          height: 8,
+          borderRadius: 4,
+          backgroundColor: "#FF2D55",
+          transform: [{ scale: pulse }],
+          opacity: opac,
+        }}
+      />
+      <View
+        style={{
+          width: 5,
+          height: 5,
+          borderRadius: 2.5,
+          backgroundColor: "#FF4466",
+        }}
+      />
     </View>
   );
 });
 
-const LiveTimer = React.memo(function LiveTimer({ startTime }: { startTime: number }) {
+const LiveTimer = React.memo(function LiveTimer({
+  startTime,
+}: {
+  startTime: number;
+}) {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
-    const iv = setInterval(() => setElapsed(Math.floor((Date.now() - startTime) / 1000)), 1000);
+    const iv = setInterval(
+      () => setElapsed(Math.floor((Date.now() - startTime) / 1000)),
+      1000,
+    );
     return () => clearInterval(iv);
   }, [startTime]);
-  const m = Math.floor(elapsed / 60), s = elapsed % 60;
-  return <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '600' }}>{String(m).padStart(2, '0')}:{String(s).padStart(2, '0')}</Text>;
+  const m = Math.floor(elapsed / 60),
+    s = elapsed % 60;
+  return (
+    <Text
+      style={{
+        color: "rgba(255,255,255,0.7)",
+        fontSize: 11,
+        fontWeight: "600",
+      }}
+    >
+      {String(m).padStart(2, "0")}:{String(s).padStart(2, "0")}
+    </Text>
+  );
 });
 
-const CountdownTimer = React.memo(function CountdownTimer({ duration, startTime, onExpired }: { duration: number; startTime: number; onExpired: () => void }) {
+const CountdownTimer = React.memo(function CountdownTimer({
+  duration,
+  startTime,
+  onExpired,
+}: {
+  duration: number;
+  startTime: number;
+  onExpired: () => void;
+}) {
   const [remaining, setRemaining] = useState(duration);
   useEffect(() => {
     const iv = setInterval(() => {
-      const rem = Math.max(0, duration - Math.floor((Date.now() - startTime) / 1000));
+      const rem = Math.max(
+        0,
+        duration - Math.floor((Date.now() - startTime) / 1000),
+      );
       setRemaining(rem);
-      if (rem <= 0) { clearInterval(iv); onExpired(); }
+      if (rem <= 0) {
+        clearInterval(iv);
+        onExpired();
+      }
     }, 1000);
     return () => clearInterval(iv);
   }, [duration, startTime]);
-  const m = Math.floor(remaining / 60), secs = remaining % 60;
+  const m = Math.floor(remaining / 60),
+    secs = remaining % 60;
   const isLow = remaining <= 60;
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: isLow ? 'rgba(255,45,85,0.3)' : 'rgba(0,0,0,0.4)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
-      <Ionicons name="timer-outline" size={12} color={isLow ? '#FF4466' : 'rgba(255,255,255,0.6)'} />
-      <Text style={{ color: isLow ? '#FF4466' : 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '700' }}>{String(m).padStart(2, '0')}:{String(secs).padStart(2, '0')}</Text>
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 4,
+        backgroundColor: isLow ? "rgba(255,45,85,0.3)" : "rgba(0,0,0,0.4)",
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+      }}
+    >
+      <Ionicons
+        name="timer-outline"
+        size={12}
+        color={isLow ? "#FF4466" : "rgba(255,255,255,0.6)"}
+      />
+      <Text
+        style={{
+          color: isLow ? "#FF4466" : "rgba(255,255,255,0.7)",
+          fontSize: 11,
+          fontWeight: "700",
+        }}
+      >
+        {String(m).padStart(2, "0")}:{String(secs).padStart(2, "0")}
+      </Text>
     </View>
   );
 });
@@ -129,38 +253,106 @@ const GoLiveGlow = React.memo(function GoLiveGlow() {
   const s2 = useRef(new Animated.Value(1)).current;
   const o2 = useRef(new Animated.Value(0.15)).current;
   useEffect(() => {
-    Animated.loop(Animated.parallel([
-      Animated.sequence([
-        Animated.timing(s1, { toValue: 1.3, duration: 1800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(s1, { toValue: 1, duration: 1800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+    Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(s1, {
+            toValue: 1.3,
+            duration: 1800,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(s1, {
+            toValue: 1,
+            duration: 1800,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(o1, {
+            toValue: 0.05,
+            duration: 1800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(o1, {
+            toValue: 0.3,
+            duration: 1800,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.delay(400),
+          Animated.timing(s2, {
+            toValue: 1.5,
+            duration: 2000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(s2, {
+            toValue: 1,
+            duration: 2000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.delay(400),
+          Animated.timing(o2, {
+            toValue: 0,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(o2, {
+            toValue: 0.15,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+        ]),
       ]),
-      Animated.sequence([
-        Animated.timing(o1, { toValue: 0.05, duration: 1800, useNativeDriver: true }),
-        Animated.timing(o1, { toValue: 0.3, duration: 1800, useNativeDriver: true }),
-      ]),
-      Animated.sequence([
-        Animated.delay(400),
-        Animated.timing(s2, { toValue: 1.5, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(s2, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ]),
-      Animated.sequence([
-        Animated.delay(400),
-        Animated.timing(o2, { toValue: 0, duration: 2000, useNativeDriver: true }),
-        Animated.timing(o2, { toValue: 0.15, duration: 2000, useNativeDriver: true }),
-      ]),
-    ])).start();
+    ).start();
   }, []);
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', width: 88, height: 88, alignItems: 'center', justifyContent: 'center' }}>
-      <Animated.View style={{ position: 'absolute', width: 88, height: 88, borderRadius: 44, backgroundColor: '#FF2D55', transform: [{ scale: s1 }], opacity: o1 }} />
-      <Animated.View style={{ position: 'absolute', width: 88, height: 88, borderRadius: 44, borderWidth: 2, borderColor: '#FF2D55', transform: [{ scale: s2 }], opacity: o2 }} />
+    <View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        width: 88,
+        height: 88,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Animated.View
+        style={{
+          position: "absolute",
+          width: 88,
+          height: 88,
+          borderRadius: 44,
+          backgroundColor: "#FF2D55",
+          transform: [{ scale: s1 }],
+          opacity: o1,
+        }}
+      />
+      <Animated.View
+        style={{
+          position: "absolute",
+          width: 88,
+          height: 88,
+          borderRadius: 44,
+          borderWidth: 2,
+          borderColor: "#FF2D55",
+          transform: [{ scale: s2 }],
+          opacity: o2,
+        }}
+      />
     </View>
   );
 });
 
 function formatViewers(n: number): string {
-  if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'm';
-  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, "") + "m";
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
   return String(n);
 }
 
@@ -181,15 +373,18 @@ export default function BroadcastScreen() {
   const [agoraReady, setAgoraReady] = useState(false);
   const [navigatingToCall, setNavigatingToCall] = useState(false);
   const [localAgoraUid, setLocalAgoraUid] = useState(0);
-  const [liveSocket, setLiveSocket] = useState<ReturnType<typeof io> | null>(null);
+  const [liveSocket, setLiveSocket] = useState<ReturnType<typeof io> | null>(
+    null,
+  );
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
 
   // Controls state
   const [micEnabled, setMicEnabled] = useState(true);
   const [cameraEnabled, setCameraEnabled] = useState(true);
-  const [selectedFilterId, setSelectedFilterId] = useState<LiveFilterId>('natural');
+  const [selectedFilterId, setSelectedFilterId] =
+    useState<LiveFilterId>("natural");
   const [showFilterPanel, setShowFilterPanel] = useState(false);
-  const [facing, setFacing] = useState<'front' | 'back'>('front');
+  const [facing, setFacing] = useState<"front" | "back">("front");
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
   const useExpoCamera = !isAgoraNativeLinked;
@@ -199,30 +394,38 @@ export default function BroadcastScreen() {
   const [showTimerModal, setShowTimerModal] = useState(false);
   const [selectedDuration, setSelectedDuration] = useState(0);
   const [timerExpired, setTimerExpired] = useState(false);
-  const [pendingTalkRequests, setPendingTalkRequests] = useState<Array<{
-    id: string;
-    requesterName?: string;
-    requesterAvatar?: string | null;
-  }>>([]);
-  const [pendingCallRequests, setPendingCallRequests] = useState<Array<{
-    id: string;
-    requesterId?: string;
-    requesterName?: string;
-    requesterAvatar?: string | null;
-    channelName?: string;
-    callType?: 'voice' | 'video';
-    ratePerMin?: number;
-    beansPerMin?: number;
-  }>>([]);
+  const [pendingTalkRequests, setPendingTalkRequests] = useState<
+    Array<{
+      id: string;
+      requesterName?: string;
+      requesterAvatar?: string | null;
+    }>
+  >([]);
+  const [pendingCallRequests, setPendingCallRequests] = useState<
+    Array<{
+      id: string;
+      requesterId?: string;
+      requesterName?: string;
+      requesterAvatar?: string | null;
+      channelName?: string;
+      callType?: "voice" | "video";
+      ratePerMin?: number;
+      beansPerMin?: number;
+    }>
+  >([]);
   const [hostChatBeansEarned, setHostChatBeansEarned] = useState(0);
   const [dailyBeansEarned, setDailyBeansEarned] = useState(0);
   const [activeChatCount, setActiveChatCount] = useState(0);
-  const [privateChats, setPrivateChats] = useState<Array<{
-    talkSessionId: string;
-    talkerId: string;
-    talkerName: string;
-  }>>([]);
-  const [selectedPrivateTalkId, setSelectedPrivateTalkId] = useState<string | null>(null);
+  const [privateChats, setPrivateChats] = useState<
+    Array<{
+      talkSessionId: string;
+      talkerId: string;
+      talkerName: string;
+    }>
+  >([]);
+  const [selectedPrivateTalkId, setSelectedPrivateTalkId] = useState<
+    string | null
+  >(null);
   const [myRates, setMyRates] = useState(() => resolveRates(1, 1));
   const handledTalkRequestIds = useRef<Set<string>>(new Set());
   const promptedTalkRequestIds = useRef<Set<string>>(new Set());
@@ -241,8 +444,18 @@ export default function BroadcastScreen() {
   const slideUp = useRef(new Animated.Value(60)).current;
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(fadeIn, { toValue: 1, duration: 500, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-      Animated.timing(slideUp, { toValue: 0, duration: 500, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(fadeIn, {
+        toValue: 1,
+        duration: 500,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideUp, {
+        toValue: 0,
+        duration: 500,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
     ]).start();
   }, []);
 
@@ -254,15 +467,21 @@ export default function BroadcastScreen() {
 
   useEffect(() => {
     if (token) {
-      apiGet('/api/health', token, 5000).catch(() => {});
-      apiGet<{ profile?: { voiceRatePerMin?: number; chatRatePerMin?: number } }>(
-        '/api/user/profile/full',
-        token,
-      ).then((res) => {
-        if (res.profile) {
-          setMyRates(resolveRates(res.profile.voiceRatePerMin, res.profile.chatRatePerMin));
-        }
-      }).catch(() => {});
+      apiGet("/api/health", token, 5000).catch(() => {});
+      apiGet<{
+        profile?: { voiceRatePerMin?: number; chatRatePerMin?: number };
+      }>("/api/user/profile/full", token)
+        .then((res) => {
+          if (res.profile) {
+            setMyRates(
+              resolveRates(
+                res.profile.voiceRatePerMin,
+                res.profile.chatRatePerMin,
+              ),
+            );
+          }
+        })
+        .catch(() => {});
     }
   }, [token]);
 
@@ -286,217 +505,284 @@ export default function BroadcastScreen() {
     };
   }, []);
 
-  const handleTalkRequestAction = useCallback(async (
-    requestId: string,
-    action: 'accept' | 'reject',
-  ) => {
-    if (!token) return;
-    try {
-      await respondLiveTalk(token, requestId, action);
-      handledTalkRequestIds.current.add(requestId);
-      promptedTalkRequestIds.current.add(requestId);
-      setPendingTalkRequests((prev) => prev.filter((r) => r.id !== requestId));
-      if (action === 'accept') {
-        appAlert('Request Accepted', 'A private 1-on-1 chat room will open once billing starts. Only you and this viewer can access it.');
+  const handleTalkRequestAction = useCallback(
+    async (requestId: string, action: "accept" | "reject") => {
+      if (!token) return;
+      try {
+        await respondLiveTalk(token, requestId, action);
+        handledTalkRequestIds.current.add(requestId);
+        promptedTalkRequestIds.current.add(requestId);
+        setPendingTalkRequests((prev) =>
+          prev.filter((r) => r.id !== requestId),
+        );
+        if (action === "accept") {
+          appAlert(
+            "Request Accepted",
+            "A private 1-on-1 chat room will open once billing starts. Only you and this viewer can access it.",
+          );
+        }
+      } catch (e) {
+        appAlert(
+          "Error",
+          e instanceof ApiError ? e.message : `Could not ${action} request`,
+        );
       }
-    } catch (e) {
-      appAlert('Error', e instanceof ApiError ? e.message : `Could not ${action} request`);
-    }
-  }, [token]);
+    },
+    [token],
+  );
 
-  const joinAcceptedCallAsHost = useCallback(async (data: {
-    channelName?: string;
-    requesterId?: string;
-    requesterName?: string;
-    requesterAvatar?: string | null;
-    ratePerMin?: number;
-    beansPerMin?: number;
-    callType?: 'voice' | 'video';
-  }) => {
-    const channelName = data?.channelName;
-    if (!channelName || !data?.requesterId || joiningCallRef.current) {
-      return;
-    }
-    joiningCallRef.current = true;
-    setNavigatingToCall(true);
-
-    try {
-      const eng = engineRef.current;
-      engineRef.current = null;
-      setAgoraReady(false);
-
-      // prepareAgoraCallHandoff handles audio reset + engine teardown internally
-      const prepared = await prepareAgoraCallHandoff(eng, channelName);
-      if (!prepared && hasNavigatedToCallChannel(channelName)) {
-        // Already navigated — avoid double push
-        joiningCallRef.current = false;
+  const joinAcceptedCallAsHost = useCallback(
+    async (data: {
+      channelName?: string;
+      requesterId?: string;
+      requesterName?: string;
+      requesterAvatar?: string | null;
+      ratePerMin?: number;
+      beansPerMin?: number;
+      callType?: "voice" | "video";
+    }) => {
+      const channelName = data?.channelName;
+      if (!channelName || !data?.requesterId || joiningCallRef.current) {
         return;
       }
+      joiningCallRef.current = true;
+      setNavigatingToCall(true);
 
-      router.replace({
-        pathname: '/call',
-        params: {
-          channel: channelName,
-          role: 'callee',
-          peerId: String(data.requesterId),
-          peerName: data.requesterName || 'Viewer',
-          peerAvatar: data.requesterAvatar || '',
-          ratePerMin: data.ratePerMin != null ? String(data.ratePerMin) : String(data.callType === 'video' ? myRates.videoRatePerMin : myRates.voiceRatePerMin),
-          beansPerMin: data.beansPerMin != null ? String(data.beansPerMin) : String(data.callType === 'video' ? myRates.videoBeansPerMin : myRates.voiceBeansPerMin),
-          callMode: data.callType === 'video' ? 'video' : 'voice',
-          fromLive: '1',
-          accepted: '1',
-          sessionId: sessionId || '',
-        },
-      } as any);
-    } catch (e) {
-      console.error('[Broadcast] joinAcceptedCallAsHost error:', e);
-      setNavigatingToCall(false);
-      joiningCallRef.current = false;
-      appAlert('Call Error', 'Could not switch to private call. Please try again.');
-    } finally {
-      joiningCallRef.current = false;
-    }
-  }, [router, myRates, sessionId]);
+      try {
+        const eng = engineRef.current;
+        engineRef.current = null;
+        setAgoraReady(false);
 
-  const handleCallRequestAction = useCallback(async (
-    requestId: string,
-    action: 'accept' | 'reject',
-    meta?: {
+        // prepareAgoraCallHandoff handles audio reset + engine teardown internally
+        const prepared = await prepareAgoraCallHandoff(eng, channelName);
+        if (!prepared && hasNavigatedToCallChannel(channelName)) {
+          // Already navigated — avoid double push
+          joiningCallRef.current = false;
+          return;
+        }
+
+        router.replace({
+          pathname: "/call",
+          params: {
+            channel: channelName,
+            role: "callee",
+            peerId: String(data.requesterId),
+            peerName: data.requesterName || "Viewer",
+            peerAvatar: data.requesterAvatar || "",
+            ratePerMin:
+              data.ratePerMin != null
+                ? String(data.ratePerMin)
+                : String(
+                    data.callType === "video"
+                      ? myRates.videoRatePerMin
+                      : myRates.voiceRatePerMin,
+                  ),
+            beansPerMin:
+              data.beansPerMin != null
+                ? String(data.beansPerMin)
+                : String(
+                    data.callType === "video"
+                      ? myRates.videoBeansPerMin
+                      : myRates.voiceBeansPerMin,
+                  ),
+            callMode: data.callType === "video" ? "video" : "voice",
+            fromLive: "1",
+            accepted: "1",
+            sessionId: sessionId || "",
+          },
+        } as any);
+      } catch (e) {
+        console.error("[Broadcast] joinAcceptedCallAsHost error:", e);
+        setNavigatingToCall(false);
+        joiningCallRef.current = false;
+        appAlert(
+          "Call Error",
+          "Could not switch to private call. Please try again.",
+        );
+      } finally {
+        joiningCallRef.current = false;
+      }
+    },
+    [router, myRates, sessionId],
+  );
+
+  const handleCallRequestAction = useCallback(
+    async (
+      requestId: string,
+      action: "accept" | "reject",
+      meta?: {
+        requesterId?: string;
+        requesterName?: string;
+        requesterAvatar?: string | null;
+        channelName?: string;
+        callType?: "voice" | "video";
+        ratePerMin?: number;
+        beansPerMin?: number;
+      },
+    ) => {
+      if (!token) return;
+      if (action === "accept") {
+        handledCallRequestIds.current.add(requestId);
+        promptedCallRequestIds.current.add(requestId);
+      }
+      try {
+        const res = await respondLiveCall(token, requestId, action);
+        handledCallRequestIds.current.add(requestId);
+        promptedCallRequestIds.current.add(requestId);
+        setPendingCallRequests((prev) =>
+          prev.filter((r) => r.id !== requestId),
+        );
+        if (action === "accept") {
+          void joinAcceptedCallAsHost({
+            channelName: res.channelName || meta?.channelName,
+            requesterId: res.requesterId || meta?.requesterId,
+            requesterName: res.requesterName || meta?.requesterName,
+            requesterAvatar: meta?.requesterAvatar,
+            callType: res.callType || meta?.callType,
+            ratePerMin: res.ratePerMin ?? meta?.ratePerMin,
+            beansPerMin: res.beansPerMin ?? meta?.beansPerMin,
+          });
+        }
+      } catch (e) {
+        appAlert(
+          "Error",
+          e instanceof ApiError
+            ? e.message
+            : `Could not ${action} call request`,
+        );
+      }
+    },
+    [token, joinAcceptedCallAsHost],
+  );
+
+  const promptCallRequest = useCallback(
+    (data: {
+      requestId?: string;
       requesterId?: string;
       requesterName?: string;
       requesterAvatar?: string | null;
       channelName?: string;
-      callType?: 'voice' | 'video';
+      callType?: "voice" | "video";
       ratePerMin?: number;
       beansPerMin?: number;
-    },
-  ) => {
-    if (!token) return;
-    if (action === 'accept') {
-      handledCallRequestIds.current.add(requestId);
-      promptedCallRequestIds.current.add(requestId);
-    }
-    try {
-      const res = await respondLiveCall(token, requestId, action);
-      handledCallRequestIds.current.add(requestId);
-      promptedCallRequestIds.current.add(requestId);
-      setPendingCallRequests((prev) => prev.filter((r) => r.id !== requestId));
-      if (action === 'accept') {
-        void joinAcceptedCallAsHost({
-          channelName: res.channelName || meta?.channelName,
-          requesterId: res.requesterId || meta?.requesterId,
-          requesterName: res.requesterName || meta?.requesterName,
-          requesterAvatar: meta?.requesterAvatar,
-          callType: res.callType || meta?.callType,
-          ratePerMin: res.ratePerMin ?? meta?.ratePerMin,
-          beansPerMin: res.beansPerMin ?? meta?.beansPerMin,
-        });
-      }
-    } catch (e) {
-      appAlert('Error', e instanceof ApiError ? e.message : `Could not ${action} call request`);
-    }
-  }, [token, joinAcceptedCallAsHost]);
-
-  const promptCallRequest = useCallback((data: {
-    requestId?: string;
-    requesterId?: string;
-    requesterName?: string;
-    requesterAvatar?: string | null;
-    channelName?: string;
-    callType?: 'voice' | 'video';
-    ratePerMin?: number;
-    beansPerMin?: number;
-  }) => {
-    if (!data?.requestId || handledCallRequestIds.current.has(data.requestId)) return;
-    if (promptedCallRequestIds.current.has(data.requestId)) return;
-    promptedCallRequestIds.current.add(data.requestId);
-    const isVideo = data.callType === 'video';
-    const rate = data.ratePerMin || (isVideo ? myRates.videoRatePerMin : myRates.voiceRatePerMin);
-    const beans = data.beansPerMin || (isVideo ? myRates.videoBeansPerMin : myRates.voiceBeansPerMin);
-    setPendingCallRequests((prev) => {
-      if (prev.some((r) => r.id === data.requestId)) return prev;
-      return [...prev, {
-        id: data.requestId!,
-        requesterId: data.requesterId,
-        requesterName: data.requesterName,
-        requesterAvatar: data.requesterAvatar,
-        channelName: data.channelName,
-        callType: data.callType,
-        ratePerMin: data.ratePerMin,
-        beansPerMin: data.beansPerMin,
-      }];
-    });
-    appAlert(
-      isVideo ? 'Video Call Request' : 'Voice Call Request',
-      `${data.requesterName || 'A viewer'} wants a private ${isVideo ? 'video' : 'voice'} call.\n\nViewer pays ₹${rate}/min from wallet.\nYou earn ${beans} beans/min.`,
-      [
-        {
-          text: 'Decline',
-          style: 'cancel',
-          onPress: () => void handleCallRequestAction(data.requestId!, 'reject', data),
-        },
-        {
-          text: 'Accept',
-          onPress: () => void handleCallRequestAction(data.requestId!, 'accept', data),
-        },
-      ],
-    );
-  }, [handleCallRequestAction, myRates]);
-
-  const promptTalkRequest = useCallback((data: {
-    requestId?: string;
-    requesterName?: string;
-    requesterAvatar?: string | null;
-    ratePerMin?: number;
-    beansPerMin?: number;
-  }) => {
-    if (!data?.requestId || handledTalkRequestIds.current.has(data.requestId)) return;
-    if (promptedTalkRequestIds.current.has(data.requestId)) return;
-    promptedTalkRequestIds.current.add(data.requestId);
-    const rate = data.ratePerMin || myRates.chatRatePerMin;
-    const beans = data.beansPerMin || myRates.chatBeansPerMin;
-    setPendingTalkRequests((prev) => {
-      if (prev.some((r) => r.id === data.requestId)) return prev;
-      return [...prev, {
-        id: data.requestId!,
-        requesterName: data.requesterName,
-        requesterAvatar: data.requesterAvatar,
-      }];
-    });
-    appAlert(
-      'Talk Request',
-      `${data.requesterName || 'A viewer'} wants to chat with you on live.\n\nViewer pays ₹${rate}/min from wallet.\nYou earn ${beans} beans/min.`,
-      [
-        {
-          text: 'Decline',
-          style: 'cancel',
-          onPress: () => void handleTalkRequestAction(data.requestId!, 'reject'),
-        },
-        {
-          text: 'Accept',
-          onPress: () => void handleTalkRequestAction(data.requestId!, 'accept'),
-        },
-      ],
-    );
-  }, [handleTalkRequestAction, myRates]);
-
-  const exitHostPrivateChat = useCallback(async (talkSessionId: string) => {
-    setSelectedPrivateTalkId(null);
-    if (!token || !sessionId) {
-      setPrivateChats((prev) => prev.filter((p) => p.talkSessionId !== talkSessionId));
-      return;
-    }
-    try {
-      await endLiveTalkBilling(token, {
-        sessionId: String(sessionId),
-        talkSessionId,
+    }) => {
+      if (!data?.requestId || handledCallRequestIds.current.has(data.requestId))
+        return;
+      if (promptedCallRequestIds.current.has(data.requestId)) return;
+      promptedCallRequestIds.current.add(data.requestId);
+      const isVideo = data.callType === "video";
+      const rate =
+        data.ratePerMin ||
+        (isVideo ? myRates.videoRatePerMin : myRates.voiceRatePerMin);
+      const beans =
+        data.beansPerMin ||
+        (isVideo ? myRates.videoBeansPerMin : myRates.voiceBeansPerMin);
+      setPendingCallRequests((prev) => {
+        if (prev.some((r) => r.id === data.requestId)) return prev;
+        return [
+          ...prev,
+          {
+            id: data.requestId!,
+            requesterId: data.requesterId,
+            requesterName: data.requesterName,
+            requesterAvatar: data.requesterAvatar,
+            channelName: data.channelName,
+            callType: data.callType,
+            ratePerMin: data.ratePerMin,
+            beansPerMin: data.beansPerMin,
+          },
+        ];
       });
-    } catch {
-      // non-fatal — socket event will still sync if server ended session
-    }
-    setPrivateChats((prev) => prev.filter((p) => p.talkSessionId !== talkSessionId));
-  }, [token, sessionId]);
+      appAlert(
+        isVideo ? "Video Call Request" : "Voice Call Request",
+        `${data.requesterName || "A viewer"} wants a private ${isVideo ? "video" : "voice"} call.\n\nViewer pays ₹${rate}/min from wallet.\nYou earn ${beans} beans/min.`,
+        [
+          {
+            text: "Decline",
+            style: "cancel",
+            onPress: () =>
+              void handleCallRequestAction(data.requestId!, "reject", data),
+          },
+          {
+            text: "Accept",
+            onPress: () =>
+              void handleCallRequestAction(data.requestId!, "accept", data),
+          },
+        ],
+      );
+    },
+    [handleCallRequestAction, myRates],
+  );
+
+  const promptTalkRequest = useCallback(
+    (data: {
+      requestId?: string;
+      requesterName?: string;
+      requesterAvatar?: string | null;
+      ratePerMin?: number;
+      beansPerMin?: number;
+    }) => {
+      if (!data?.requestId || handledTalkRequestIds.current.has(data.requestId))
+        return;
+      if (promptedTalkRequestIds.current.has(data.requestId)) return;
+      promptedTalkRequestIds.current.add(data.requestId);
+      const rate = data.ratePerMin || myRates.chatRatePerMin;
+      const beans = data.beansPerMin || myRates.chatBeansPerMin;
+      setPendingTalkRequests((prev) => {
+        if (prev.some((r) => r.id === data.requestId)) return prev;
+        return [
+          ...prev,
+          {
+            id: data.requestId!,
+            requesterName: data.requesterName,
+            requesterAvatar: data.requesterAvatar,
+          },
+        ];
+      });
+      appAlert(
+        "Talk Request",
+        `${data.requesterName || "A viewer"} wants to chat with you on live.\n\nViewer pays ₹${rate}/min from wallet.\nYou earn ${beans} beans/min.`,
+        [
+          {
+            text: "Decline",
+            style: "cancel",
+            onPress: () =>
+              void handleTalkRequestAction(data.requestId!, "reject"),
+          },
+          {
+            text: "Accept",
+            onPress: () =>
+              void handleTalkRequestAction(data.requestId!, "accept"),
+          },
+        ],
+      );
+    },
+    [handleTalkRequestAction, myRates],
+  );
+
+  const exitHostPrivateChat = useCallback(
+    async (talkSessionId: string) => {
+      setSelectedPrivateTalkId(null);
+      if (!token || !sessionId) {
+        setPrivateChats((prev) =>
+          prev.filter((p) => p.talkSessionId !== talkSessionId),
+        );
+        return;
+      }
+      try {
+        await endLiveTalkBilling(token, {
+          sessionId: String(sessionId),
+          talkSessionId,
+        });
+      } catch {
+        // non-fatal — socket event will still sync if server ended session
+      }
+      setPrivateChats((prev) =>
+        prev.filter((p) => p.talkSessionId !== talkSessionId),
+      );
+    },
+    [token, sessionId],
+  );
 
   useEffect(() => {
     if (!isLive || !sessionId || !token) return;
@@ -506,11 +792,13 @@ export default function BroadcastScreen() {
         if (status.hostChatEarnings) {
           setHostChatBeansEarned(status.hostChatEarnings.sessionBeansEarned);
           setActiveChatCount(status.hostChatEarnings.activeChats);
-          const actives = (status.hostChatEarnings.activeViewers || []).map((v) => ({
-            talkSessionId: v.talkSessionId,
-            talkerId: (v as { talkerId?: string }).talkerId || '',
-            talkerName: v.requesterName || 'Viewer',
-          }));
+          const actives = (status.hostChatEarnings.activeViewers || []).map(
+            (v) => ({
+              talkSessionId: v.talkSessionId,
+              talkerId: (v as { talkerId?: string }).talkerId || "",
+              talkerName: v.requesterName || "Viewer",
+            }),
+          );
           if (actives.length) {
             setPrivateChats((prev) => {
               const merged = [...prev];
@@ -521,17 +809,24 @@ export default function BroadcastScreen() {
               }
               return merged;
             });
-            setSelectedPrivateTalkId((cur) => cur || actives[0]?.talkSessionId || null);
+            setSelectedPrivateTalkId(
+              (cur) => cur || actives[0]?.talkSessionId || null,
+            );
           }
         }
         const pending = status.pendingRequests || [];
-        setPendingTalkRequests(pending.map((r) => ({
-          id: r.id,
-          requesterName: r.requesterName,
-          requesterAvatar: r.requesterAvatar,
-        })));
+        setPendingTalkRequests(
+          pending.map((r) => ({
+            id: r.id,
+            requesterName: r.requesterName,
+            requesterAvatar: r.requesterAvatar,
+          })),
+        );
         pending.forEach((r) => {
-          if (!promptedTalkRequestIds.current.has(r.id) && !handledTalkRequestIds.current.has(r.id)) {
+          if (
+            !promptedTalkRequestIds.current.has(r.id) &&
+            !handledTalkRequestIds.current.has(r.id)
+          ) {
             promptTalkRequest({
               requestId: r.id,
               requesterName: r.requesterName,
@@ -543,18 +838,23 @@ export default function BroadcastScreen() {
 
         const callStatus = await getLiveCallStatus(token, sessionId);
         const pendingCalls = callStatus.pendingRequests || [];
-        setPendingCallRequests(pendingCalls.map((r) => ({
-          id: r.id,
-          requesterId: r.requesterId,
-          requesterName: r.requesterName,
-          requesterAvatar: r.requesterAvatar,
-          channelName: r.channelName,
-          callType: r.callType,
-          ratePerMin: r.ratePerMin ?? callStatus.ratePerMin,
-          beansPerMin: r.beansPerMin ?? callStatus.beansPerMin,
-        })));
+        setPendingCallRequests(
+          pendingCalls.map((r) => ({
+            id: r.id,
+            requesterId: r.requesterId,
+            requesterName: r.requesterName,
+            requesterAvatar: r.requesterAvatar,
+            channelName: r.channelName,
+            callType: r.callType,
+            ratePerMin: r.ratePerMin ?? callStatus.ratePerMin,
+            beansPerMin: r.beansPerMin ?? callStatus.beansPerMin,
+          })),
+        );
         pendingCalls.forEach((r) => {
-          if (!promptedCallRequestIds.current.has(r.id) && !handledCallRequestIds.current.has(r.id)) {
+          if (
+            !promptedCallRequestIds.current.has(r.id) &&
+            !handledCallRequestIds.current.has(r.id)
+          ) {
             promptCallRequest({
               requestId: r.id,
               requesterId: r.requesterId,
@@ -572,21 +872,23 @@ export default function BroadcastScreen() {
       }
     };
     void refreshPendingTalkRequests();
-    const interval = setInterval(() => { void refreshPendingTalkRequests(); }, 5000);
+    const interval = setInterval(() => {
+      void refreshPendingTalkRequests();
+    }, 5000);
     return () => clearInterval(interval);
   }, [isLive, sessionId, token, promptTalkRequest, promptCallRequest]);
 
   // Socket for viewer count
   useEffect(() => {
     if (!isLive || !sessionId || !API_URL) return;
-    const s = io(API_URL, { transports: ['websocket'], auth: { token } });
-    s.on('connect', () => {
-      console.log('[Broadcast] viewer socket connected, joining live');
+    const s = io(API_URL, { transports: ["websocket"], auth: { token } });
+    s.on("connect", () => {
+      console.log("[Broadcast] viewer socket connected, joining live");
       if (user?.id) {
-        s.emit('join_user', { userId: user.id });
-        s.emit('app_presence', { category: 'live' });
+        s.emit("join_user", { userId: user.id });
+        s.emit("app_presence", { category: "live" });
       }
-      s.emit('join_live', {
+      s.emit("join_live", {
         sessionId: String(sessionId),
         userId: user?.id,
         username: user?.username,
@@ -594,134 +896,198 @@ export default function BroadcastScreen() {
     });
     const presenceHeartbeat = setInterval(() => {
       if (s.connected) {
-        s.emit('presence_heartbeat', { category: 'live', foreground: true });
+        s.emit("presence_heartbeat", { category: "live", foreground: true });
       }
     }, 25000);
-    s.on('viewer_count_update', (d: { count: number }) => setViewerCount(Math.max(0, d.count - 1)));
+    s.on("viewer_count_update", (d: { count: number }) =>
+      setViewerCount(Math.max(0, d.count - 1)),
+    );
 
-    s.on('live_talk_incoming', (data: {
-      requestId?: string;
-      requesterName?: string;
-      requesterAvatar?: string | null;
-      ratePerMin?: number;
-    }) => {
-      promptTalkRequest(data);
-    });
-    s.on('live_call_incoming', (data: {
-      requestId?: string;
-      requesterId?: string;
-      requesterName?: string;
-      requesterAvatar?: string | null;
-      channelName?: string;
-      callType?: 'voice' | 'video';
-      ratePerMin?: number;
-      beansPerMin?: number;
-    }) => {
-      promptCallRequest(data);
-    });
-    s.on('live_call_accepted', (data: {
-      requestId?: string;
-      channelName?: string;
-      requesterId?: string;
-      requesterName?: string;
-      requesterAvatar?: string | null;
-      callType?: 'voice' | 'video';
-      ratePerMin?: number;
-      beansPerMin?: number;
-      role?: string;
-    }) => {
-      if (data?.role !== 'callee') return;
-      if (data?.requestId && handledCallRequestIds.current.has(data.requestId)) return;
-      void joinAcceptedCallAsHost(data);
-    });
-    s.on('talk_private_ready', (data: {
-      talkSessionId?: string;
-      talkerId?: string;
-      talkerName?: string;
-    }) => {
-      if (!data?.talkSessionId) return;
-      setPrivateChats((prev) => {
-        if (prev.some((p) => p.talkSessionId === data.talkSessionId)) return prev;
-        return [...prev, {
-          talkSessionId: data.talkSessionId!,
-          talkerId: data.talkerId || '',
-          talkerName: data.talkerName || 'Viewer',
-        }];
-      });
-      setActiveChatCount((c) => c + 1);
-    });
-    s.on('talk_private_ended', (data: { talkSessionId?: string }) => {
-      if (!data?.talkSessionId) return;
-      setPrivateChats((prev) => prev.filter((p) => p.talkSessionId !== data.talkSessionId));
-      setSelectedPrivateTalkId((cur) => (cur === data.talkSessionId ? null : cur));
-      setActiveChatCount((c) => Math.max(0, c - 1));
-    });
-    s.on('live_talk_host_earning', (data: { sessionBeansEarned?: number; beansEarned?: number }) => {
-      if (typeof data?.sessionBeansEarned === 'number') {
-        setHostChatBeansEarned(data.sessionBeansEarned);
-      } else if (typeof data?.beansEarned === 'number') {
-        setHostChatBeansEarned((prev) => prev + data.beansEarned!);
-      }
-    });
-    s.on('bean_update', (data: { beans?: number }) => {
-      if (typeof data?.beans === 'number') {
+    s.on(
+      "live_talk_incoming",
+      (data: {
+        requestId?: string;
+        requesterName?: string;
+        requesterAvatar?: string | null;
+        ratePerMin?: number;
+      }) => {
+        promptTalkRequest(data);
+      },
+    );
+    s.on(
+      "live_call_incoming",
+      (data: {
+        requestId?: string;
+        requesterId?: string;
+        requesterName?: string;
+        requesterAvatar?: string | null;
+        channelName?: string;
+        callType?: "voice" | "video";
+        ratePerMin?: number;
+        beansPerMin?: number;
+      }) => {
+        promptCallRequest(data);
+      },
+    );
+    s.on(
+      "live_call_accepted",
+      (data: {
+        requestId?: string;
+        channelName?: string;
+        requesterId?: string;
+        requesterName?: string;
+        requesterAvatar?: string | null;
+        callType?: "voice" | "video";
+        ratePerMin?: number;
+        beansPerMin?: number;
+        role?: string;
+      }) => {
+        if (data?.role !== "callee") return;
+        if (
+          data?.requestId &&
+          handledCallRequestIds.current.has(data.requestId)
+        )
+          return;
+        void joinAcceptedCallAsHost(data);
+      },
+    );
+    s.on(
+      "talk_private_ready",
+      (data: {
+        talkSessionId?: string;
+        talkerId?: string;
+        talkerName?: string;
+      }) => {
+        if (!data?.talkSessionId) return;
+        setPrivateChats((prev) => {
+          if (prev.some((p) => p.talkSessionId === data.talkSessionId))
+            return prev;
+          return [
+            ...prev,
+            {
+              talkSessionId: data.talkSessionId!,
+              talkerId: data.talkerId || "",
+              talkerName: data.talkerName || "Viewer",
+            },
+          ];
+        });
+        setActiveChatCount((c) => c + 1);
+      },
+    );
+    s.on(
+      "talk_private_ended",
+      (data: { talkSessionId?: string; beansEarned?: number }) => {
+        if (!data?.talkSessionId) return;
+        setPrivateChats((prev) =>
+          prev.filter((p) => p.talkSessionId !== data.talkSessionId),
+        );
+        setSelectedPrivateTalkId((cur) =>
+          cur === data.talkSessionId ? null : cur,
+        );
+        setActiveChatCount((c) => Math.max(0, c - 1));
+        if (typeof data?.beansEarned === "number" && data.beansEarned > 0) {
+          appAlert(
+            "Earnings Update",
+            `You earned ${data.beansEarned} beans from this chat session.`,
+            [{ text: "OK" }],
+          );
+        }
+      },
+    );
+    s.on(
+      "live_talk_host_earning",
+      (data: { sessionBeansEarned?: number; beansEarned?: number }) => {
+        if (typeof data?.sessionBeansEarned === "number") {
+          setHostChatBeansEarned(data.sessionBeansEarned);
+        } else if (typeof data?.beansEarned === "number") {
+          setHostChatBeansEarned((prev) => prev + data.beansEarned!);
+        }
+      },
+    );
+    s.on("bean_update", (data: { beans?: number }) => {
+      if (typeof data?.beans === "number") {
         updateUser({ beans: data.beans });
       }
     });
-    s.on('diamond_update', (data: { diamonds?: number }) => {
-      if (typeof data?.diamonds === 'number') {
+    s.on("diamond_update", (data: { diamonds?: number }) => {
+      if (typeof data?.diamonds === "number") {
         updateUser({ diamonds: data.diamonds });
       }
     });
-    s.on('stream_ended', async (data: { message?: string }) => {
+    s.on("stream_ended", async (data: { message?: string }) => {
       setIsLive(false);
       if (engineRef.current) {
         const eng = engineRef.current;
         engineRef.current = null;
         eng.leaveChannel();
-        setTimeout(() => { try { eng.release(); } catch {} }, 300);
+        setTimeout(() => {
+          try {
+            eng.release();
+          } catch {}
+        }, 300);
       }
       if (sessionId) {
-        try { await apiPost(`/api/live/end/${sessionId}`, {}, token); } catch { }
+        try {
+          await apiPost(`/api/live/end/${sessionId}`, {}, token);
+        } catch {}
       }
       appAlert(
-        'Stream Ended',
-        data?.message || 'Your live stream was ended by a moderator.',
-        [{ text: 'OK', onPress: () => router.replace('/(tabs)/home') }],
+        "Stream Ended",
+        data?.message || "Your live stream was ended by a moderator.",
+        [{ text: "OK", onPress: () => router.replace("/(tabs)/home") }],
       );
     });
     socketRef.current = s;
     setLiveSocket(s);
     return () => {
       clearInterval(presenceHeartbeat);
-      try { s.emit('leave_live', { sessionId }); } catch {}
+      try {
+        s.emit("leave_live", { sessionId });
+      } catch {}
       s.disconnect();
       socketRef.current = null;
       setLiveSocket(null);
     };
-  }, [isLive, sessionId, user?.id, user?.username, token, router, promptTalkRequest, promptCallRequest, joinAcceptedCallAsHost, updateUser]);
+  }, [
+    isLive,
+    sessionId,
+    user?.id,
+    user?.username,
+    token,
+    router,
+    promptTalkRequest,
+    promptCallRequest,
+    joinAcceptedCallAsHost,
+    updateUser,
+  ]);
 
   const handleTimerExpired = useCallback(() => {
     if (timerExpired) return;
     setTimerExpired(true);
-    appAlert('Time Up!', 'Your stream duration has ended.', [{
-      text: 'OK', onPress: async () => {
-        if (sessionId) {
-          try { await apiPost(`/api/live/end/${sessionId}`, {}, token); } catch { }
-          setIsLive(false); router.replace('/(tabs)/home');
-        }
-      }
-    }]);
+    appAlert("Time Up!", "Your stream duration has ended.", [
+      {
+        text: "OK",
+        onPress: async () => {
+          if (sessionId) {
+            try {
+              await apiPost(`/api/live/end/${sessionId}`, {}, token);
+            } catch {}
+            setIsLive(false);
+            router.replace("/(tabs)/home");
+          }
+        },
+      },
+    ]);
   }, [sessionId, token, router, timerExpired]);
 
   const toggleCamera = useCallback(() => {
     if (!useExpoCamera) {
       engineRef.current?.switchCamera();
     }
-    setFacing(c => c === 'back' ? 'front' : 'back');
+    setFacing((c) => (c === "back" ? "front" : "back"));
   }, [useExpoCamera]);
   const toggleMic = useCallback(() => {
-    setMicEnabled(prev => {
+    setMicEnabled((prev) => {
       const nextOn = !prev;
       if (nextOn) {
         configurePublisherAudio(engineRef.current);
@@ -732,8 +1098,11 @@ export default function BroadcastScreen() {
     });
   }, []);
   const toggleCameraOnOff = useCallback(() => {
-    setCameraEnabled(prev => {
-      if (engineRef.current && typeof engineRef.current.muteLocalVideoStream === 'function') {
+    setCameraEnabled((prev) => {
+      if (
+        engineRef.current &&
+        typeof engineRef.current.muteLocalVideoStream === "function"
+      ) {
         engineRef.current.muteLocalVideoStream(prev); // prev is current, muting it
       }
       return !prev;
@@ -756,81 +1125,102 @@ export default function BroadcastScreen() {
   const requestPermissions = async () => {
     const perms = await ensureRtcPermissions();
     if (!perms.mic) {
-      appAlert('Microphone Required', 'Allow microphone so viewers can hear you on live.');
+      appAlert(
+        "Microphone Required",
+        "Allow microphone so viewers can hear you on live.",
+      );
     }
     return perms;
   };
 
-  const initBroadcastMedia = useCallback(async (
-    channelName: string,
-    agoraToken: string,
-    appId: string,
-    hostUid: number,
-  ) => {
-    if (isAgoraNativeLinked) {
-      const engine = createAgoraRtcEngine();
-      engine.initialize({
-        appId,
-        channelProfile: ChannelProfileType.ChannelProfileLiveBroadcasting,
-      });
-      engine.registerEventHandler({
-        onJoinChannelSuccess: () => {
-          configurePublisherAudio(engine);
-          setAgoraReady(true);
-          console.log('[Broadcast] Host joined Agora channel');
-        },
-        onError: (err: unknown, msg: unknown) => { console.error('[Broadcast] Agora error:', err, msg); },
-      });
-      engine.setClientRole(ClientRoleType.ClientRoleBroadcaster);
-      engine.enableVideo();
-      engine.enableAudio();
+  const initBroadcastMedia = useCallback(
+    async (
+      channelName: string,
+      agoraToken: string,
+      appId: string,
+      hostUid: number,
+    ) => {
+      if (isAgoraNativeLinked) {
+        const engine = createAgoraRtcEngine();
+        engine.initialize({
+          appId,
+          channelProfile: ChannelProfileType.ChannelProfileLiveBroadcasting,
+        });
+        engine.registerEventHandler({
+          onJoinChannelSuccess: () => {
+            configurePublisherAudio(engine);
+            setAgoraReady(true);
+            console.log("[Broadcast] Host joined Agora channel");
+          },
+          onError: (err: unknown, msg: unknown) => {
+            console.error("[Broadcast] Agora error:", err, msg);
+          },
+        });
+        engine.setClientRole(ClientRoleType.ClientRoleBroadcaster);
+        engine.enableVideo();
+        engine.enableAudio();
 
-      applyLiveFilterToEngine(engine, getLiveFilterPreset(selectedFilterId));
+        applyLiveFilterToEngine(engine, getLiveFilterPreset(selectedFilterId));
 
-      engine.startPreview();
+        engine.startPreview();
 
-      const numericUid = typeof hostUid === 'number' ? hostUid : toAgoraUid(user?.id);
-      setLocalAgoraUid(numericUid);
-      engine.joinChannel(agoraToken, channelName, numericUid, {
-        clientRoleType: ClientRoleType.ClientRoleBroadcaster,
-        publishMicrophoneTrack: true,
-        publishCameraTrack: true,
-        autoSubscribeAudio: true,
-        autoSubscribeVideo: true,
-      });
-      configurePublisherAudio(engine);
-      engineRef.current = engine;
-      trackAgoraEngine(engine);
+        const numericUid =
+          typeof hostUid === "number" ? hostUid : toAgoraUid(user?.id);
+        setLocalAgoraUid(numericUid);
+        engine.joinChannel(agoraToken, channelName, numericUid, {
+          clientRoleType: ClientRoleType.ClientRoleBroadcaster,
+          publishMicrophoneTrack: true,
+          publishCameraTrack: true,
+          autoSubscribeAudio: true,
+          autoSubscribeVideo: true,
+        });
+        configurePublisherAudio(engine);
+        engineRef.current = engine;
+        trackAgoraEngine(engine);
 
-      if (!micEnabled && typeof engine.muteLocalAudioStream === 'function') {
-        engine.muteLocalAudioStream(true);
+        if (!micEnabled && typeof engine.muteLocalAudioStream === "function") {
+          engine.muteLocalAudioStream(true);
+        }
+        if (
+          !cameraEnabled &&
+          typeof engine.muteLocalVideoStream === "function"
+        ) {
+          engine.muteLocalVideoStream(true);
+        }
+
+        return;
       }
-      if (!cameraEnabled && typeof engine.muteLocalVideoStream === 'function') {
-        engine.muteLocalVideoStream(true);
+
+      let camGranted = cameraPermission?.granted;
+      if (!camGranted) {
+        const cam = await requestCameraPermission();
+        camGranted = cam.granted;
       }
-
-      return;
-    }
-
-    let camGranted = cameraPermission?.granted;
-    if (!camGranted) {
-      const cam = await requestCameraPermission();
-      camGranted = cam.granted;
-    }
-    if (!camGranted) {
-      appAlert(
-        'Camera Permission',
-        'Camera access is needed for live preview. You can still go live — viewers will see your profile until camera is allowed.',
-      );
-    }
-    if (!micPermission?.granted) {
-      await requestMicPermission();
-    }
-    setAgoraReady(false);
-  }, [user?.id, cameraPermission, micPermission, requestCameraPermission, requestMicPermission, micEnabled, cameraEnabled, selectedFilterId]);
+      if (!camGranted) {
+        appAlert(
+          "Camera Permission",
+          "Camera access is needed for live preview. You can still go live — viewers will see your profile until camera is allowed.",
+        );
+      }
+      if (!micPermission?.granted) {
+        await requestMicPermission();
+      }
+      setAgoraReady(false);
+    },
+    [
+      user?.id,
+      cameraPermission,
+      micPermission,
+      requestCameraPermission,
+      requestMicPermission,
+      micEnabled,
+      cameraEnabled,
+      selectedFilterId,
+    ],
+  );
 
   useEffect(() => {
-    return subscribe('live_call_screen_ended', () => {
+    return subscribe("live_call_screen_ended", () => {
       setNavigatingToCall(false);
       joiningCallRef.current = false;
       const media = liveBroadcastMediaRef.current;
@@ -840,23 +1230,28 @@ export default function BroadcastScreen() {
         media.agoraToken,
         media.appId,
         media.hostUid,
-      ).catch((err) => console.error('[Broadcast] restore live media failed:', err));
+      ).catch((err) =>
+        console.error("[Broadcast] restore live media failed:", err),
+      );
     });
   }, [isLive, initBroadcastMedia]);
 
   const startBroadcast = useCallback(async () => {
-    if (Platform.OS === 'web') {
-      appAlert('Web Limitation', 'Live broadcast with camera is not fully supported on web. Please use the mobile app (Android/iOS) for full camera and streaming features.');
+    if (Platform.OS === "web") {
+      appAlert(
+        "Web Limitation",
+        "Live broadcast with camera is not fully supported on web. Please use the mobile app (Android/iOS) for full camera and streaming features.",
+      );
       return;
     }
     if (!token) {
-      appAlert('Login Required', 'Please log in to go live.');
+      appAlert("Login Required", "Please log in to go live.");
       return;
     }
     if (!isAgoraNativeLinked) {
       appAlert(
-        'Production App Required',
-        'Viewers cannot watch your live stream in Expo Go. Build and install the production APK — only then your camera is broadcast to viewers.',
+        "Production App Required",
+        "Viewers cannot watch your live stream in Expo Go. Build and install the production APK — only then your camera is broadcast to viewers.",
       );
       return;
     }
@@ -867,8 +1262,15 @@ export default function BroadcastScreen() {
         new Promise<void>((resolve) => setTimeout(resolve, 3000)),
       ]);
 
-      const r = await startLiveSession(token, user?.country || 'Unknown');
-      const { sessionId: sid, channelName, token: agoraToken, appId, uid: hostUid, daily_beans_earned: dailyBeans } = r;
+      const r = await startLiveSession(token, user?.country || "Unknown");
+      const {
+        sessionId: sid,
+        channelName,
+        token: agoraToken,
+        appId,
+        uid: hostUid,
+        daily_beans_earned: dailyBeans,
+      } = r;
       setDailyBeansEarned(dailyBeans);
 
       liveBroadcastMediaRef.current = {
@@ -883,72 +1285,110 @@ export default function BroadcastScreen() {
       setTimerExpired(false);
       setLoading(false);
 
-      void initBroadcastMedia(channelName, agoraToken, appId, hostUid).catch((mediaErr) => {
-        console.error('[Broadcast] Media init failed (stream is live):', mediaErr);
-      });
+      void initBroadcastMedia(channelName, agoraToken, appId, hostUid).catch(
+        (mediaErr) => {
+          console.error(
+            "[Broadcast] Media init failed (stream is live):",
+            mediaErr,
+          );
+        },
+      );
     } catch (e: unknown) {
       if (engineRef.current) {
         const eng = engineRef.current;
         engineRef.current = null;
         eng.leaveChannel();
-        setTimeout(() => { try { eng.release(); } catch {} }, 300);
+        setTimeout(() => {
+          try {
+            eng.release();
+          } catch {}
+        }, 300);
       }
       setAgoraReady(false);
-      let msg = 'Failed to start broadcast.';
+      let msg = "Failed to start broadcast.";
       if (e instanceof ApiError) {
         const data = e.data as { detail?: string; error?: string } | undefined;
         msg = data?.detail || data?.error || e.message || msg;
         if (e.status === 408 || e.status === 0) {
-          msg += ' Server may be waking up — wait 30 seconds and try again.';
+          msg += " Server may be waking up — wait 30 seconds and try again.";
         }
       } else if (e instanceof Error) {
         msg = e.message;
       }
-      appAlert('Go Live Failed', msg);
+      appAlert("Go Live Failed", msg);
       setLoading(false);
     }
   }, [user, token, initBroadcastMedia]);
 
   const endBroadcast = useCallback(async () => {
     if (!sessionId) return;
-    appAlert('End Stream', 'Are you sure you want to end your live stream?', [
-      { text: 'Cancel', style: 'cancel' },
+    appAlert("End Stream", "Are you sure you want to end your live stream?", [
+      { text: "Cancel", style: "cancel" },
       {
-        text: 'End Stream', style: 'destructive', onPress: async () => {
-          try { await apiPost(`/api/live/end/${sessionId}`, {}, token); } catch { }
-          if (engineRef.current) { const eng = engineRef.current; engineRef.current = null; eng.leaveChannel(); setTimeout(() => { try { eng.release(); } catch {} }, 300); }
-          setAgoraReady(false); setIsLive(false); router.replace('/(tabs)/home');
-        }
+        text: "End Stream",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await apiPost(`/api/live/end/${sessionId}`, {}, token);
+          } catch {}
+          if (engineRef.current) {
+            const eng = engineRef.current;
+            engineRef.current = null;
+            eng.leaveChannel();
+            setTimeout(() => {
+              try {
+                eng.release();
+              } catch {}
+            }, 300);
+          }
+          setAgoraReady(false);
+          setIsLive(false);
+          router.replace("/(tabs)/home");
+        },
       },
     ]);
   }, [sessionId, token, router]);
 
   const handleGoBack = useCallback(() => {
     if (isLive) endBroadcast();
-    else { engineRef.current = null; router.back(); }
+    else {
+      engineRef.current = null;
+      router.back();
+    }
   }, [isLive, endBroadcast, router]);
 
   const handleShareLive = useCallback(async () => {
     if (!sessionId) {
-      appAlert('Share', 'Go live first to share your stream.');
+      appAlert("Share", "Go live first to share your stream.");
       return;
     }
     try {
-      await shareLiveStream(user?.username || 'Host', sessionId, { isSelf: true });
+      await shareLiveStream(user?.username || "Host", sessionId, {
+        isSelf: true,
+      });
     } catch (e) {
-      console.error('Share live error:', e);
-      appAlert('Share Failed', 'Could not open the share menu. Please try again.');
+      console.error("Share live error:", e);
+      appAlert(
+        "Share Failed",
+        "Could not open the share menu. Please try again.",
+      );
     }
   }, [sessionId, user?.username]);
 
-  const noopPress = useCallback(() => { }, []);
-  const selectedTimerLabel = TIMER_OPTIONS.find(o => o.value === selectedDuration)?.label || 'No Limit';
+  const noopPress = useCallback(() => {}, []);
+  const selectedTimerLabel =
+    TIMER_OPTIONS.find((o) => o.value === selectedDuration)?.label ||
+    "No Limit";
   const avatarUri = user?.avatar;
-  const initial = (user?.username || 'U').charAt(0).toUpperCase();
+  const initial = (user?.username || "U").charAt(0).toUpperCase();
 
   return (
     <View style={st.container}>
-      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      <StatusBar
+        barStyle="light-content"
+        translucent
+        backgroundColor="transparent"
+      />
 
       {/* ═══ CAMERA VIEW ═══ */}
       <View style={st.cameraWrap}>
@@ -957,57 +1397,100 @@ export default function BroadcastScreen() {
         ) : cameraPermission?.granted && cameraEnabled ? (
           <CameraView style={{ flex: 1 }} facing={facing} mode="video" />
         ) : (
-          <LinearGradient colors={['#1a0a1e', '#12121a', '#0a0a14']} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="videocam" size={56} color="rgba(255,255,255,0.06)" />
-            <Text style={{ color: 'rgba(255,255,255,0.15)', fontSize: 13, marginTop: 8 }}>
-              {useExpoCamera ? 'Allow camera to preview' : 'Camera Preview'}
+          <LinearGradient
+            colors={["#1a0a1e", "#12121a", "#0a0a14"]}
+            style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
+          >
+            <Ionicons
+              name="videocam"
+              size={56}
+              color="rgba(255,255,255,0.06)"
+            />
+            <Text
+              style={{
+                color: "rgba(255,255,255,0.15)",
+                fontSize: 13,
+                marginTop: 8,
+              }}
+            >
+              {useExpoCamera ? "Allow camera to preview" : "Camera Preview"}
             </Text>
           </LinearGradient>
         )}
 
-        {!cameraEnabled && (agoraReady || (cameraPermission?.granted && isLive)) && (
-          <View style={st.cameraOffOverlay}>
-            <LinearGradient colors={['#1a0a1e', '#12121a', '#0a0a14']} style={StyleSheet.absoluteFill} />
-            <View style={st.cameraOffContent}>
-              {avatarUri ? (
-                <Image source={{ uri: avatarUri }} style={st.cameraOffAvatar} />
-              ) : (
-                <LinearGradient colors={['#FF2D55', '#FF6B8A']} style={st.cameraOffAvatarFallback}>
-                  <Text style={st.cameraOffAvatarText}>{initial}</Text>
-                </LinearGradient>
-              )}
-              <Text style={st.cameraOffUsername}>{user?.username || 'Host'}</Text>
-              <View style={st.cameraOffBadge}>
-                <Ionicons name="videocam-off" size={14} color="#FF4466" />
-                <Text style={st.cameraOffBadgeText}>Camera Off</Text>
+        {!cameraEnabled &&
+          (agoraReady || (cameraPermission?.granted && isLive)) && (
+            <View style={st.cameraOffOverlay}>
+              <LinearGradient
+                colors={["#1a0a1e", "#12121a", "#0a0a14"]}
+                style={StyleSheet.absoluteFill}
+              />
+              <View style={st.cameraOffContent}>
+                {avatarUri ? (
+                  <Image
+                    source={{ uri: avatarUri }}
+                    style={st.cameraOffAvatar}
+                  />
+                ) : (
+                  <LinearGradient
+                    colors={["#FF2D55", "#FF6B8A"]}
+                    style={st.cameraOffAvatarFallback}
+                  >
+                    <Text style={st.cameraOffAvatarText}>{initial}</Text>
+                  </LinearGradient>
+                )}
+                <Text style={st.cameraOffUsername}>
+                  {user?.username || "Host"}
+                </Text>
+                <View style={st.cameraOffBadge}>
+                  <Ionicons name="videocam-off" size={14} color="#FF4466" />
+                  <Text style={st.cameraOffBadgeText}>Camera Off</Text>
+                </View>
               </View>
             </View>
-          </View>
-        )}
+          )}
 
         {activeFilter.overlay ? (
           <View
             pointerEvents="none"
-            style={[StyleSheet.absoluteFill, { backgroundColor: activeFilter.overlay }]}
+            style={[
+              StyleSheet.absoluteFill,
+              { backgroundColor: activeFilter.overlay },
+            ]}
           />
         ) : null}
 
         {useExpoCamera && isLive && (
           <View style={st.devModeBanner}>
-            <Text style={st.devModeBannerText}>Dev mode: viewers need production build for HD stream</Text>
+            <Text style={st.devModeBannerText}>
+              Dev mode: viewers need production build for HD stream
+            </Text>
           </View>
         )}
       </View>
 
       {/* Gradient overlays */}
-      <LinearGradient colors={['rgba(0,0,0,0.6)', 'rgba(0,0,0,0)']} style={[st.topGrad, { pointerEvents: 'none' }]} />
-      <LinearGradient colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.7)']} style={[st.bottomGrad, { pointerEvents: 'none' }]} />
+      <LinearGradient
+        colors={["rgba(0,0,0,0.6)", "rgba(0,0,0,0)"]}
+        style={[st.topGrad, { pointerEvents: "none" }]}
+      />
+      <LinearGradient
+        colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.7)"]}
+        style={[st.bottomGrad, { pointerEvents: "none" }]}
+      />
 
       {/* ═══ OVERLAY ═══ */}
-      <View style={[StyleSheet.absoluteFill, { pointerEvents: 'box-none', zIndex: 20, elevation: 20 }]}>
-
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          { pointerEvents: "box-none", zIndex: 20, elevation: 20 },
+        ]}
+      >
         {/* ── HEADER ── */}
-        <SafeAreaView style={[st.headerWrap, { pointerEvents: 'box-none' }]} edges={['top']}>
+        <SafeAreaView
+          style={[st.headerWrap, { pointerEvents: "box-none" }]}
+          edges={["top"]}
+        >
           {isLive && (
             <View style={st.dailyEarnWrap}>
               <HostDailyEarningsChip amount={dailyBeansEarned} />
@@ -1017,13 +1500,22 @@ export default function BroadcastScreen() {
             {/* Back / Close */}
             <TouchableOpacity onPress={handleGoBack} activeOpacity={0.7}>
               <View style={st.iconBtn}>
-                <Ionicons name={isLive ? 'close' : 'arrow-back'} size={22} color="#FFF" />
+                <Ionicons
+                  name={isLive ? "close" : "arrow-back"}
+                  size={22}
+                  color="#FFF"
+                />
               </View>
             </TouchableOpacity>
 
             {/* LIVE badge */}
             {isLive && (
-              <LinearGradient colors={['#FF2D55', '#FF6B8A']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={st.liveBadge}>
+              <LinearGradient
+                colors={["#FF2D55", "#FF6B8A"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={st.liveBadge}
+              >
                 <PulsingDot />
                 <Text style={st.liveBadgeText}>LIVE</Text>
                 {liveStartTime > 0 && <LiveTimer startTime={liveStartTime} />}
@@ -1039,7 +1531,7 @@ export default function BroadcastScreen() {
                   disabled={navigatingToCall || isCallHandoffInProgress()}
                 >
                   <LinearGradient
-                    colors={['#FF9500', '#FF2D55']}
+                    colors={["#FF9500", "#FF2D55"]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={st.pkHeaderBtn}
@@ -1052,7 +1544,9 @@ export default function BroadcastScreen() {
               {isLive && (
                 <View style={st.viewerPill}>
                   <Ionicons name="people" size={12} color="#FFF" />
-                  <Text style={st.viewerText}>{formatViewers(viewerCount)}</Text>
+                  <Text style={st.viewerText}>
+                    {formatViewers(viewerCount)}
+                  </Text>
                 </View>
               )}
               {isLive && (
@@ -1063,7 +1557,9 @@ export default function BroadcastScreen() {
               )}
               {!isLive && (
                 <TouchableOpacity onPress={toggleCamera} activeOpacity={0.7}>
-                  <View style={st.iconBtn}><Ionicons name="camera-reverse" size={20} color="#FFF" /></View>
+                  <View style={st.iconBtn}>
+                    <Ionicons name="camera-reverse" size={20} color="#FFF" />
+                  </View>
                 </TouchableOpacity>
               )}
             </View>
@@ -1076,14 +1572,23 @@ export default function BroadcastScreen() {
                 {avatarUri ? (
                   <Image source={{ uri: avatarUri }} style={st.hostAvatar} />
                 ) : (
-                  <LinearGradient colors={['#FF2D55', '#FF6B8A']} style={st.hostAvatarFallback}>
+                  <LinearGradient
+                    colors={["#FF2D55", "#FF6B8A"]}
+                    style={st.hostAvatarFallback}
+                  >
                     <Text style={st.hostAvatarText}>{initial}</Text>
                   </LinearGradient>
                 )}
-                <Text style={st.hostName} numberOfLines={1}>{user?.username || 'User'}</Text>
+                <Text style={st.hostName} numberOfLines={1}>
+                  {user?.username || "User"}
+                </Text>
               </View>
               {selectedDuration > 0 && liveStartTime > 0 && (
-                <CountdownTimer duration={selectedDuration} startTime={liveStartTime} onExpired={handleTimerExpired} />
+                <CountdownTimer
+                  duration={selectedDuration}
+                  startTime={liveStartTime}
+                  onExpired={handleTimerExpired}
+                />
               )}
             </View>
           )}
@@ -1093,8 +1598,9 @@ export default function BroadcastScreen() {
           <View style={st.talkEarningsBanner}>
             <Ionicons name="cafe" size={14} color="#FF9500" />
             <Text style={st.talkEarningsText}>
-              Chat earnings · +{hostChatBeansEarned.toLocaleString('en-IN')} beans
-              {activeChatCount > 0 ? ` · ${activeChatCount} active` : ''}
+              Chat earnings · +{hostChatBeansEarned.toLocaleString("en-IN")}{" "}
+              beans
+              {activeChatCount > 0 ? ` · ${activeChatCount} active` : ""}
             </Text>
           </View>
         )}
@@ -1104,18 +1610,24 @@ export default function BroadcastScreen() {
             {pendingTalkRequests.map((req) => (
               <View key={req.id} style={st.talkRequestCard}>
                 <Text style={st.talkRequestText}>
-                  {req.requesterName || 'A viewer'} wants to chat · ₹{myRates.chatRatePerMin}/min · you earn {myRates.chatBeansPerMin} beans/min
+                  {req.requesterName || "A viewer"} wants to chat · ₹
+                  {myRates.chatRatePerMin}/min · you earn{" "}
+                  {myRates.chatBeansPerMin} beans/min
                 </Text>
                 <View style={st.talkRequestActions}>
                   <TouchableOpacity
                     style={st.talkRejectBtn}
-                    onPress={() => void handleTalkRequestAction(req.id, 'reject')}
+                    onPress={() =>
+                      void handleTalkRequestAction(req.id, "reject")
+                    }
                   >
                     <Text style={st.talkRejectText}>Decline</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={st.talkAcceptBtn}
-                    onPress={() => void handleTalkRequestAction(req.id, 'accept')}
+                    onPress={() =>
+                      void handleTalkRequestAction(req.id, "accept")
+                    }
                   >
                     <Text style={st.talkAcceptText}>Accept</Text>
                   </TouchableOpacity>
@@ -1126,68 +1638,166 @@ export default function BroadcastScreen() {
         )}
 
         {isLive && pendingCallRequests.length > 0 && (
-          <View style={[st.talkRequestBanner, { top: pendingTalkRequests.length > 0 ? 200 : 120 }]}>
+          <View
+            style={[
+              st.talkRequestBanner,
+              { top: pendingTalkRequests.length > 0 ? 200 : 120 },
+            ]}
+          >
             {pendingCallRequests.map((req) => {
-              const isVideoReq = req.callType === 'video';
-              const rate = req.ratePerMin ?? (isVideoReq ? myRates.videoRatePerMin : myRates.voiceRatePerMin);
-              const beans = req.beansPerMin ?? (isVideoReq ? myRates.videoBeansPerMin : myRates.voiceBeansPerMin);
+              const isVideoReq = req.callType === "video";
+              const rate =
+                req.ratePerMin ??
+                (isVideoReq
+                  ? myRates.videoRatePerMin
+                  : myRates.voiceRatePerMin);
+              const beans =
+                req.beansPerMin ??
+                (isVideoReq
+                  ? myRates.videoBeansPerMin
+                  : myRates.voiceBeansPerMin);
               return (
-              <View key={req.id} style={[st.talkRequestCard, { borderColor: isVideoReq ? 'rgba(168,85,247,0.35)' : 'rgba(16,185,129,0.35)' }]}>
-                <Text style={[st.talkRequestText, { color: isVideoReq ? '#D8B4FE' : '#6EE7B7' }]}>
-                  {req.requesterName || 'A viewer'} wants a {isVideoReq ? 'video' : 'voice'} call · ₹{rate}/min · you earn {beans} beans/min
-                </Text>
-                <View style={st.talkRequestActions}>
-                  <TouchableOpacity
-                    style={st.talkRejectBtn}
-                    onPress={() => void handleCallRequestAction(req.id, 'reject', req)}
+                <View
+                  key={req.id}
+                  style={[
+                    st.talkRequestCard,
+                    {
+                      borderColor: isVideoReq
+                        ? "rgba(168,85,247,0.35)"
+                        : "rgba(16,185,129,0.35)",
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      st.talkRequestText,
+                      { color: isVideoReq ? "#D8B4FE" : "#6EE7B7" },
+                    ]}
                   >
-                    <Text style={st.talkRejectText}>Decline</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[st.talkAcceptBtn, { backgroundColor: isVideoReq ? 'rgba(168,85,247,0.25)' : 'rgba(16,185,129,0.25)' }]}
-                    onPress={() => void handleCallRequestAction(req.id, 'accept', req)}
-                  >
-                    <Text style={[st.talkAcceptText, { color: isVideoReq ? '#D8B4FE' : '#6EE7B7' }]}>
-                      {isVideoReq ? 'Accept Video' : 'Accept Call'}
-                    </Text>
-                  </TouchableOpacity>
+                    {req.requesterName || "A viewer"} wants a{" "}
+                    {isVideoReq ? "video" : "voice"} call · ₹{rate}/min · you
+                    earn {beans} beans/min
+                  </Text>
+                  <View style={st.talkRequestActions}>
+                    <TouchableOpacity
+                      style={st.talkRejectBtn}
+                      onPress={() =>
+                        void handleCallRequestAction(req.id, "reject", req)
+                      }
+                    >
+                      <Text style={st.talkRejectText}>Decline</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        st.talkAcceptBtn,
+                        {
+                          backgroundColor: isVideoReq
+                            ? "rgba(168,85,247,0.25)"
+                            : "rgba(16,185,129,0.25)",
+                        },
+                      ]}
+                      onPress={() =>
+                        void handleCallRequestAction(req.id, "accept", req)
+                      }
+                    >
+                      <Text
+                        style={[
+                          st.talkAcceptText,
+                          { color: isVideoReq ? "#D8B4FE" : "#6EE7B7" },
+                        ]}
+                      >
+                        {isVideoReq ? "Accept Video" : "Accept Call"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            );})}
+              );
+            })}
           </View>
         )}
 
         {/* ── SIDE ACTIONS ── */}
         {isLive && (
           <View style={st.sideActions}>
-            <TouchableOpacity style={st.sideBtn} onPress={toggleCamera} activeOpacity={0.7}>
-              <View style={st.sideBtnCircle}><Ionicons name="camera-reverse" size={20} color="#FFF" /></View>
+            <TouchableOpacity
+              style={st.sideBtn}
+              onPress={toggleCamera}
+              activeOpacity={0.7}
+            >
+              <View style={st.sideBtnCircle}>
+                <Ionicons name="camera-reverse" size={20} color="#FFF" />
+              </View>
               <Text style={st.sideBtnLabel}>Flip</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={st.sideBtn} onPress={toggleMic} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={st.sideBtn}
+              onPress={toggleMic}
+              activeOpacity={0.7}
+            >
               <View style={[st.sideBtnCircle, !micEnabled && st.sideBtnOff]}>
-                <Ionicons name={micEnabled ? 'mic' : 'mic-off'} size={20} color={micEnabled ? '#FFF' : '#FF4466'} />
+                <Ionicons
+                  name={micEnabled ? "mic" : "mic-off"}
+                  size={20}
+                  color={micEnabled ? "#FFF" : "#FF4466"}
+                />
               </View>
-              <Text style={st.sideBtnLabel}>{micEnabled ? 'Mic On' : 'Mic Off'}</Text>
+              <Text style={st.sideBtnLabel}>
+                {micEnabled ? "Mic On" : "Mic Off"}
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={st.sideBtn} onPress={toggleCameraOnOff} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={st.sideBtn}
+              onPress={toggleCameraOnOff}
+              activeOpacity={0.7}
+            >
               <View style={[st.sideBtnCircle, !cameraEnabled && st.sideBtnOff]}>
-                <Ionicons name={cameraEnabled ? 'videocam' : 'videocam-off'} size={20} color={cameraEnabled ? '#FFF' : '#FF4466'} />
+                <Ionicons
+                  name={cameraEnabled ? "videocam" : "videocam-off"}
+                  size={20}
+                  color={cameraEnabled ? "#FFF" : "#FF4466"}
+                />
               </View>
-              <Text style={st.sideBtnLabel}>{cameraEnabled ? 'Cam On' : 'Cam Off'}</Text>
+              <Text style={st.sideBtnLabel}>
+                {cameraEnabled ? "Cam On" : "Cam Off"}
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={st.sideBtn} onPress={() => setShowFilterPanel(true)} activeOpacity={0.7}>
-              <View style={[st.sideBtnCircle, selectedFilterId !== 'none' && st.sideBtnActive]}>
-                <Ionicons name="color-filter-outline" size={20} color={selectedFilterId !== 'none' ? '#FF6B8A' : '#FFF'} />
+            <TouchableOpacity
+              style={st.sideBtn}
+              onPress={() => setShowFilterPanel(true)}
+              activeOpacity={0.7}
+            >
+              <View
+                style={[
+                  st.sideBtnCircle,
+                  selectedFilterId !== "none" && st.sideBtnActive,
+                ]}
+              >
+                <Ionicons
+                  name="color-filter-outline"
+                  size={20}
+                  color={selectedFilterId !== "none" ? "#FF6B8A" : "#FFF"}
+                />
               </View>
               <Text style={st.sideBtnLabel}>{activeFilter.label}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={st.sideBtn} onPress={handleShareLive} activeOpacity={0.7}>
-              <View style={st.sideBtnCircle}><Ionicons name="share-social" size={20} color="#FFF" /></View>
+            <TouchableOpacity
+              style={st.sideBtn}
+              onPress={handleShareLive}
+              activeOpacity={0.7}
+            >
+              <View style={st.sideBtnCircle}>
+                <Ionicons name="share-social" size={20} color="#FFF" />
+              </View>
               <Text style={st.sideBtnLabel}>Share</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={endBroadcast} activeOpacity={0.85} style={{ marginTop: 8, alignItems: 'center' }}>
-              <View style={st.endBtn}><Ionicons name="stop-circle" size={20} color="#FFF" /></View>
+            <TouchableOpacity
+              onPress={endBroadcast}
+              activeOpacity={0.85}
+              style={{ marginTop: 8, alignItems: "center" }}
+            >
+              <View style={st.endBtn}>
+                <Ionicons name="stop-circle" size={20} color="#FFF" />
+              </View>
               <Text style={st.sideBtnLabel}>End</Text>
             </TouchableOpacity>
           </View>
@@ -1199,7 +1809,11 @@ export default function BroadcastScreen() {
             {privateChats.map((pc) => (
               <TouchableOpacity
                 key={pc.talkSessionId}
-                style={[st.privateChatTab, selectedPrivateTalkId === pc.talkSessionId && st.privateChatTabActive]}
+                style={[
+                  st.privateChatTab,
+                  selectedPrivateTalkId === pc.talkSessionId &&
+                    st.privateChatTabActive,
+                ]}
                 onPress={() => setSelectedPrivateTalkId(pc.talkSessionId)}
               >
                 <Ionicons name="lock-closed" size={10} color="#C4B5FD" />
@@ -1209,35 +1823,48 @@ export default function BroadcastScreen() {
           </View>
         )}
 
-        {isLive && sessionId && user && token && privateChats.map((pc) => (
-          <PrivateTalkChat
-            key={pc.talkSessionId}
-            visible={selectedPrivateTalkId === pc.talkSessionId}
-            talkSessionId={pc.talkSessionId}
-            sessionId={String(sessionId)}
-            userId={user.id}
-            username={user.username}
-            peerUserId={pc.talkerId || 'viewer'}
-            peerUsername={pc.talkerName}
-            isHost
-            sharedSocket={liveSocket}
-            onClose={() => void exitHostPrivateChat(pc.talkSessionId)}
-            onEnd={() => {
-              setPrivateChats((prev) => prev.filter((p) => p.talkSessionId !== pc.talkSessionId));
-              setSelectedPrivateTalkId((cur) => (cur === pc.talkSessionId ? null : cur));
-            }}
-          />
-        ))}
+        {isLive &&
+          sessionId &&
+          user &&
+          token &&
+          privateChats.map((pc) => (
+            <PrivateTalkChat
+              key={pc.talkSessionId}
+              visible={selectedPrivateTalkId === pc.talkSessionId}
+              talkSessionId={pc.talkSessionId}
+              sessionId={String(sessionId)}
+              userId={user.id}
+              username={user.username}
+              peerUserId={pc.talkerId || "viewer"}
+              peerUsername={pc.talkerName}
+              isHost
+              sharedSocket={liveSocket}
+              onClose={() => void exitHostPrivateChat(pc.talkSessionId)}
+              onEnd={() => {
+                setPrivateChats((prev) =>
+                  prev.filter((p) => p.talkSessionId !== pc.talkSessionId),
+                );
+                setSelectedPrivateTalkId((cur) =>
+                  cur === pc.talkSessionId ? null : cur,
+                );
+              }}
+            />
+          ))}
 
         {isLive && privateChats.length > 0 && !selectedPrivateTalkId && (
           <TouchableOpacity
             style={st.privateChatFab}
-            onPress={() => setSelectedPrivateTalkId(privateChats[privateChats.length - 1]?.talkSessionId || null)}
+            onPress={() =>
+              setSelectedPrivateTalkId(
+                privateChats[privateChats.length - 1]?.talkSessionId || null,
+              )
+            }
             activeOpacity={0.9}
           >
             <Ionicons name="lock-closed" size={14} color="#E9D5FF" />
             <Text style={st.privateChatFabText}>
-              Private chat{privateChats.length > 1 ? ` (${privateChats.length})` : ''}
+              Private chat
+              {privateChats.length > 1 ? ` (${privateChats.length})` : ""}
             </Text>
           </TouchableOpacity>
         )}
@@ -1255,48 +1882,138 @@ export default function BroadcastScreen() {
             talkRatePerMin={myRates.chatRatePerMin}
             sharedSocket={liveSocket}
             onStickerPress={noopPress}
-
           />
         )}
 
         {/* ── PRE-BROADCAST BOTTOM ── */}
         {!isLive && (
-          <Animated.View style={[st.prePanel, { paddingBottom: Math.max(insets.bottom, 16) + 16, opacity: fadeIn, transform: [{ translateY: slideUp }] }]}>
+          <Animated.View
+            style={[
+              st.prePanel,
+              {
+                paddingBottom: Math.max(insets.bottom, 16) + 16,
+                opacity: fadeIn,
+                transform: [{ translateY: slideUp }],
+              },
+            ]}
+          >
             {/* Tool buttons */}
             <View style={st.toolRow}>
-              <TouchableOpacity style={st.toolBtn} onPress={() => setShowTimerModal(true)} activeOpacity={0.7}>
-                <View style={[st.toolBtnIcon, selectedDuration > 0 && st.toolBtnActive]}>
-                  <Ionicons name="timer-outline" size={20} color={selectedDuration > 0 ? '#FF2D55' : 'rgba(255,255,255,0.8)'} />
+              <TouchableOpacity
+                style={st.toolBtn}
+                onPress={() => setShowTimerModal(true)}
+                activeOpacity={0.7}
+              >
+                <View
+                  style={[
+                    st.toolBtnIcon,
+                    selectedDuration > 0 && st.toolBtnActive,
+                  ]}
+                >
+                  <Ionicons
+                    name="timer-outline"
+                    size={20}
+                    color={
+                      selectedDuration > 0 ? "#FF2D55" : "rgba(255,255,255,0.8)"
+                    }
+                  />
                 </View>
-                <Text style={[st.toolBtnLabel, selectedDuration > 0 && { color: '#FF2D55' }]}>{selectedTimerLabel}</Text>
+                <Text
+                  style={[
+                    st.toolBtnLabel,
+                    selectedDuration > 0 && { color: "#FF2D55" },
+                  ]}
+                >
+                  {selectedTimerLabel}
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity style={st.toolBtn} onPress={toggleMic} activeOpacity={0.7}>
+              <TouchableOpacity
+                style={st.toolBtn}
+                onPress={toggleMic}
+                activeOpacity={0.7}
+              >
                 <View style={[st.toolBtnIcon, !micEnabled && st.toolBtnOff]}>
-                  <Ionicons name={micEnabled ? 'mic' : 'mic-off'} size={20} color={micEnabled ? 'rgba(255,255,255,0.8)' : '#FF4466'} />
+                  <Ionicons
+                    name={micEnabled ? "mic" : "mic-off"}
+                    size={20}
+                    color={micEnabled ? "rgba(255,255,255,0.8)" : "#FF4466"}
+                  />
                 </View>
-                <Text style={st.toolBtnLabel}>{micEnabled ? 'Mic On' : 'Mic Off'}</Text>
+                <Text style={st.toolBtnLabel}>
+                  {micEnabled ? "Mic On" : "Mic Off"}
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity style={st.toolBtn} onPress={toggleCameraOnOff} activeOpacity={0.7}>
+              <TouchableOpacity
+                style={st.toolBtn}
+                onPress={toggleCameraOnOff}
+                activeOpacity={0.7}
+              >
                 <View style={[st.toolBtnIcon, !cameraEnabled && st.toolBtnOff]}>
-                  <Ionicons name={cameraEnabled ? 'videocam' : 'videocam-off'} size={20} color={cameraEnabled ? 'rgba(255,255,255,0.8)' : '#FF4466'} />
+                  <Ionicons
+                    name={cameraEnabled ? "videocam" : "videocam-off"}
+                    size={20}
+                    color={cameraEnabled ? "rgba(255,255,255,0.8)" : "#FF4466"}
+                  />
                 </View>
-                <Text style={st.toolBtnLabel}>{cameraEnabled ? 'Cam On' : 'Cam Off'}</Text>
+                <Text style={st.toolBtnLabel}>
+                  {cameraEnabled ? "Cam On" : "Cam Off"}
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity style={st.toolBtn} onPress={() => setShowFilterPanel(true)} activeOpacity={0.7}>
-                <View style={[st.toolBtnIcon, selectedFilterId !== 'none' && st.toolBtnActive]}>
-                  <Ionicons name="color-filter-outline" size={20} color={selectedFilterId !== 'none' ? '#FF6B8A' : 'rgba(255,255,255,0.8)'} />
+              <TouchableOpacity
+                style={st.toolBtn}
+                onPress={() => setShowFilterPanel(true)}
+                activeOpacity={0.7}
+              >
+                <View
+                  style={[
+                    st.toolBtnIcon,
+                    selectedFilterId !== "none" && st.toolBtnActive,
+                  ]}
+                >
+                  <Ionicons
+                    name="color-filter-outline"
+                    size={20}
+                    color={
+                      selectedFilterId !== "none"
+                        ? "#FF6B8A"
+                        : "rgba(255,255,255,0.8)"
+                    }
+                  />
                 </View>
-                <Text style={[st.toolBtnLabel, selectedFilterId !== 'none' && { color: '#FF6B8A' }]}>{activeFilter.label}</Text>
+                <Text
+                  style={[
+                    st.toolBtnLabel,
+                    selectedFilterId !== "none" && { color: "#FF6B8A" },
+                  ]}
+                >
+                  {activeFilter.label}
+                </Text>
               </TouchableOpacity>
             </View>
 
             {/* GO LIVE button */}
             <View style={st.goLiveWrap}>
               <GoLiveGlow />
-              <TouchableOpacity onPress={startBroadcast} disabled={loading} activeOpacity={0.9}>
-                <LinearGradient colors={loading ? ['#4A1525', '#4A1525'] : ['#FF2D55', '#FF6B8A']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.goLiveBtn}>
-                  {loading ? <ActivityIndicator color="#FFF" size="small" /> : (
-                    <><Ionicons name="radio" size={30} color="#FFF" /><Text style={st.goLiveText}>GO LIVE</Text></>
+              <TouchableOpacity
+                onPress={startBroadcast}
+                disabled={loading}
+                activeOpacity={0.9}
+              >
+                <LinearGradient
+                  colors={
+                    loading ? ["#4A1525", "#4A1525"] : ["#FF2D55", "#FF6B8A"]
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={st.goLiveBtn}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#FFF" size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="radio" size={30} color="#FFF" />
+                      <Text style={st.goLiveText}>GO LIVE</Text>
+                    </>
                   )}
                 </LinearGradient>
               </TouchableOpacity>
@@ -1306,19 +2023,29 @@ export default function BroadcastScreen() {
             <View style={st.preUserRow}>
               <View style={st.preAvatar}>
                 {avatarUri ? (
-                  <Image source={{ uri: avatarUri }} style={{ width: 36, height: 36, borderRadius: 18 }} />
+                  <Image
+                    source={{ uri: avatarUri }}
+                    style={{ width: 36, height: 36, borderRadius: 18 }}
+                  />
                 ) : (
-                  <LinearGradient colors={['#FF2D55', '#FF6B8A']} style={st.preAvatarGrad}>
+                  <LinearGradient
+                    colors={["#FF2D55", "#FF6B8A"]}
+                    style={st.preAvatarGrad}
+                  >
                     <Text style={st.preAvatarText}>{initial}</Text>
                   </LinearGradient>
                 )}
               </View>
               <View style={st.preUserInfo}>
-                <Text style={st.preUserName}>{user?.username || 'User'}</Text>
+                <Text style={st.preUserName}>{user?.username || "User"}</Text>
                 <Text style={st.preUserSub}>Visible to all users</Text>
               </View>
               <View style={st.preTag}>
-                <Ionicons name="globe-outline" size={11} color="rgba(255,255,255,0.5)" />
+                <Ionicons
+                  name="globe-outline"
+                  size={11}
+                  color="rgba(255,255,255,0.5)"
+                />
                 <Text style={st.preTagText}>Public</Text>
               </View>
             </View>
@@ -1327,22 +2054,61 @@ export default function BroadcastScreen() {
       </View>
 
       {/* ── TIMER MODAL ── */}
-      <Modal visible={showTimerModal} transparent animationType="slide" onRequestClose={() => setShowTimerModal(false)}>
-        <TouchableOpacity style={st.modalOverlay} activeOpacity={1} onPress={() => setShowTimerModal(false)}>
+      <Modal
+        visible={showTimerModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowTimerModal(false)}
+      >
+        <TouchableOpacity
+          style={st.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowTimerModal(false)}
+        >
           <View style={st.modalContent} onStartShouldSetResponder={() => true}>
             <View style={st.modalHandle} />
             <Text style={st.modalTitle}>Stream Duration</Text>
-            <Text style={st.modalSub}>Set a time limit for your live stream</Text>
-            {TIMER_OPTIONS.map(opt => (
+            <Text style={st.modalSub}>
+              Set a time limit for your live stream
+            </Text>
+            {TIMER_OPTIONS.map((opt) => (
               <TouchableOpacity
                 key={opt.value}
-                style={[st.timerOpt, selectedDuration === opt.value && st.timerOptActive]}
-                onPress={() => { setSelectedDuration(opt.value); setShowTimerModal(false); }}
+                style={[
+                  st.timerOpt,
+                  selectedDuration === opt.value && st.timerOptActive,
+                ]}
+                onPress={() => {
+                  setSelectedDuration(opt.value);
+                  setShowTimerModal(false);
+                }}
                 activeOpacity={0.7}
               >
-                <Ionicons name={opt.value === 0 ? 'infinite' : 'timer-outline'} size={20} color={selectedDuration === opt.value ? '#FF2D55' : 'rgba(255,255,255,0.6)'} />
-                <Text style={[st.timerOptText, selectedDuration === opt.value && { color: '#FF2D55' }]}>{opt.label}</Text>
-                {selectedDuration === opt.value && <Ionicons name="checkmark-circle" size={20} color="#FF2D55" style={{ marginLeft: 'auto' }} />}
+                <Ionicons
+                  name={opt.value === 0 ? "infinite" : "timer-outline"}
+                  size={20}
+                  color={
+                    selectedDuration === opt.value
+                      ? "#FF2D55"
+                      : "rgba(255,255,255,0.6)"
+                  }
+                />
+                <Text
+                  style={[
+                    st.timerOptText,
+                    selectedDuration === opt.value && { color: "#FF2D55" },
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+                {selectedDuration === opt.value && (
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={20}
+                    color="#FF2D55"
+                    style={{ marginLeft: "auto" }}
+                  />
+                )}
               </TouchableOpacity>
             ))}
           </View>
@@ -1379,184 +2145,512 @@ export default function BroadcastScreen() {
 }
 
 const st = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0A0A0F' },
+  container: { flex: 1, backgroundColor: "#0A0A0F" },
   cameraWrap: { flex: 1 },
 
   // Camera off overlay
-  cameraOffOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
-  cameraOffContent: { alignItems: 'center', gap: 12 },
-  cameraOffAvatar: { width: 120, height: 120, borderRadius: 60, borderWidth: 4, borderColor: 'rgba(255,255,255,0.15)' },
-  cameraOffAvatarFallback: { width: 120, height: 120, borderRadius: 60, alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: 'rgba(255,255,255,0.15)' },
-  cameraOffAvatarText: { color: '#FFF', fontSize: 48, fontWeight: '800' },
-  cameraOffUsername: { color: '#FFF', fontSize: 20, fontWeight: '700', marginTop: 4 },
-  cameraOffBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,45,85,0.2)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,45,85,0.3)' },
-  cameraOffBadgeText: { color: '#FF4466', fontSize: 13, fontWeight: '700' },
+  cameraOffOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
+  },
+  cameraOffContent: { alignItems: "center", gap: 12 },
+  cameraOffAvatar: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 4,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  cameraOffAvatarFallback: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 4,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  cameraOffAvatarText: { color: "#FFF", fontSize: 48, fontWeight: "800" },
+  cameraOffUsername: {
+    color: "#FFF",
+    fontSize: 20,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  cameraOffBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,45,85,0.2)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,45,85,0.3)",
+  },
+  cameraOffBadgeText: { color: "#FF4466", fontSize: 13, fontWeight: "700" },
   devModeBanner: {
-    position: 'absolute',
+    position: "absolute",
     top: 120,
     left: 16,
     right: 16,
     zIndex: 6,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: "rgba(0,0,0,0.55)",
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: "rgba(255,255,255,0.12)",
   },
-  devModeBannerText: { color: 'rgba(255,255,255,0.75)', fontSize: 11, textAlign: 'center', fontWeight: '600' },
+  devModeBannerText: {
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 11,
+    textAlign: "center",
+    fontWeight: "600",
+  },
 
   // Gradients
-  topGrad: { position: 'absolute', top: 0, left: 0, right: 0, height: 160, zIndex: 5 },
-  bottomGrad: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 280, zIndex: 5 },
+  topGrad: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 160,
+    zIndex: 5,
+  },
+  bottomGrad: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 280,
+    zIndex: 5,
+  },
 
   // Header
-  headerWrap: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20 },
+  headerWrap: { position: "absolute", top: 0, left: 0, right: 0, zIndex: 20 },
   dailyEarnWrap: { paddingHorizontal: 14, paddingTop: 4, paddingBottom: 2 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 6 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 8 },
   pkHeaderBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: "rgba(255,255,255,0.2)",
   },
-  pkHeaderBtnText: { color: '#FFF', fontSize: 11, fontWeight: '900', letterSpacing: 0.8 },
-  iconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-  liveBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, gap: 6 },
-  liveBadgeText: { color: '#FFF', fontSize: 12, fontWeight: '900', letterSpacing: 1.5 },
-  viewerPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(0,0,0,0.4)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
-  viewerText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
-  diamondPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0,191,255,0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(0,191,255,0.15)' },
-  diamondText: { color: '#00BFFF', fontSize: 12, fontWeight: '800' },
+  pkHeaderBtnText: {
+    color: "#FFF",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+  },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  liveBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    gap: 6,
+  },
+  liveBadgeText: {
+    color: "#FFF",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 1.5,
+  },
+  viewerPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+  },
+  viewerText: { color: "#FFF", fontSize: 12, fontWeight: "700" },
+  diamondPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(0,191,255,0.1)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(0,191,255,0.15)",
+  },
+  diamondText: { color: "#00BFFF", fontSize: 12, fontWeight: "800" },
 
   // Host info
-  hostRowOuter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 14, marginTop: 4 },
-  hostPill: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(0,0,0,0.4)', paddingLeft: 4, paddingRight: 14, paddingVertical: 4, borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
-  hostAvatar: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: 'rgba(255,255,255,0.15)' },
-  hostAvatarFallback: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.15)' },
-  hostAvatarText: { color: '#FFF', fontSize: 12, fontWeight: '800' },
-  hostName: { color: '#FFF', fontSize: 13, fontWeight: '700', maxWidth: 120 },
+  hostRowOuter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginHorizontal: 14,
+    marginTop: 4,
+  },
+  hostPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    paddingLeft: 4,
+    paddingRight: 14,
+    paddingVertical: 4,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+  },
+  hostAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  hostAvatarFallback: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  hostAvatarText: { color: "#FFF", fontSize: 12, fontWeight: "800" },
+  hostName: { color: "#FFF", fontSize: 13, fontWeight: "700", maxWidth: 120 },
   talkEarningsBanner: {
-    position: 'absolute',
+    position: "absolute",
     top: 118,
     left: 14,
     right: 14,
     zIndex: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
-    backgroundColor: 'rgba(255,149,0,0.15)',
+    backgroundColor: "rgba(255,149,0,0.15)",
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255,149,0,0.3)',
+    borderColor: "rgba(255,149,0,0.3)",
   },
-  talkEarningsText: { color: '#FF9500', fontSize: 12, fontWeight: '800', flex: 1 },
+  talkEarningsText: {
+    color: "#FF9500",
+    fontSize: 12,
+    fontWeight: "800",
+    flex: 1,
+  },
   talkRequestBanner: {
-    position: 'absolute', top: 120, left: 14, right: 14, zIndex: 25, gap: 8,
+    position: "absolute",
+    top: 120,
+    left: 14,
+    right: 14,
+    zIndex: 25,
+    gap: 8,
   },
   talkRequestCard: {
-    backgroundColor: 'rgba(0,0,0,0.72)', borderRadius: 14, padding: 12,
-    borderWidth: 1, borderColor: 'rgba(255,215,0,0.25)',
+    backgroundColor: "rgba(0,0,0,0.72)",
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,215,0,0.25)",
   },
-  talkRequestText: { color: '#FFF', fontSize: 13, fontWeight: '700', marginBottom: 10 },
-  talkRequestActions: { flexDirection: 'row', gap: 8 },
+  talkRequestText: {
+    color: "#FFF",
+    fontSize: 13,
+    fontWeight: "700",
+    marginBottom: 10,
+  },
+  talkRequestActions: { flexDirection: "row", gap: 8 },
   talkRejectBtn: {
-    flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)',
-    alignItems: 'center',
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    alignItems: "center",
   },
-  talkRejectText: { color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '700' },
+  talkRejectText: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 13,
+    fontWeight: "700",
+  },
   talkAcceptBtn: {
-    flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: '#4CD964',
-    alignItems: 'center',
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: "#4CD964",
+    alignItems: "center",
   },
-  talkAcceptText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
+  talkAcceptText: { color: "#FFF", fontSize: 13, fontWeight: "800" },
   privateChatTabs: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 280,
     left: 12,
     right: 12,
     zIndex: 16,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 6,
   },
   privateChatTab: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 14,
-    backgroundColor: 'rgba(139,92,246,0.15)',
+    backgroundColor: "rgba(139,92,246,0.15)",
     borderWidth: 1,
-    borderColor: 'rgba(167,139,250,0.2)',
+    borderColor: "rgba(167,139,250,0.2)",
   },
   privateChatTabActive: {
-    backgroundColor: 'rgba(139,92,246,0.35)',
-    borderColor: 'rgba(167,139,250,0.5)',
+    backgroundColor: "rgba(139,92,246,0.35)",
+    borderColor: "rgba(167,139,250,0.5)",
   },
-  privateChatTabText: { color: '#E9D5FF', fontSize: 11, fontWeight: '700' },
+  privateChatTabText: { color: "#E9D5FF", fontSize: 11, fontWeight: "700" },
   privateChatFab: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 200,
-    alignSelf: 'center',
+    alignSelf: "center",
     zIndex: 28,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 22,
-    backgroundColor: 'rgba(109,40,217,0.85)',
+    backgroundColor: "rgba(109,40,217,0.85)",
     borderWidth: 1,
-    borderColor: 'rgba(167,139,250,0.4)',
+    borderColor: "rgba(167,139,250,0.4)",
   },
-  privateChatFabText: { color: '#F5F3FF', fontSize: 13, fontWeight: '800' },
+  privateChatFabText: { color: "#F5F3FF", fontSize: 13, fontWeight: "800" },
 
   // Side actions
-  sideActions: { position: 'absolute', right: 12, top: '28%', zIndex: 15, gap: 14, alignItems: 'center' },
-  sideBtn: { alignItems: 'center', gap: 3 },
-  sideBtnCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-  sideBtnOff: { backgroundColor: 'rgba(255,45,85,0.2)', borderColor: 'rgba(255,45,85,0.3)' },
-  sideBtnActive: { backgroundColor: 'rgba(255,45,85,0.2)', borderColor: 'rgba(255,45,85,0.35)' },
-  sideBtnLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '600' },
-  endBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,45,85,0.7)', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,45,85,0.4)' },
+  sideActions: {
+    position: "absolute",
+    right: 12,
+    top: "28%",
+    zIndex: 15,
+    gap: 14,
+    alignItems: "center",
+  },
+  sideBtn: { alignItems: "center", gap: 3 },
+  sideBtnCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  sideBtnOff: {
+    backgroundColor: "rgba(255,45,85,0.2)",
+    borderColor: "rgba(255,45,85,0.3)",
+  },
+  sideBtnActive: {
+    backgroundColor: "rgba(255,45,85,0.2)",
+    borderColor: "rgba(255,45,85,0.35)",
+  },
+  sideBtnLabel: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  endBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,45,85,0.7)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,45,85,0.4)",
+  },
 
   // Pre-broadcast panel
-  prePanel: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingTop: 20, paddingHorizontal: 20, zIndex: 10 },
-  toolRow: { flexDirection: 'row', justifyContent: 'center', gap: 20, marginBottom: 24 },
-  toolBtn: { alignItems: 'center', gap: 5 },
-  toolBtnIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-  toolBtnActive: { backgroundColor: 'rgba(255,45,85,0.15)', borderColor: 'rgba(255,45,85,0.3)' },
-  toolBtnOff: { backgroundColor: 'rgba(255,45,85,0.15)', borderColor: 'rgba(255,45,85,0.3)' },
-  toolBtnLabel: { color: 'rgba(255,255,255,0.55)', fontSize: 10, fontWeight: '600' },
-  goLiveWrap: { alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
-  goLiveBtn: { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center', shadowColor: '#FF2D55', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.6, shadowRadius: 20, elevation: 16, gap: 2 },
-  goLiveText: { color: '#FFF', fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
-  preUserRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.06)', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
-  preAvatar: { borderRadius: 18, overflow: 'hidden' },
-  preAvatarGrad: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  preAvatarText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
+  prePanel: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    zIndex: 10,
+  },
+  toolRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 20,
+    marginBottom: 24,
+  },
+  toolBtn: { alignItems: "center", gap: 5 },
+  toolBtnIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  toolBtnActive: {
+    backgroundColor: "rgba(255,45,85,0.15)",
+    borderColor: "rgba(255,45,85,0.3)",
+  },
+  toolBtnOff: {
+    backgroundColor: "rgba(255,45,85,0.15)",
+    borderColor: "rgba(255,45,85,0.3)",
+  },
+  toolBtnLabel: {
+    color: "rgba(255,255,255,0.55)",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  goLiveWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  goLiveBtn: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#FF2D55",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.6,
+    shadowRadius: 20,
+    elevation: 16,
+    gap: 2,
+  },
+  goLiveText: {
+    color: "#FFF",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1.5,
+  },
+  preUserRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+  },
+  preAvatar: { borderRadius: 18, overflow: "hidden" },
+  preAvatarGrad: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  preAvatarText: { color: "#FFF", fontSize: 14, fontWeight: "800" },
   preUserInfo: { flex: 1 },
-  preUserName: { color: '#FFF', fontSize: 14, fontWeight: '700' },
-  preUserSub: { color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 1 },
-  preTag: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.06)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
-  preTagText: { color: 'rgba(255,255,255,0.45)', fontSize: 11, fontWeight: '600' },
+  preUserName: { color: "#FFF", fontSize: 14, fontWeight: "700" },
+  preUserSub: { color: "rgba(255,255,255,0.3)", fontSize: 11, marginTop: 1 },
+  preTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+  },
+  preTagText: {
+    color: "rgba(255,255,255,0.45)",
+    fontSize: 11,
+    fontWeight: "600",
+  },
 
   // Timer modal
-  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
-  modalContent: { backgroundColor: '#0D0D14', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
-  modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)', alignSelf: 'center', marginBottom: 16 },
-  modalTitle: { color: '#FFF', fontSize: 18, fontWeight: '800', textAlign: 'center', marginBottom: 4 },
-  modalSub: { color: 'rgba(255,255,255,0.4)', fontSize: 13, textAlign: 'center', marginBottom: 20 },
-  timerOpt: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 14, marginBottom: 6, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' },
-  timerOptActive: { backgroundColor: 'rgba(255,45,85,0.1)', borderColor: 'rgba(255,45,85,0.25)' },
-  timerOptText: { color: 'rgba(255,255,255,0.7)', fontSize: 15, fontWeight: '600' },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  modalContent: {
+    backgroundColor: "#0D0D14",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 40,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  modalTitle: {
+    color: "#FFF",
+    fontSize: 18,
+    fontWeight: "800",
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  modalSub: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 13,
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  timerOpt: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginBottom: 6,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.04)",
+  },
+  timerOptActive: {
+    backgroundColor: "rgba(255,45,85,0.1)",
+    borderColor: "rgba(255,45,85,0.25)",
+  },
+  timerOptText: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 15,
+    fontWeight: "600",
+  },
 });
