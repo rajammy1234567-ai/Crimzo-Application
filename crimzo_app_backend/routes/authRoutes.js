@@ -15,6 +15,10 @@ router.post('/email/send-otp', auth.sendEmailOtp);
 router.post('/email/verify-otp', auth.verifyEmailOtp);
 router.post('/email/complete-registration', auth.completeEmailRegistration);
 
+// WhatsApp OTP registration flow
+router.post('/whatsapp/send-otp', auth.sendWhatsappRegistrationOtp);
+router.post('/whatsapp/verify-otp', auth.verifyWhatsappRegistrationOtp);
+
 router.get('/me', authenticateToken, auth.getMe);
 
 module.exports = router;

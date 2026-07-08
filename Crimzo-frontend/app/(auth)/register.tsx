@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 
-import { getPrivacyUrl, getTermsUrl } from '../../lib/apiClient';
+import { getPrivacyUrl, getTermsUrl, apiPost } from '../../lib/apiClient';
 import GoogleSignInButton from '../../components/auth/GoogleSignInButton';
 import {
   formatReferralInviteCode,
@@ -28,6 +28,11 @@ export default function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [whatsapp, setWhatsapp] = useState('');
+  const [otp, setOtp] = useState('');
+  const [isWhatsappVerified, setIsWhatsappVerified] = useState(false);
+  const [showWhatsappOtp, setShowWhatsappOtp] = useState(false);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [referralId, setReferralId] = useState('');
   const router = useRouter();
   const { register, user, loading: authLoading } = useAuth();
@@ -108,6 +113,39 @@ export default function RegisterScreen() {
 
   const isValidEmail = (e: string) => /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(e);
 
+  const handleSendWhatsappOtp = async () => {
+    if (!whatsapp || whatsapp.length < 10) {
+      return appAlert('Invalid Number', 'Please enter a valid 10-digit WhatsApp number.');
+    }
+    setIsSendingOtp(true);
+    try {
+      await apiPost('/api/auth/whatsapp/send-otp', { whatsapp });
+      setShowWhatsappOtp(true);
+      appAlert('OTP Sent', 'Check your WhatsApp for the verification code.');
+    } catch (err: any) {
+      appAlert('Failed to send OTP', err.message || 'Please try again.');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const handleVerifyWhatsappOtp = async () => {
+    if (!otp || otp.length < 4) {
+      return appAlert('Invalid OTP', 'Please enter a valid OTP.');
+    }
+    setIsSendingOtp(true);
+    try {
+      await apiPost('/api/auth/whatsapp/verify-otp', { whatsapp, otp });
+      setIsWhatsappVerified(true);
+      setShowWhatsappOtp(false);
+      appAlert('Verified', 'WhatsApp number verified successfully!');
+    } catch (err: any) {
+      appAlert('Verification Failed', err.message || 'Invalid OTP.');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
   const handleRegister = async () => {
     const trimmedUsername = username.trim();
     const trimmedEmail = email.trim().toLowerCase();
@@ -127,13 +165,16 @@ export default function RegisterScreen() {
     if (password !== confirmPassword) {
       return appAlert('Password Mismatch', 'The passwords you entered do not match.');
     }
+    if (!isWhatsappVerified) {
+      return appAlert('WhatsApp Not Verified', 'Please verify your WhatsApp number first.');
+    }
 
     setLoading(true);
     try {
       if (referralId.trim()) {
         await savePendingReferralCode(referralId.trim());
       }
-      await register(trimmedEmail, password, trimmedUsername, avatarUri || undefined);
+      await register(trimmedEmail, password, trimmedUsername, avatarUri || undefined, whatsapp);
       router.replace((await resolvePostAuthRoute()) as never);
     } catch (err: any) {
       appAlert('Registration Failed', err.message || 'Please try again.');
@@ -273,6 +314,49 @@ export default function RegisterScreen() {
                   <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="rgba(255,255,255,0.4)" />
                 </TouchableOpacity>
               </View>
+
+              {/* WhatsApp Number */}
+              <View style={s.inputWrap}>
+                <Ionicons name="logo-whatsapp" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
+                <TextInput
+                  style={[s.input, isWhatsappVerified && { color: '#4CD964' }]}
+                  placeholder="WhatsApp Number"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  value={whatsapp}
+                  onChangeText={(t) => { setWhatsapp(t); setIsWhatsappVerified(false); setShowWhatsappOtp(false); }}
+                  keyboardType="phone-pad"
+                  editable={!isWhatsappVerified}
+                  returnKeyType="next"
+                  selectionColor="#FF2D55"
+                />
+                {!isWhatsappVerified && (
+                  <TouchableOpacity onPress={handleSendWhatsappOtp} disabled={isSendingOtp} style={{ paddingHorizontal: 16 }}>
+                    {isSendingOtp && !showWhatsappOtp ? <ActivityIndicator size="small" color="#FF2D55" /> : <Text style={{ color: '#FF2D55', fontWeight: 'bold' }}>Verify</Text>}
+                  </TouchableOpacity>
+                )}
+                {isWhatsappVerified && (
+                  <Ionicons name="checkmark-circle" size={20} color="#4CD964" style={{ marginRight: 16 }} />
+                )}
+              </View>
+
+              {/* WhatsApp OTP Input */}
+              {showWhatsappOtp && !isWhatsappVerified && (
+                <View style={s.inputWrap}>
+                  <Ionicons name="keypad-outline" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
+                  <TextInput
+                    style={s.input}
+                    placeholder="Enter OTP"
+                    placeholderTextColor="rgba(255,255,255,0.3)"
+                    value={otp}
+                    onChangeText={setOtp}
+                    keyboardType="number-pad"
+                    selectionColor="#FF2D55"
+                  />
+                  <TouchableOpacity onPress={handleVerifyWhatsappOtp} disabled={isSendingOtp} style={{ paddingHorizontal: 16 }}>
+                    {isSendingOtp ? <ActivityIndicator size="small" color="#FF2D55" /> : <Text style={{ color: '#4CD964', fontWeight: 'bold' }}>Submit</Text>}
+                  </TouchableOpacity>
+                </View>
+              )}
 
               {/* Referral ID */}
               <View style={s.inputWrap}>

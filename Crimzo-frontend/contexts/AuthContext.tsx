@@ -90,7 +90,7 @@ interface AuthContextType {
   isGuest: boolean;
   login: (email: string, password: string) => Promise<void>;
   emailLogin: (email: string) => Promise<void>;
-  register: (email: string, password: string, username: string, avatarUri?: string) => Promise<void>;
+  register: (email: string, password: string, username: string, avatarUri?: string, whatsapp?: string) => Promise<void>;
   guestLogin: () => Promise<void>;
   testLogin: () => Promise<void>;
   sendPhoneOtp: (phone: string) => Promise<void>;
@@ -206,7 +206,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const register = async (email: string, password: string, username: string, avatarUri?: string) => {
+  const register = async (email: string, password: string, username: string, avatarUri?: string, whatsapp?: string) => {
     try {
       const normalizedEmail = email.trim().toLowerCase();
       console.log('Attempting registration...', { email: normalizedEmail, username, hasAvatar: !!avatarUri, API_URL });
@@ -216,6 +216,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       formData.append('email', normalizedEmail);
       formData.append('password', password);
       formData.append('username', username.trim());
+      if (whatsapp) {
+        formData.append('whatsapp', whatsapp.trim());
+      }
 
       if (avatarUri) {
         const filename = avatarUri.split('/').pop() || `avatar_${Date.now()}.jpg`;

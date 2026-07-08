@@ -468,10 +468,6 @@ export function useWallet() {
       if (res.success) {
         setWithdrawInfo(res);
         updateUser({
-          beans: res.beans,
-          pendingTaskBeans: res.pendingTaskBeans,
-          totalBeans: res.totalBeans,
-          totalWithdrawableBeans: res.totalWithdrawableBeans,
           withdrawableInr: res.withdrawableInr,
           diamonds: res.diamonds,
         });

@@ -5,10 +5,12 @@ const nodemailer = require('nodemailer');
 const User = require('../models/User');
 const { uploadToCloudinary } = require('../config/cloudinary');
 const { sendOtpSms, verifyOtpSms, normalizeIndianMobile, isFast2SmsConfigured } = require('../utils/fast2sms');
+const { sendWhatsAppOtp, isTwilioConfigured } = require('../utils/twilioWhatsapp');
 
 // In-memory OTP store (dev only — use Redis/DB in production)
 const otpStore = new Map();
 const emailOtpStore = new Map();
+const whatsappOtpStore = new Map();
 
 // Helper to generate a 10-char alphanumeric ID (with retry for uniqueness)
 const generateCrimzoId = async () => {
@@ -142,19 +144,26 @@ exports.sendOtp = async (req, res) => {
     otpStore.set(mobile, { otp, expiresAt: Date.now() + 5 * 60 * 1000 });
 
     try {
-      const result = await sendOtpSms(mobile, otp);
-      const devHint = result.devMode && !isFast2SmsConfigured()
-        ? ' (dev mode — check server logs for OTP)'
-        : '';
-      res.json({ success: true, message: `OTP sent to +91${mobile}${devHint}` });
-    } catch (smsErr) {
-      console.error('FAST2SMS send error:', smsErr.message);
+      if (isTwilioConfigured()) {
+        await sendWhatsAppOtp(mobile, otp);
+        return res.json({ success: true, message: `WhatsApp OTP sent to +91${mobile}` });
+      } else if (isFast2SmsConfigured()) {
+        const result = await sendOtpSms(mobile, otp);
+        const devHint = result.devMode && !isFast2SmsConfigured()
+          ? ' (dev mode — check server logs for OTP)'
+          : '';
+        return res.json({ success: true, message: `OTP sent to +91${mobile}${devHint}` });
+      } else {
+        throw new Error('No SMS/WhatsApp provider configured');
+      }
+    } catch (sendErr) {
+      console.error('OTP Send error:', sendErr.message);
       if (process.env.NODE_ENV === 'production') {
         otpStore.delete(mobile);
         return res.status(500).json({ error: 'Failed to send OTP. Please try again.' });
       }
-      console.log(`\n📱 [FALLBACK] OTP for +91${mobile}: ${otp}\n`);
-      res.json({ success: true, message: 'OTP sent (dev fallback — check server logs)' });
+      console.log(`\n📱 [FALLBACK] WhatsApp OTP for +91${mobile}: ${otp}\n`);
+      return res.json({ success: true, message: 'OTP sent (dev fallback — check server logs)' });
     }
   } catch (error) {
     console.error('Send OTP error:', error);
@@ -245,6 +254,62 @@ exports.verifyOtp = async (req, res) => {
     let msg = 'OTP verification failed';
     if (error.message && (error.message.includes('buffering') || error.message.includes('ECONNREFUSED') || error.message.includes('Mongo'))) msg = 'Database unavailable. Backend may still be connecting to MongoDB.';
     res.status(500).json({ error: msg });
+  }
+};
+
+// ── WhatsApp Registration OTP: Send ──
+exports.sendWhatsappRegistrationOtp = async (req, res) => {
+  try {
+    const { whatsapp } = req.body;
+    if (!whatsapp) return res.status(400).json({ error: 'WhatsApp number is required' });
+    
+    const mobile = normalizeIndianMobile(whatsapp);
+    if (!mobile) return res.status(400).json({ error: 'Valid 10-digit Indian mobile number required' });
+    
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    whatsappOtpStore.set(mobile, { otp, expiresAt: Date.now() + 10 * 60 * 1000 });
+    
+    try {
+      if (isTwilioConfigured()) {
+        await sendWhatsAppOtp(mobile, otp);
+        return res.json({ success: true, message: `WhatsApp OTP sent to +91${mobile}` });
+      } else {
+        console.log(`\n📱 [FALLBACK] WhatsApp OTP for +91${mobile}: ${otp}\n`);
+        return res.json({ success: true, message: 'OTP sent (dev fallback — check server logs)' });
+      }
+    } catch (err) {
+      console.error('WhatsApp send error:', err);
+      return res.status(500).json({ error: 'Failed to send WhatsApp message' });
+    }
+  } catch (error) {
+    console.error('Send WhatsApp OTP error:', error);
+    res.status(500).json({ error: 'Failed to send OTP' });
+  }
+};
+
+// ── WhatsApp Registration OTP: Verify ──
+exports.verifyWhatsappRegistrationOtp = async (req, res) => {
+  try {
+    const { whatsapp, otp } = req.body;
+    if (!whatsapp || !otp) return res.status(400).json({ error: 'WhatsApp and OTP required' });
+    
+    const mobile = normalizeIndianMobile(whatsapp);
+    if (!mobile) return res.status(400).json({ error: 'Valid 10-digit Indian mobile number required' });
+    
+    const stored = whatsappOtpStore.get(mobile);
+    if (!stored) return res.status(400).json({ error: 'OTP not found. Please request a new one.' });
+    if (stored.otp !== otp.toString()) return res.status(400).json({ error: 'Invalid OTP. Please try again.' });
+    if (Date.now() > stored.expiresAt) {
+      whatsappOtpStore.delete(mobile);
+      return res.status(400).json({ error: 'OTP expired. Please request a new one.' });
+    }
+    
+    // Mark as verified
+    whatsappOtpStore.set(mobile, { ...stored, verified: true });
+    res.json({ success: true, message: 'WhatsApp number verified successfully' });
+  } catch (error) {
+    console.error('Verify WhatsApp OTP error:', error);
+    res.status(500).json({ error: 'OTP verification failed' });
   }
 };
 
@@ -414,6 +479,8 @@ exports.register = async (req, res) => {
     console.log('Password hashed successfully, hash length:', passwordHash.length);
 
     const crimzoId = await generateCrimzoId();
+    const { whatsapp } = req.body;
+    
     const user = await User.create({
       crimzo_id: crimzoId,
       email: normalizedEmail,
@@ -423,12 +490,15 @@ exports.register = async (req, res) => {
       diamonds: 0,
       beans: 0,
       country: 'India',
-
     });
+    
+    if (whatsapp) {
+      const mobile = normalizeIndianMobile(whatsapp);
+      if (mobile) whatsappOtpStore.delete(mobile);
+    }
 
     const referralResult = await applyReferralIfPresent(user, req);
     console.log('User registered successfully, ID:', user.id, referralResult?.applied ? '(referral applied)' : '');
-
     const token = jwt.sign(
       { id: user.id, email: normalizedEmail, username: username.trim() },
       process.env.JWT_SECRET,
