@@ -211,7 +211,7 @@ exports.verifyOtp = async (req, res) => {
     }
 
     const phoneEmail = `${mobile}@phone.crimzo.local`;
-    let user = await User.findOne({ email: phoneEmail });
+    let user = await User.findOne({ $or: [{ phone: mobile }, { email: phoneEmail }] });
     let referralResult = null;
 
     if (!user) {
@@ -220,6 +220,7 @@ exports.verifyOtp = async (req, res) => {
       user = await User.create({
         crimzo_id: crimzoId,
         email: phoneEmail,
+        phone: mobile,
         password_hash: 'PHONE_AUTH_NO_PASSWORD',
         username,
         diamonds: 0,
@@ -484,6 +485,7 @@ exports.register = async (req, res) => {
     const user = await User.create({
       crimzo_id: crimzoId,
       email: normalizedEmail,
+      phone: whatsapp ? normalizeIndianMobile(whatsapp) : undefined,
       password_hash: passwordHash,
       username: username.trim(),
       avatar: avatarUrl,
@@ -817,5 +819,101 @@ exports.getMe = async (req, res) => {
   } catch (error) {
     console.error('Get user error:', error);
     res.status(500).json({ error: 'Failed to get user' });
+  }
+};
+
+// ── Forgot Password ──
+exports.sendForgotPasswordOtp = async (req, res) => {
+  try {
+    const { loginId } = req.body;
+    if (!loginId) return res.status(400).json({ error: 'Email or phone required' });
+    
+    let isEmail = loginId.includes('@');
+    let user;
+    let otpTarget;
+    let deliveryMethod;
+    
+    if (isEmail) {
+      user = await User.findOne({ email: loginId.trim().toLowerCase() });
+      otpTarget = loginId.trim().toLowerCase();
+      deliveryMethod = 'email';
+    } else {
+      const mobile = normalizeIndianMobile(loginId);
+      if (!mobile) return res.status(400).json({ error: 'Valid email or mobile required' });
+      user = await User.findOne({ $or: [{ phone: mobile }, { email: `${mobile}@phone.crimzo.local` }] });
+      otpTarget = mobile;
+      deliveryMethod = 'whatsapp';
+    }
+    
+    if (!user) return res.status(404).json({ error: 'Account not found' });
+    
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    if (deliveryMethod === 'email') {
+      emailOtpStore.set(otpTarget, { otp, expiresAt: Date.now() + 10 * 60 * 1000 });
+      if (process.env.SMTP_EMAIL && process.env.SMTP_PASSWORD) {
+        const transporter = createTransporter();
+        await transporter.sendMail({
+          from: `"Crimzo" <${process.env.SMTP_EMAIL}>`,
+          to: otpTarget,
+          subject: 'Password Reset Code',
+          text: `Your password reset code is: ${otp}`
+        });
+      }
+      return res.json({ success: true, message: 'OTP sent to email', deliveryMethod });
+    } else {
+      whatsappOtpStore.set(otpTarget, { otp, expiresAt: Date.now() + 10 * 60 * 1000 });
+      if (isTwilioConfigured()) {
+        await sendWhatsAppOtp(otpTarget, otp);
+        return res.json({ success: true, message: 'OTP sent to WhatsApp', deliveryMethod });
+      } else {
+        console.log(`\n📱 [FALLBACK] Forgot Pass WhatsApp OTP for +91${otpTarget}: ${otp}\n`);
+        return res.json({ success: true, message: 'OTP sent (dev fallback)', deliveryMethod });
+      }
+    }
+  } catch (error) {
+    console.error('Forgot password send OTP error:', error);
+    res.status(500).json({ error: 'Failed to send reset code' });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { loginId, otp, newPassword } = req.body;
+    if (!loginId || !otp || !newPassword) return res.status(400).json({ error: 'Missing fields' });
+    if (newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    
+    let isEmail = loginId.includes('@');
+    let otpTarget;
+    let stored;
+    let user;
+    
+    if (isEmail) {
+      otpTarget = loginId.trim().toLowerCase();
+      stored = emailOtpStore.get(otpTarget);
+      user = await User.findOne({ email: otpTarget });
+    } else {
+      otpTarget = normalizeIndianMobile(loginId);
+      stored = whatsappOtpStore.get(otpTarget);
+      user = await User.findOne({ $or: [{ phone: otpTarget }, { email: `${otpTarget}@phone.crimzo.local` }] });
+    }
+    
+    if (!stored) return res.status(400).json({ error: 'OTP not found. Please request a new one.' });
+    if (stored.otp !== otp.toString()) return res.status(400).json({ error: 'Invalid OTP.' });
+    if (Date.now() > stored.expiresAt) return res.status(400).json({ error: 'OTP expired.' });
+    if (!user) return res.status(404).json({ error: 'Account not found.' });
+    
+    // Clear OTP
+    if (isEmail) emailOtpStore.delete(otpTarget);
+    else whatsappOtpStore.delete(otpTarget);
+    
+    // Reset password
+    user.password_hash = await bcrypt.hash(newPassword, 10);
+    await user.save();
+    
+    res.json({ success: true, message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Failed to reset password' });
   }
 };

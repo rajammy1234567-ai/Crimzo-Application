@@ -19,6 +19,10 @@ router.post('/email/complete-registration', auth.completeEmailRegistration);
 router.post('/whatsapp/send-otp', auth.sendWhatsappRegistrationOtp);
 router.post('/whatsapp/verify-otp', auth.verifyWhatsappRegistrationOtp);
 
+// Forgot Password flow
+router.post('/forgot-password/send-otp', auth.sendForgotPasswordOtp);
+router.post('/forgot-password/reset', auth.resetPassword);
+
 router.get('/me', authenticateToken, auth.getMe);
 
 module.exports = router;
