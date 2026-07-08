@@ -91,6 +91,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   emailLogin: (email: string) => Promise<void>;
   register: (email: string, password: string, username: string, avatarUri?: string, whatsapp?: string) => Promise<void>;
+  registerPhone: (phone: string, otp: string, username: string, avatarUri?: string) => Promise<void>;
   guestLogin: () => Promise<void>;
   testLogin: () => Promise<void>;
   sendPhoneOtp: (phone: string) => Promise<void>;
@@ -249,6 +250,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       persistAuth(data.token, data.user);
     } catch (error: unknown) {
       console.error('Registration error:', getApiErrorMessage(error) ?? error);
+      throwAuthApiError(error, 'Registration failed. Please check your connection.');
+    }
+  };
+
+  const registerPhone = async (phone: string, otp: string, username: string, avatarUri?: string) => {
+    try {
+      console.log('Attempting phone registration...', { phone, username, hasAvatar: !!avatarUri, API_URL });
+
+      const formData = new FormData();
+      formData.append('phone', phone.trim());
+      formData.append('otp', otp.trim());
+      formData.append('username', username.trim());
+
+      if (avatarUri) {
+        const filename = avatarUri.split('/').pop() || `avatar_${Date.now()}.jpg`;
+        if (Platform.OS === 'web') {
+          const resp = await fetch(avatarUri);
+          const blob = await resp.blob();
+          const file = new File([blob], filename, { type: 'image/jpeg' });
+          formData.append('avatar', file);
+        } else {
+          formData.append('avatar', { uri: avatarUri, name: filename, type: 'image/jpeg' } as any);
+        }
+      }
+
+      const referralPayload = await getReferralSignupPayload();
+      Object.entries(referralPayload).forEach(([key, value]) => {
+        formData.append(key, String(value));
+      });
+
+      const data = await apiFetch<{ token: string; user: User }>('/api/auth/register-phone', {
+        method: 'POST',
+        body: formData,
+        timeoutMs: 30000,
+      });
+
+      console.log('Phone registration response:', data);
+      await clearPendingReferralCode();
+      persistAuth(data.token, data.user);
+    } catch (error: unknown) {
+      console.error('Phone registration error:', getApiErrorMessage(error) ?? error);
       throwAuthApiError(error, 'Registration failed. Please check your connection.');
     }
   };
@@ -432,7 +474,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, isGuest, login, emailLogin, register, guestLogin, testLogin, sendPhoneOtp, verifyPhoneOtp, sendEmailOtp, verifyEmailOtp, completeEmailRegistration, signInWithGoogle, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, token, loading, isGuest, login, emailLogin, register, guestLogin, registerPhone, testLogin, sendPhoneOtp, verifyPhoneOtp, sendEmailOtp, verifyEmailOtp, completeEmailRegistration, signInWithGoogle, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

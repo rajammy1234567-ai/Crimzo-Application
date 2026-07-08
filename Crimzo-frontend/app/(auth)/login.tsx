@@ -17,9 +17,13 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [showEmailLogin, setShowEmailLogin] = useState(false);
+  const [loginMethod, setLoginMethod] = useState<'email' | 'phone'>('email');
+  const [phone, setPhone] = useState('');
+  const [otp, setOtp] = useState('');
+  const [showOtp, setShowOtp] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { login, user, loading: authLoading } = useAuth();
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const { login, sendPhoneOtp, verifyPhoneOtp, user, loading: authLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -66,6 +70,33 @@ export default function LoginScreen() {
     }
   };
 
+  const handleSendPhoneOtp = async () => {
+    if (!phone || phone.length < 10) return appAlert('Invalid Number', 'Please enter a valid 10-digit number.');
+    setIsSendingOtp(true);
+    try {
+      await sendPhoneOtp(phone);
+      setShowOtp(true);
+      appAlert('OTP Sent', 'Check your WhatsApp for the verification code.');
+    } catch (err: any) {
+      appAlert('Error', err.message || 'Failed to send OTP.');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const handlePhoneLogin = async () => {
+    if (!otp || otp.length < 4) return appAlert('Invalid OTP', 'Please enter a valid OTP.');
+    setLoading(true);
+    try {
+      await verifyPhoneOtp(phone, otp);
+      router.replace((await resolvePostAuthRoute()) as never);
+    } catch (err: any) {
+      appAlert('Login Failed', err.message || 'Invalid OTP.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const onGoogleSuccess = async () => {
     router.replace((await resolvePostAuthRoute()) as never);
   };
@@ -96,30 +127,22 @@ export default function LoginScreen() {
             <View style={s.card}>
               <Text style={s.cardTitle}>Sign In</Text>
               <Text style={s.cardSub}>Continue with your Google account — fast & secure</Text>
-
-              <GoogleSignInButton
-                variant="primary"
-                disabled={loading}
-                onSuccess={onGoogleSuccess}
-              />
-
-              <View style={s.dividerRow}>
-                <View style={s.dividerLine} />
-                <Text style={s.dividerText}>or</Text>
-                <View style={s.dividerLine} />
+              <View style={s.toggleWrap}>
+                <TouchableOpacity 
+                  style={[s.toggleBtn, loginMethod === 'email' && s.toggleBtnActive]} 
+                  onPress={() => setLoginMethod('email')}
+                >
+                  <Text style={[s.toggleText, loginMethod === 'email' && s.toggleTextActive]}>Email</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[s.toggleBtn, loginMethod === 'phone' && s.toggleBtnActive]} 
+                  onPress={() => setLoginMethod('phone')}
+                >
+                  <Text style={[s.toggleText, loginMethod === 'phone' && s.toggleTextActive]}>Phone</Text>
+                </TouchableOpacity>
               </View>
 
-              {!showEmailLogin ? (
-                <TouchableOpacity
-                  style={s.emailToggleBtn}
-                  onPress={() => setShowEmailLogin(true)}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="mail-outline" size={18} color="rgba(255,255,255,0.55)" />
-                  <Text style={s.emailToggleText}>Sign in with email & password</Text>
-                  <Ionicons name="chevron-down" size={16} color="rgba(255,255,255,0.35)" />
-                </TouchableOpacity>
-              ) : (
+              {loginMethod === 'email' ? (
                 <>
                   <View style={s.inputWrap}>
                     <Ionicons name="mail-outline" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
@@ -155,6 +178,10 @@ export default function LoginScreen() {
                       <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="rgba(255,255,255,0.4)" />
                     </TouchableOpacity>
                   </View>
+                  
+                  <TouchableOpacity onPress={() => router.push('/(auth)/forgot-password' as never)} style={{ alignItems: 'flex-end', marginBottom: 16, marginTop: -4 }}>
+                    <Text style={{ color: '#FF2D55', fontSize: 13, fontWeight: '600' }}>Forgot Password?</Text>
+                  </TouchableOpacity>
 
                   <TouchableOpacity style={s.btnWrap} onPress={handleEmailLogin} disabled={loading} activeOpacity={0.8}>
                     <LinearGradient colors={['#FF2D55', '#FF4B6F']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.btnGradient}>
@@ -163,13 +190,73 @@ export default function LoginScreen() {
                       ) : (
                         <View style={s.btnRow}>
                           <Ionicons name="log-in-outline" size={20} color="#FFF" />
-                          <Text style={s.btnText}>Sign In with Email</Text>
+                          <Text style={s.btnText}>Sign In</Text>
+                        </View>
+                      )}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <View style={s.inputWrap}>
+                    <Ionicons name="call-outline" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
+                    <TextInput
+                      style={s.input}
+                      placeholder="WhatsApp Number"
+                      placeholderTextColor="rgba(255,255,255,0.3)"
+                      value={phone}
+                      onChangeText={(t) => { setPhone(t); setShowOtp(false); }}
+                      keyboardType="phone-pad"
+                      selectionColor="#FF2D55"
+                    />
+                    {!showOtp && (
+                      <TouchableOpacity onPress={handleSendPhoneOtp} disabled={isSendingOtp} style={{ paddingHorizontal: 16 }}>
+                        {isSendingOtp ? <ActivityIndicator size="small" color="#FF2D55" /> : <Text style={{ color: '#FF2D55', fontWeight: 'bold' }}>Send OTP</Text>}
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {showOtp && (
+                    <View style={s.inputWrap}>
+                      <Ionicons name="keypad-outline" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
+                      <TextInput
+                        style={s.input}
+                        placeholder="Enter OTP"
+                        placeholderTextColor="rgba(255,255,255,0.3)"
+                        value={otp}
+                        onChangeText={setOtp}
+                        keyboardType="number-pad"
+                        selectionColor="#FF2D55"
+                      />
+                    </View>
+                  )}
+
+                  <TouchableOpacity style={s.btnWrap} onPress={showOtp ? handlePhoneLogin : handleSendPhoneOtp} disabled={loading || isSendingOtp} activeOpacity={0.8}>
+                    <LinearGradient colors={['#FF2D55', '#FF4B6F']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.btnGradient}>
+                      {loading || isSendingOtp ? (
+                        <ActivityIndicator color="#FFF" />
+                      ) : (
+                        <View style={s.btnRow}>
+                          <Ionicons name="log-in-outline" size={20} color="#FFF" />
+                          <Text style={s.btnText}>{showOtp ? 'Sign In' : 'Send OTP'}</Text>
                         </View>
                       )}
                     </LinearGradient>
                   </TouchableOpacity>
                 </>
               )}
+
+              <View style={s.dividerRow}>
+                <View style={s.dividerLine} />
+                <Text style={s.dividerText}>or continue with</Text>
+                <View style={s.dividerLine} />
+              </View>
+
+              <GoogleSignInButton
+                variant="secondary"
+                disabled={loading}
+                onSuccess={onGoogleSuccess}
+              />
             </View>
 
             <View style={s.footer}>
@@ -206,12 +293,11 @@ const s = StyleSheet.create({
   card: { width: '100%', backgroundColor: 'rgba(18,18,28,0.9)', borderRadius: 28, padding: 28, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
   cardTitle: { fontSize: 24, fontWeight: '800', color: '#FFF', marginBottom: 6 },
   cardSub: { fontSize: 14, color: 'rgba(255,255,255,0.4)', marginBottom: 22, lineHeight: 20 },
-  emailToggleBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    paddingVertical: 14, borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-  },
-  emailToggleText: { color: 'rgba(255,255,255,0.55)', fontSize: 14, fontWeight: '600' },
+  toggleWrap: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, padding: 4, marginBottom: 20 },
+  toggleBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 12 },
+  toggleBtnActive: { backgroundColor: 'rgba(255,45,85,0.15)' },
+  toggleText: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontWeight: '600' },
+  toggleTextActive: { color: '#FF2D55' },
   inputWrap: { flexDirection: 'row', alignItems: 'center', height: 56, backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: 14, overflow: 'hidden' },
   inputIcon: { marginLeft: 16 },
   input: { flex: 1, color: '#FFF', fontSize: 15, paddingHorizontal: 12, fontWeight: '500' },

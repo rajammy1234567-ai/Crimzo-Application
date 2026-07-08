@@ -8,6 +8,7 @@ router.post('/phone/send-otp', auth.sendOtp);
 router.post('/phone/verify-otp', auth.verifyOtp);
 router.post('/google', auth.googleLogin);
 router.post('/register', upload.single('avatar'), auth.register);
+router.post('/register-phone', upload.single('avatar'), auth.registerPhone);
 router.post('/login', auth.login);
 
 // Email OTP auth (new proper flow)

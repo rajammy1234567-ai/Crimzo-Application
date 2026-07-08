@@ -529,6 +529,44 @@ exports.register = async (req, res) => {
   }
 };
 
+// Register via Phone
+exports.registerPhone = async (req, res) => {
+  try {
+    const { phone, otp, username } = req.body;
+    if (!phone || !otp || !username) return res.status(400).json({ error: 'All fields are required' });
+    const mobile = normalizeIndianMobile(phone);
+    if (!mobile) return res.status(400).json({ error: 'Invalid mobile number' });
+    let verified = false;
+    if (isFast2SmsConfigured()) {
+      try { await verifyOtpSms(mobile, otp); verified = true; } catch (e) { console.error('SMS verify error:', e.message); }
+    }
+    if (!verified) {
+      const stored = otpStore.get(mobile) || whatsappOtpStore.get(mobile);
+      if (!stored) return res.status(400).json({ error: 'OTP not found. Request a new one.' });
+      if (stored.otp !== String(otp)) return res.status(400).json({ error: 'Invalid OTP.' });
+      if (Date.now() > stored.expiresAt) return res.status(400).json({ error: 'OTP expired.' });
+    }
+    const existing = await User.findOne({ phone: mobile });
+    if (existing) return res.status(400).json({ error: 'Phone number already registered. Please login.' });
+    const existingUsername = await User.findOne({ username: new RegExp('^' + username.trim() + '$', 'i') });
+    if (existingUsername) return res.status(400).json({ error: 'Username already taken' });
+    let avatarUrl = null;
+    if (req.file) {
+      try {
+        const uploadResult = await uploadToCloudinary(req.file.buffer, 'avatars', 'image');
+        avatarUrl = uploadResult.secure_url;
+      } catch (cloudErr) { console.error('Cloudinary avatar upload error:', cloudErr.message); }
+    }
+    const crimzoId = await generateCrimzoId();
+    const phoneEmail = \\@phone.crimzo.local\\;
+    const user = await User.create({ crimzo_id: crimzoId, email: phoneEmail, phone: mobile, password_hash: 'PHONE_AUTH_NO_PASSWORD', username: username.trim(), avatar: avatarUrl, diamonds: 0, beans: 0, country: 'India' });
+    otpStore.delete(mobile); whatsappOtpStore.delete(mobile);
+    const referralResult = await applyReferralIfPresent(user, req);
+    const token = jwt.sign({ id: user.id, email: user.email, username: user.username }, process.env.JWT_SECRET, { expiresIn: '30d' });
+    res.json({ success: true, token, user: formatAuthUser(user, { crimzo_id: crimzoId, email: phoneEmail, username: username.trim(), avatar: avatarUrl, bio: null, country: 'India' }, referralResult) });
+  } catch (error) { console.error('Phone register error:', error); res.status(500).json({ error: 'Registration failed' }); }
+};
+
 // Login
 exports.login = async (req, res) => {
   try {

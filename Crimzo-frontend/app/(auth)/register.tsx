@@ -18,6 +18,7 @@ import {
 import { resolvePostAuthRoute } from '../../lib/liveShare';
 
 export default function RegisterScreen() {
+  const [registerMethod, setRegisterMethod] = useState<'email' | 'phone'>('email');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -35,7 +36,7 @@ export default function RegisterScreen() {
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [referralId, setReferralId] = useState('');
   const router = useRouter();
-  const { register, user, loading: authLoading } = useAuth();
+  const { register, registerPhone, user, loading: authLoading } = useAuth();
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -148,7 +149,6 @@ export default function RegisterScreen() {
 
   const handleRegister = async () => {
     const trimmedUsername = username.trim();
-    const trimmedEmail = email.trim().toLowerCase();
 
     if (!trimmedUsername || trimmedUsername.length < 3) {
       return appAlert('Invalid Username', 'Username must be at least 3 characters.');
@@ -156,17 +156,22 @@ export default function RegisterScreen() {
     if (/\s/.test(trimmedUsername)) {
       return appAlert('Invalid Username', 'Username cannot contain spaces.');
     }
-    if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
-      return appAlert('Invalid Email', 'Please enter a valid email address (e.g. user@gmail.com).');
-    }
-    if (!password || password.length < 6) {
-      return appAlert('Weak Password', 'Password must be at least 6 characters.');
-    }
-    if (password !== confirmPassword) {
-      return appAlert('Password Mismatch', 'The passwords you entered do not match.');
-    }
-    if (!isWhatsappVerified) {
-      return appAlert('WhatsApp Not Verified', 'Please verify your WhatsApp number first.');
+
+    if (registerMethod === 'email') {
+      const trimmedEmail = email.trim().toLowerCase();
+      if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
+        return appAlert('Invalid Email', 'Please enter a valid email address.');
+      }
+      if (!password || password.length < 6) {
+        return appAlert('Weak Password', 'Password must be at least 6 characters.');
+      }
+      if (password !== confirmPassword) {
+        return appAlert('Password Mismatch', 'The passwords you entered do not match.');
+      }
+    } else {
+      if (!isWhatsappVerified) {
+        return appAlert('WhatsApp Not Verified', 'Please verify your WhatsApp number first.');
+      }
     }
 
     setLoading(true);
@@ -174,7 +179,12 @@ export default function RegisterScreen() {
       if (referralId.trim()) {
         await savePendingReferralCode(referralId.trim());
       }
-      await register(trimmedEmail, password, trimmedUsername, avatarUri || undefined, whatsapp);
+      if (registerMethod === 'email') {
+        const trimmedEmail = email.trim().toLowerCase();
+        await register(trimmedEmail, password, trimmedUsername, avatarUri || undefined);
+      } else {
+        await registerPhone(whatsapp, otp, trimmedUsername, avatarUri || undefined);
+      }
       router.replace((await resolvePostAuthRoute()) as never);
     } catch (err: any) {
       appAlert('Registration Failed', err.message || 'Please try again.');
@@ -226,16 +236,14 @@ export default function RegisterScreen() {
 
             {/* Card */}
             <View style={s.card}>
-              <GoogleSignInButton
-                variant="primary"
-                disabled={loading}
-                onSuccess={async () => router.replace((await resolvePostAuthRoute()) as never)}
-              />
 
-              <View style={s.dividerRow}>
-                <View style={s.dividerLine} />
-                <Text style={s.dividerText}>or register with email</Text>
-                <View style={s.dividerLine} />
+              <View style={s.toggleWrap}>
+                <TouchableOpacity style={[s.toggleBtn, registerMethod === 'email' && s.toggleBtnActive]} onPress={() => setRegisterMethod('email')}>
+                  <Text style={[s.toggleText, registerMethod === 'email' && s.toggleTextActive]}>Email</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.toggleBtn, registerMethod === 'phone' && s.toggleBtnActive]} onPress={() => setRegisterMethod('phone')}>
+                  <Text style={[s.toggleText, registerMethod === 'phone' && s.toggleTextActive]}>Phone</Text>
+                </TouchableOpacity>
               </View>
 
               {/* Avatar Picker */}
@@ -272,90 +280,119 @@ export default function RegisterScreen() {
                 />
               </View>
 
-              {/* Email */}
-              <View style={s.inputWrap}>
-                <Ionicons name="mail-outline" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
-                <TextInput
-                  ref={emailRef}
-                  style={s.input}
-                  placeholder="Email address"
-                  placeholderTextColor="rgba(255,255,255,0.3)"
-                  value={email}
-                  onChangeText={setEmail}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="email-address"
-                  autoComplete="email"
-                  textContentType="emailAddress"
-                  returnKeyType="next"
-                  onSubmitEditing={() => passwordRef.current?.focus()}
-                  selectionColor="#FF2D55"
-                />
-              </View>
+              {registerMethod === 'email' ? (
+                <>
+                  {/* Email */}
+                  <View style={s.inputWrap}>
+                    <Ionicons name="mail-outline" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
+                    <TextInput
+                      ref={emailRef}
+                      style={s.input}
+                      placeholder="Email address"
+                      placeholderTextColor="rgba(255,255,255,0.3)"
+                      value={email}
+                      onChangeText={setEmail}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="email-address"
+                      autoComplete="email"
+                      textContentType="emailAddress"
+                      returnKeyType="next"
+                      onSubmitEditing={() => passwordRef.current?.focus()}
+                      selectionColor="#FF2D55"
+                    />
+                  </View>
 
-              {/* Password */}
-              <View style={s.inputWrap}>
-                <Ionicons name="lock-closed-outline" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
-                <TextInput
-                  ref={passwordRef}
-                  style={s.input}
-                  placeholder="Password (min 6 chars)"
-                  placeholderTextColor="rgba(255,255,255,0.3)"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                  autoComplete="new-password"
-                  textContentType="newPassword"
-                  returnKeyType="next"
-                  onSubmitEditing={() => confirmRef.current?.focus()}
-                  selectionColor="#FF2D55"
-                />
-                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={s.eyeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                  <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="rgba(255,255,255,0.4)" />
-                </TouchableOpacity>
-              </View>
+                  {/* Password */}
+                  <View style={s.inputWrap}>
+                    <Ionicons name="lock-closed-outline" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
+                    <TextInput
+                      ref={passwordRef}
+                      style={s.input}
+                      placeholder="Password (min 6 chars)"
+                      placeholderTextColor="rgba(255,255,255,0.3)"
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry={!showPassword}
+                      autoComplete="new-password"
+                      textContentType="newPassword"
+                      returnKeyType="next"
+                      onSubmitEditing={() => confirmRef.current?.focus()}
+                      selectionColor="#FF2D55"
+                    />
+                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={s.eyeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                      <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="rgba(255,255,255,0.4)" />
+                    </TouchableOpacity>
+                  </View>
 
-              {/* WhatsApp Number */}
-              <View style={s.inputWrap}>
-                <Ionicons name="logo-whatsapp" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
-                <TextInput
-                  style={[s.input, isWhatsappVerified && { color: '#4CD964' }]}
-                  placeholder="WhatsApp Number"
-                  placeholderTextColor="rgba(255,255,255,0.3)"
-                  value={whatsapp}
-                  onChangeText={(t) => { setWhatsapp(t); setIsWhatsappVerified(false); setShowWhatsappOtp(false); }}
-                  keyboardType="phone-pad"
-                  editable={!isWhatsappVerified}
-                  returnKeyType="next"
-                  selectionColor="#FF2D55"
-                />
-                {!isWhatsappVerified && (
-                  <TouchableOpacity onPress={handleSendWhatsappOtp} disabled={isSendingOtp} style={{ paddingHorizontal: 16 }}>
-                    {isSendingOtp && !showWhatsappOtp ? <ActivityIndicator size="small" color="#FF2D55" /> : <Text style={{ color: '#FF2D55', fontWeight: 'bold' }}>Verify</Text>}
-                  </TouchableOpacity>
-                )}
-                {isWhatsappVerified && (
-                  <Ionicons name="checkmark-circle" size={20} color="#4CD964" style={{ marginRight: 16 }} />
-                )}
-              </View>
+                  {/* Confirm Password */}
+                  <View style={s.inputWrap}>
+                    <Ionicons name="lock-closed-outline" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
+                    <TextInput
+                      ref={confirmRef}
+                      style={s.input}
+                      placeholder="Confirm Password"
+                      placeholderTextColor="rgba(255,255,255,0.3)"
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                      secureTextEntry={!showConfirmPassword}
+                      autoCapitalize="none"
+                      autoComplete="new-password"
+                      textContentType="newPassword"
+                      returnKeyType="done"
+                      onSubmitEditing={handleRegister}
+                      selectionColor="#FF2D55"
+                    />
+                    <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={s.eyeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                      <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="rgba(255,255,255,0.4)" />
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <>
+                  {/* WhatsApp Number */}
+                  <View style={s.inputWrap}>
+                    <Ionicons name="logo-whatsapp" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
+                    <TextInput
+                      style={[s.input, isWhatsappVerified && { color: '#4CD964' }]}
+                      placeholder="WhatsApp Number"
+                      placeholderTextColor="rgba(255,255,255,0.3)"
+                      value={whatsapp}
+                      onChangeText={(t) => { setWhatsapp(t); setIsWhatsappVerified(false); setShowWhatsappOtp(false); }}
+                      keyboardType="phone-pad"
+                      editable={!isWhatsappVerified}
+                      returnKeyType="next"
+                      selectionColor="#FF2D55"
+                    />
+                    {!isWhatsappVerified && (
+                      <TouchableOpacity onPress={handleSendWhatsappOtp} disabled={isSendingOtp} style={{ paddingHorizontal: 16 }}>
+                        {isSendingOtp && !showWhatsappOtp ? <ActivityIndicator size="small" color="#FF2D55" /> : <Text style={{ color: '#FF2D55', fontWeight: 'bold' }}>Verify</Text>}
+                      </TouchableOpacity>
+                    )}
+                    {isWhatsappVerified && (
+                      <Ionicons name="checkmark-circle" size={20} color="#4CD964" style={{ marginRight: 16 }} />
+                    )}
+                  </View>
 
-              {/* WhatsApp OTP Input */}
-              {showWhatsappOtp && !isWhatsappVerified && (
-                <View style={s.inputWrap}>
-                  <Ionicons name="keypad-outline" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
-                  <TextInput
-                    style={s.input}
-                    placeholder="Enter OTP"
-                    placeholderTextColor="rgba(255,255,255,0.3)"
-                    value={otp}
-                    onChangeText={setOtp}
-                    keyboardType="number-pad"
-                    selectionColor="#FF2D55"
-                  />
-                  <TouchableOpacity onPress={handleVerifyWhatsappOtp} disabled={isSendingOtp} style={{ paddingHorizontal: 16 }}>
-                    {isSendingOtp ? <ActivityIndicator size="small" color="#FF2D55" /> : <Text style={{ color: '#4CD964', fontWeight: 'bold' }}>Submit</Text>}
-                  </TouchableOpacity>
-                </View>
+                  {/* WhatsApp OTP Input */}
+                  {showWhatsappOtp && !isWhatsappVerified && (
+                    <View style={s.inputWrap}>
+                      <Ionicons name="keypad-outline" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
+                      <TextInput
+                        style={s.input}
+                        placeholder="Enter OTP"
+                        placeholderTextColor="rgba(255,255,255,0.3)"
+                        value={otp}
+                        onChangeText={setOtp}
+                        keyboardType="number-pad"
+                        selectionColor="#FF2D55"
+                      />
+                      <TouchableOpacity onPress={handleVerifyWhatsappOtp} disabled={isSendingOtp} style={{ paddingHorizontal: 16 }}>
+                        {isSendingOtp ? <ActivityIndicator size="small" color="#FF2D55" /> : <Text style={{ color: '#4CD964', fontWeight: 'bold' }}>Submit</Text>}
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
               )}
 
               {/* Referral ID */}
@@ -369,32 +406,10 @@ export default function RegisterScreen() {
                   onChangeText={(t) => setReferralId(t.toUpperCase())}
                   autoCapitalize="characters"
                   autoCorrect={false}
-                  returnKeyType="next"
-                  selectionColor="#FF2D55"
-                />
-              </View>
-
-              {/* Confirm Password */}
-              <View style={s.inputWrap}>
-                <Ionicons name="lock-closed-outline" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
-                <TextInput
-                  ref={confirmRef}
-                  style={s.input}
-                  placeholder="Confirm Password"
-                  placeholderTextColor="rgba(255,255,255,0.3)"
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  secureTextEntry={!showConfirmPassword}
-                  autoCapitalize="none"
-                  autoComplete="new-password"
-                  textContentType="newPassword"
                   returnKeyType="done"
                   onSubmitEditing={handleRegister}
                   selectionColor="#FF2D55"
                 />
-                <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={s.eyeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                  <Ionicons name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'} size={18} color="rgba(255,255,255,0.4)" />
-                </TouchableOpacity>
               </View>
 
               {/* Register Button */}
@@ -414,6 +429,18 @@ export default function RegisterScreen() {
                   )}
                 </LinearGradient>
               </TouchableOpacity>
+
+              <View style={s.dividerRow}>
+                <View style={s.dividerLine} />
+                <Text style={s.dividerText}>or continue with</Text>
+                <View style={s.dividerLine} />
+              </View>
+
+              <GoogleSignInButton
+                variant="secondary"
+                disabled={loading}
+                onSuccess={async () => router.replace((await resolvePostAuthRoute()) as never)}
+              />
 
             </View>
 
@@ -510,6 +537,12 @@ const s = StyleSheet.create({
     borderRadius: 28, padding: 24,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
   },
+
+  toggleWrap: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, padding: 4, marginBottom: 20 },
+  toggleBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 12 },
+  toggleBtnActive: { backgroundColor: 'rgba(255,45,85,0.15)' },
+  toggleText: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontWeight: '600' },
+  toggleTextActive: { color: '#FF2D55' },
 
   avatarPicker: { alignItems: 'center', marginBottom: 20, position: 'relative' },
   avatarImage: { width: 90, height: 90, borderRadius: 45, borderWidth: 3, borderColor: '#FF2D55' },
