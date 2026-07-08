@@ -280,9 +280,7 @@ export default function WalletScreen() {
                   <View>
                     <Text style={s.payLbl}>Withdraw Earnings</Text>
                     <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>
-                      {userDiamonds > 0
-                        ? `${fmt(userDiamonds)} diamonds → beans → ₹`
-                        : 'Beans → real money · credited on 7th next month'}
+                      Diamonds → real money · withdrawn on 6th of every month
                     </Text>
                   </View>
                 </View>
@@ -369,10 +367,9 @@ export default function WalletScreen() {
               {/* info */}
               <View style={s.info}>
                 {[
-                  ['card', '#FF2D55', 'Diamonds/Beans — Pay via Razorpay (UPI, Card, Net Banking)'],
+                  ['card', '#FF2D55', 'Diamonds — Pay via Razorpay (UPI, Card, Net Banking)'],
                   ['wallet', '#4CD964', 'Add Money — top up via Razorpay, then buy with wallet balance'],
-                  ['diamond', DIAMOND_COLOR, 'Diamonds are used to send gifts to streamers'],
-                  ['cafe', BEAN_COLOR, 'Beans convert to real money — payout credited on 7th of next month'],
+                  ['diamond', DIAMOND_COLOR, 'Diamonds are used to send gifts or withdraw as real money (processed on 6th of every month)'],
                   ['shield-checkmark', '#4CD964', 'All payments secured by Razorpay'],
                 ].map(([ico, col, txt], i) => (
                   <View key={i} style={s.infoR}>

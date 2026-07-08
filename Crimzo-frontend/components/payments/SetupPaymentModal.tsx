@@ -42,255 +42,50 @@ type Props = {
   onRemove: () => Promise<void>;
 };
 
-type Step = 'choose' | 'details' | 'otp' | 'verified';
-
 export default function SetupPaymentModal({
   visible,
   onClose,
   busy,
   existing,
   onSetup,
-  onVerifyOtp,
-  onResendOtp,
   onRemove,
 }: Props) {
-  const [step, setStep] = useState<Step>('choose');
-  const [payType, setPayType] = useState<'bank' | 'upi' | 'card'>('bank');
   const [holder, setHolder] = useState('');
   const [phone, setPhone] = useState('');
   const [account, setAccount] = useState('');
   const [ifsc, setIfsc] = useState('');
-  const [upi, setUpi] = useState('');
-  const [otp, setOtp] = useState('');
-  const [devHint, setDevHint] = useState('');
-  const [emailMasked, setEmailMasked] = useState('');
+
+  const isVerified = existing?.status === 'verified';
 
   useEffect(() => {
-    if (!visible) return;
-    if (existing?.status === 'verified') {
-      setStep('verified');
-    } else if (existing?.status === 'pending') {
-      setStep('otp');
-      setPayType(existing.type || 'bank');
-    } else {
-      setStep('choose');
-      setOtp('');
-      setDevHint('');
+    if (!visible) {
+      setHolder('');
+      setPhone('');
+      setAccount('');
+      setIfsc('');
     }
-  }, [visible, existing]);
-
-  const resetForm = () => {
-    setStep('choose');
-    setHolder('');
-    setPhone('');
-    setAccount('');
-    setIfsc('');
-    setUpi('');
-    setOtp('');
-    setDevHint('');
-  };
+  }, [visible]);
 
   const handleSetup = async () => {
     const res = await onSetup({
-      type: payType,
+      type: 'bank',
       account_holder_name: holder.trim(),
-      linked_phone: phone.replace(/\D/g, '').slice(-10),
-      account_number: payType === 'bank' ? account.replace(/\D/g, '') : undefined,
-      ifsc: payType === 'bank' ? ifsc.trim().toUpperCase() : undefined,
-      upi_id: payType === 'upi' ? upi.trim().toLowerCase() : undefined,
+      linked_phone: phone.replace(/\\D/g, '').slice(-10),
+      account_number: account.replace(/\\D/g, ''),
+      ifsc: ifsc.trim().toUpperCase(),
     });
     if (res.success) {
-      setDevHint(res.devHint || '');
-      setEmailMasked(res.emailMasked || 'your email');
-      setStep('otp');
-    }
-  };
-
-  const handleVerify = async () => {
-    const ok = await onVerifyOtp(otp.trim());
-    if (ok) {
-      setStep('verified');
       onClose();
     }
   };
-
-  const stepTitle = {
-    choose: 'Add Money — Step 1 of 3',
-    details: payType === 'upi' ? 'Link UPI — Step 2 of 3' : payType === 'card' ? 'Link Card — Step 2 of 3' : 'Link Bank — Step 2 of 3',
-    otp: 'Verify OTP — Step 3 of 3',
-    verified: 'Payment Method',
-  }[step];
 
   return (
     <KeyboardSheet visible={visible} onClose={onClose}>
         <View style={s.sheet}>
             <View style={s.handle} />
-            <Text style={s.title}>{stepTitle}</Text>
+            <Text style={s.title}>{isVerified ? 'Payment Method' : 'Link Bank Account'}</Text>
 
-            {step === 'choose' && (
-              <>
-                <Text style={s.sub}>Verify your payment method first. You can add money only after verification.</Text>
-                <TouchableOpacity
-                  style={[s.choice, payType === 'bank' && s.choiceOn]}
-                  onPress={() => setPayType('bank')}
-                >
-                  <Ionicons name="business" size={28} color={payType === 'bank' ? '#4CD964' : '#888'} />
-                  <View style={s.choiceText}>
-                    <Text style={s.choiceTitle}>Bank Account</Text>
-                    <Text style={s.choiceSub}>Account + IFSC → OTP verify</Text>
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.choice, payType === 'upi' && s.choiceOn]}
-                  onPress={() => setPayType('upi')}
-                >
-                  <Ionicons name="phone-portrait" size={28} color={payType === 'upi' ? '#4CD964' : '#888'} />
-                  <View style={s.choiceText}>
-                    <Text style={s.choiceTitle}>UPI</Text>
-                    <Text style={s.choiceSub}>GPay, PhonePe — OTP on linked mobile</Text>
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.choice, payType === 'card' && s.choiceOn]}
-                  onPress={() => setPayType('card')}
-                >
-                  <Ionicons name="card" size={28} color={payType === 'card' ? '#4CD964' : '#888'} />
-                  <View style={s.choiceText}>
-                    <Text style={s.choiceTitle}>Debit / Credit Card</Text>
-                    <Text style={s.choiceSub}>Card + mobile OTP verify</Text>
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setStep('details')} activeOpacity={0.85}>
-                  <LinearGradient colors={['#4CD964', '#30D158']} style={s.btn}>
-                    <Text style={s.btnText}>Continue</Text>
-                    <Ionicons name="arrow-forward" size={18} color="#FFF" />
-                  </LinearGradient>
-                </TouchableOpacity>
-              </>
-            )}
-
-            {step === 'details' && (
-              <>
-                <Text style={s.sub}>
-                  {payType === 'upi'
-                    ? 'Enter your UPI ID. OTP verifies ownership — withdrawals are sent to this UPI, not your phone.'
-                    : 'Enter your bank account. OTP is only for verification — money goes to this account, not your mobile.'}
-                </Text>
-                <Text style={s.label}>Full name</Text>
-                <TextInput
-                  style={s.input}
-                  placeholder="Name on bank/UPI account"
-                  placeholderTextColor="rgba(255,255,255,0.3)"
-                  value={holder}
-                  onChangeText={setHolder}
-                />
-                <Text style={s.label}>Linked mobile (10 digits)</Text>
-                <TextInput
-                  style={s.input}
-                  keyboardType="phone-pad"
-                  placeholder="Bank/UPI linked number"
-                  placeholderTextColor="rgba(255,255,255,0.3)"
-                  value={phone}
-                  onChangeText={(t) => setPhone(t.replace(/[^0-9]/g, '').slice(0, 10))}
-                  maxLength={10}
-                />
-                {payType === 'bank' ? (
-                  <>
-                    <Text style={s.label}>Account number</Text>
-                    <TextInput
-                      style={s.input}
-                      keyboardType="number-pad"
-                      placeholder="9–18 digits"
-                      placeholderTextColor="rgba(255,255,255,0.3)"
-                      value={account}
-                      onChangeText={(t) => setAccount(t.replace(/[^0-9]/g, ''))}
-                      maxLength={18}
-                    />
-                    <Text style={s.label}>IFSC code</Text>
-                    <TextInput
-                      style={s.input}
-                      autoCapitalize="characters"
-                      placeholder="HDFC0001234"
-                      placeholderTextColor="rgba(255,255,255,0.3)"
-                      value={ifsc}
-                      onChangeText={(t) => setIfsc(t.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-                      maxLength={11}
-                    />
-                  </>
-                ) : payType === 'upi' ? (
-                  <>
-                    <Text style={s.label}>UPI ID</Text>
-                    <TextInput
-                      style={s.input}
-                      autoCapitalize="none"
-                      placeholder="yourname@paytm / @ybl / @oksbi"
-                      placeholderTextColor="rgba(255,255,255,0.3)"
-                      value={upi}
-                      onChangeText={setUpi}
-                    />
-                  </>
-                ) : (
-                  <Text style={s.cardNote}>
-                    Your card number will be securely saved on Razorpay when you make your first payment. For now, verify name and mobile only.
-                  </Text>
-                )}
-                <TouchableOpacity onPress={handleSetup} disabled={busy} activeOpacity={0.85}>
-                  <LinearGradient colors={busy ? ['#555', '#444'] : ['#FF2D55', '#FF6B8A']} style={s.btn}>
-                    {busy ? <ActivityIndicator color="#FFF" /> : (
-                      <>
-                        <Ionicons name="mail" size={18} color="#FFF" />
-                        <Text style={s.btnText}>Send OTP to Email</Text>
-                      </>
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setStep('choose')} style={s.backBtn}>
-                  <Text style={s.backText}>← Back</Text>
-                </TouchableOpacity>
-              </>
-            )}
-
-            {step === 'otp' && (
-              <>
-                <Text style={s.sub}>
-                  OTP sent to: {emailMasked || 'your registered email'}
-                </Text>
-                {devHint ? (
-                  <View style={s.devBox}>
-                    <Text style={s.devText}>{devHint}</Text>
-                  </View>
-                ) : null}
-                <Text style={s.label}>6-digit OTP</Text>
-                <TextInput
-                  style={[s.input, s.otpInput]}
-                  keyboardType="number-pad"
-                  placeholder="• • • • • •"
-                  placeholderTextColor="rgba(255,255,255,0.3)"
-                  value={otp}
-                  onChangeText={(t) => setOtp(t.replace(/[^0-9]/g, '').slice(0, 6))}
-                  maxLength={6}
-                />
-                <TouchableOpacity onPress={handleVerify} disabled={busy || otp.length < 6} activeOpacity={0.85}>
-                  <LinearGradient colors={busy ? ['#555', '#444'] : ['#4CD964', '#30D158']} style={s.btn}>
-                    {busy ? <ActivityIndicator color="#FFF" /> : (
-                      <Text style={s.btnText}>Verify & Activate</Text>
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={async () => {
-                    const r = await onResendOtp();
-                    if (r?.devHint) setDevHint(r.devHint);
-                  }}
-                  disabled={busy}
-                  style={s.backBtn}
-                >
-                  <Text style={s.resend}>Resend OTP</Text>
-                </TouchableOpacity>
-              </>
-            )}
-
-            {step === 'verified' && existing && (
+            {isVerified && existing ? (
               <>
                 <View style={s.verifiedCard}>
                   <Ionicons name="checkmark-circle" size={32} color="#4CD964" />
@@ -300,9 +95,9 @@ export default function SetupPaymentModal({
                     <Text style={s.verifiedName}>{existing.account_holder_name}</Text>
                   </View>
                 </View>
-                <Text style={s.sub}>You can now add money — payments will be deducted from this method.</Text>
+                <Text style={s.sub}>You can now withdraw money directly to this bank account.</Text>
                 <TouchableOpacity
-                  onPress={async () => { await onRemove(); resetForm(); }}
+                  onPress={async () => { await onRemove(); }}
                   style={s.backBtn}
                 >
                   <Text style={s.unlink}>Change payment method</Text>
@@ -310,6 +105,57 @@ export default function SetupPaymentModal({
                 <TouchableOpacity onPress={onClose} activeOpacity={0.85}>
                   <LinearGradient colors={['#4CD964', '#30D158']} style={s.btn}>
                     <Text style={s.btnText}>Done</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={s.sub}>
+                  Enter your bank account details. Money will be withdrawn directly to this account.
+                </Text>
+                <Text style={s.label}>Full name</Text>
+                <TextInput
+                  style={s.input}
+                  placeholder="Name on bank account"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  value={holder}
+                  onChangeText={setHolder}
+                />
+                <Text style={s.label}>Linked mobile (10 digits)</Text>
+                <TextInput
+                  style={s.input}
+                  keyboardType="phone-pad"
+                  placeholder="Bank linked number"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  value={phone}
+                  onChangeText={(t) => setPhone(t.replace(/[^0-9]/g, '').slice(0, 10))}
+                  maxLength={10}
+                />
+                <Text style={s.label}>Account number</Text>
+                <TextInput
+                  style={s.input}
+                  keyboardType="number-pad"
+                  placeholder="9–18 digits"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  value={account}
+                  onChangeText={(t) => setAccount(t.replace(/[^0-9]/g, ''))}
+                  maxLength={18}
+                />
+                <Text style={s.label}>IFSC code</Text>
+                <TextInput
+                  style={s.input}
+                  autoCapitalize="characters"
+                  placeholder="HDFC0001234"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  value={ifsc}
+                  onChangeText={(t) => setIfsc(t.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                  maxLength={11}
+                />
+                <TouchableOpacity onPress={handleSetup} disabled={busy} activeOpacity={0.85}>
+                  <LinearGradient colors={busy ? ['#555', '#444'] : ['#FF2D55', '#FF6B8A']} style={s.btn}>
+                    {busy ? <ActivityIndicator color="#FFF" /> : (
+                      <Text style={s.btnText}>Submit Details</Text>
+                    )}
                   </LinearGradient>
                 </TouchableOpacity>
               </>
@@ -339,36 +185,18 @@ const s = StyleSheet.create({
     color: 'rgba(255,255,255,0.5)', fontSize: 13, textAlign: 'center',
     marginTop: 10, marginBottom: 18, lineHeight: 18,
   },
-  choice: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    padding: 16, borderRadius: 16, marginBottom: 10,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-  },
-  choiceOn: { borderColor: '#4CD964', backgroundColor: 'rgba(76,217,100,0.08)' },
-  choiceText: { flex: 1 },
-  choiceTitle: { color: '#FFF', fontSize: 16, fontWeight: '800' },
-  choiceSub: { color: 'rgba(255,255,255,0.45)', fontSize: 12, marginTop: 2 },
   label: { color: 'rgba(255,255,255,0.55)', fontSize: 12, fontWeight: '600', marginBottom: 6, marginTop: 8 },
   input: {
     backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14,
     paddingHorizontal: 16, paddingVertical: 14, color: '#FFF', fontSize: 16,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
   },
-  otpInput: { textAlign: 'center', fontSize: 24, letterSpacing: 8, fontWeight: '800' },
   btn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     paddingVertical: 16, borderRadius: 16, marginTop: 18,
   },
   btnText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
-  backBtn: { alignItems: 'center', marginTop: 14 },
-  backText: { color: 'rgba(255,255,255,0.5)', fontSize: 14 },
-  resend: { color: '#FF2D55', fontSize: 14, fontWeight: '700' },
-  devBox: {
-    backgroundColor: 'rgba(255,149,0,0.15)', borderRadius: 12, padding: 12,
-    borderWidth: 1, borderColor: 'rgba(255,149,0,0.3)', marginBottom: 8,
-  },
-  devText: { color: '#FF9500', fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  backBtn: { alignItems: 'center', marginTop: 14, marginBottom: 14 },
   verifiedCard: {
     flexDirection: 'row', gap: 12, alignItems: 'center',
     backgroundColor: 'rgba(76,217,100,0.1)', borderRadius: 16, padding: 16,
@@ -378,8 +206,4 @@ const s = StyleSheet.create({
   verifiedDisplay: { color: '#FFF', fontSize: 16, fontWeight: '800', marginTop: 4 },
   verifiedName: { color: 'rgba(255,255,255,0.45)', fontSize: 12, marginTop: 2 },
   unlink: { color: '#FF2D55', fontSize: 13, fontWeight: '700' },
-  cardNote: {
-    color: 'rgba(255,255,255,0.45)', fontSize: 12, lineHeight: 18,
-    marginTop: 12, marginBottom: 4,
-  },
 });

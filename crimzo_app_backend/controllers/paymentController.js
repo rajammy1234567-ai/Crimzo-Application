@@ -208,9 +208,9 @@ exports.setupPaymentMethod = async (req, res) => {
     let linked = {
       type: payType,
       account_holder_name: holder,
-      status: 'pending',
+      status: 'verified',
       linked_at: new Date(),
-      verified_at: null,
+      verified_at: new Date(),
     };
 
     let methodLabel = '';
@@ -267,33 +267,13 @@ exports.setupPaymentMethod = async (req, res) => {
       methodLabel = `${bank.name} •••• ${linked.account_last4}`;
     }
 
-    const otp = generateOtp();
-    linked.verify_otp_hash = hashOtp(otp);
-    linked.verify_otp_expires = new Date(Date.now() + OTP_TTL_MS);
-
     const user = await User.findByIdAndUpdate(userId, { linked_bank: linked }, { new: true })
       .select('linked_bank email');
 
-    const mail = await sendPaymentVerificationEmail({
-      email: user.email,
-      username: userDoc.username,
-      otp,
-      methodLabel,
-      phone: phoneForOtp,
-    });
-
     res.json({
       success: true,
-      message: phoneForOtp
-        ? 'OTP sent to linked mobile & email'
-        : 'OTP sent to your registered email',
+      message: 'Bank details verified and linked successfully.',
       paymentMethod: formatPaymentMethod(user.linked_bank),
-      otpSent: mail.sent,
-      emailMasked: user.email.replace(/(.{2}).+(@.+)/, '$1***$2'),
-      phoneMasked: phoneForOtp ? `******${phoneForOtp.slice(-4)}` : null,
-      devHint: process.env.NODE_ENV !== 'production'
-        ? `Test OTP: ${DEV_OTP} (check backend console for phone OTP)`
-        : undefined,
     });
   } catch (error) {
     console.error('Setup payment method error:', error);

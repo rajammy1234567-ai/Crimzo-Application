@@ -12,25 +12,12 @@ import { KeyboardSheet } from '../KeyboardAware';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { PaymentMethodInfo } from './SetupPaymentModal';
-import { BEAN_PACKAGES, formatCount, formatInr } from '../../lib/diamondPackages';
-import { DIAMOND_COLOR } from '../../lib/currencyIcons';
+import { formatCount, formatInr } from '../../lib/diamondPackages';
 
 export type WithdrawInfo = {
   diamonds?: number;
-  beans?: number;
-  pendingTaskBeans?: number;
-  diamondsAsBeans?: number;
-  totalBeans?: number;
-  totalWithdrawableBeans?: number;
   withdrawableInr?: number;
-  beansPerInr?: number;
   minWithdraw?: number;
-  withdrawDayAllowed?: boolean;
-  withdrawDayOfMonth?: number;
-  nextWithdrawDay?: string;
-  scheduledCreditDate?: string;
-  scheduledCreditLabel?: string;
-  creditMessage?: string;
 };
 
 type Props = {
@@ -57,20 +44,13 @@ export default function WithdrawModal({
   const [amount, setAmount] = useState('');
 
   const diamonds = withdrawInfo?.diamonds ?? 0;
-  const beans = withdrawInfo?.beans ?? 0;
-  const pendingTaskBeans = withdrawInfo?.pendingTaskBeans ?? 0;
-  const diamondsAsBeans = withdrawInfo?.diamondsAsBeans ?? diamonds;
-  const earnedBeans = withdrawInfo?.totalBeans ?? beans + pendingTaskBeans;
-  const totalWithdrawable = withdrawInfo?.totalWithdrawableBeans ?? earnedBeans + diamondsAsBeans;
   const balance = withdrawInfo?.withdrawableInr ?? 0;
 
   const parsed = Number(amount) || 0;
   const canWithdraw =
     paymentMethod?.status === 'verified'
-    && (paymentMethod?.type === 'bank' || paymentMethod?.type === 'upi')
+    && paymentMethod?.type === 'bank'
     && balance >= minWithdraw;
-
-  const affordableTiers = BEAN_PACKAGES.filter((p) => p.price <= balance && p.price >= minWithdraw);
 
   const handleWithdraw = () => {
     if (!canWithdraw || parsed < minWithdraw || parsed > balance) return;
@@ -84,32 +64,20 @@ export default function WithdrawModal({
           <View style={s.handle} />
           <Text style={s.title}>Withdraw Earnings</Text>
           <Text style={s.sub}>
-            See how your diamonds and beans convert to real rupees. Add verified bank/UPI details, then submit — admin will process your payout.
+            Add verified bank details, then submit.
           </Text>
 
-          {withdrawInfo?.creditMessage || withdrawInfo?.scheduledCreditLabel ? (
-            <View style={s.scheduleBanner}>
-              <Ionicons name="calendar-outline" size={18} color="#4CD964" />
-              <Text style={s.scheduleTxt}>
-                {withdrawInfo.creditMessage
-                  || `Amount will be credited on ${withdrawInfo.scheduledCreditLabel}.`}
-              </Text>
-            </View>
-          ) : null}
-
-          {diamonds > 0 && (
-            <View style={s.convertRow}>
-              <Ionicons name="swap-horizontal" size={18} color={DIAMOND_COLOR} />
-              <Text style={s.convertTxt}>
-                {formatCount(diamonds)} diamonds → {formatCount(diamondsAsBeans)} beans
-              </Text>
-            </View>
-          )}
+          <View style={s.scheduleBanner}>
+            <Ionicons name="calendar-outline" size={18} color="#4CD964" />
+            <Text style={s.scheduleTxt}>
+              Withdrawal har mahine ki 6 date ko hoga.
+            </Text>
+          </View>
 
           <View style={s.balanceRow}>
             <View>
-              <Text style={s.balanceLabel}>Total Beans</Text>
-              <Text style={s.beansVal}>{formatCount(earnedBeans)}</Text>
+              <Text style={s.balanceLabel}>Total Diamonds</Text>
+              <Text style={s.diamondsVal}>{formatCount(diamonds)}</Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={s.balanceLabel}>Withdrawable</Text>
@@ -117,21 +85,10 @@ export default function WithdrawModal({
             </View>
           </View>
 
-          {(beans > 0 || pendingTaskBeans > 0 || diamonds > 0) && (
-            <Text style={s.breakdown}>
-              {[
-                beans > 0 ? `${formatCount(beans)} wallet` : '',
-                pendingTaskBeans > 0 ? `${formatCount(pendingTaskBeans)} pending tasks` : '',
-                diamonds > 0 ? `${formatCount(diamondsAsBeans)} from diamonds` : '',
-              ].filter(Boolean).join(' + ')}
-              {totalWithdrawable > earnedBeans ? ` · ${formatCount(totalWithdrawable)} withdrawable` : ''}
-            </Text>
-          )}
-
           {paymentMethod?.status === 'verified' ? (
             <View style={s.bankRow}>
               <Ionicons
-                name={paymentMethod.type === 'upi' ? 'phone-portrait-outline' : 'business'}
+                name="business"
                 size={20}
                 color="#FF9500"
               />
@@ -143,7 +100,7 @@ export default function WithdrawModal({
           ) : (
             <TouchableOpacity style={s.setupBanner} onPress={onSetupPayment}>
               <Ionicons name="shield-outline" size={20} color="#FF2D55" />
-              <Text style={s.setupText}>Verify your Bank/UPI first to withdraw</Text>
+              <Text style={s.setupText}>Verify your Bank Account first to withdraw</Text>
             </TouchableOpacity>
           )}
 
@@ -171,27 +128,9 @@ export default function WithdrawModal({
               ))}
           </View>
 
-          {affordableTiers.length > 0 && (
-            <>
-              <Text style={s.tierLabel}>Quick withdraw by bean tier</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tierScroll}>
-                {affordableTiers.map((tier) => (
-                  <TouchableOpacity
-                    key={tier.id}
-                    style={s.tierBtn}
-                    onPress={() => setAmount(String(tier.price))}
-                  >
-                    <Text style={s.tierBeans}>{formatCount(tier.beans)} beans</Text>
-                    <Text style={s.tierInr}>{formatInr(tier.price)}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </>
-          )}
-
           <TouchableOpacity
-            onPress={canWithdraw ? handleWithdraw : onSetupPayment}
-            disabled={busy || (canWithdraw && (!parsed || parsed < minWithdraw || parsed > balance))}
+            onPress={paymentMethod?.status === 'verified' ? handleWithdraw : onSetupPayment}
+            disabled={busy || (paymentMethod?.status === 'verified' && (!parsed || parsed < minWithdraw || parsed > balance))}
           >
             <LinearGradient
               colors={busy ? ['#555', '#444'] : ['#FF9500', '#FF6B00']}
@@ -201,9 +140,9 @@ export default function WithdrawModal({
                 <ActivityIndicator color="#FFF" />
               ) : (
                 <Text style={s.btnText}>
-                  {canWithdraw
+                  {paymentMethod?.status === 'verified'
                     ? `Confirm Withdraw ₹${(parsed || 0).toLocaleString('en-IN')}`
-                    : 'Add Bank / UPI Details'}
+                    : 'Add Bank Details'}
                 </Text>
               )}
             </LinearGradient>
@@ -231,19 +170,13 @@ const s = StyleSheet.create({
     borderColor: 'rgba(76,217,100,0.2)',
   },
   scheduleTxt: { color: 'rgba(255,255,255,0.82)', fontSize: 12, fontWeight: '600', flex: 1, lineHeight: 17 },
-  convertRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center',
-    backgroundColor: 'rgba(255,215,0,0.1)', borderRadius: 12, padding: 10, marginBottom: 12,
-  },
-  convertTxt: { color: DIAMOND_COLOR, fontSize: 13, fontWeight: '700' },
   balanceRow: {
-    flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8,
+    flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16,
     padding: 14, backgroundColor: 'rgba(255,149,0,0.1)', borderRadius: 14,
   },
   balanceLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 12 },
-  beansVal: { color: '#FF9500', fontSize: 16, fontWeight: '800', marginTop: 2 },
+  diamondsVal: { color: '#00BFFF', fontSize: 16, fontWeight: '800', marginTop: 2 },
   balanceVal: { color: '#FF9500', fontSize: 20, fontWeight: '800', marginTop: 2 },
-  breakdown: { color: 'rgba(255,255,255,0.4)', fontSize: 11, textAlign: 'center', marginBottom: 12 },
   bankRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16, padding: 12, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12 },
   bankVal: { color: '#FFF', fontSize: 14, fontWeight: '600' },
   bankHint: { color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: 2 },
@@ -256,14 +189,6 @@ const s = StyleSheet.create({
   quickRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
   quickBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)' },
   quickText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
-  tierLabel: { color: 'rgba(255,255,255,0.45)', fontSize: 11, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  tierScroll: { marginBottom: 16 },
-  tierBtn: {
-    backgroundColor: 'rgba(255,149,0,0.12)', borderRadius: 12, padding: 12,
-    marginRight: 10, borderWidth: 1, borderColor: 'rgba(255,149,0,0.25)', minWidth: 110,
-  },
-  tierBeans: { color: '#FF9500', fontSize: 13, fontWeight: '800' },
-  tierInr: { color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 4, fontWeight: '600' },
   btn: { paddingVertical: 16, borderRadius: 16, alignItems: 'center' },
   btnText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
 });
