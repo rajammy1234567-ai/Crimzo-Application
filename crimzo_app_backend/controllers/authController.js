@@ -140,6 +140,12 @@ exports.sendOtp = async (req, res) => {
       return res.status(400).json({ error: 'Valid 10-digit Indian mobile number required' });
     }
 
+    // Since this is for LOGIN only, check if user exists
+    const existingUser = await User.findOne({ phone: mobile });
+    if (!existingUser) {
+      return res.status(404).json({ error: 'Number not registered. Please create an account first.' });
+    }
+
     const otp = Math.floor(1000 + Math.random() * 9000).toString();
     otpStore.set(mobile, { otp, expiresAt: Date.now() + 5 * 60 * 1000 });
 
@@ -212,26 +218,8 @@ exports.verifyOtp = async (req, res) => {
 
     const phoneEmail = `${mobile}@phone.crimzo.local`;
     let user = await User.findOne({ $or: [{ phone: mobile }, { email: phoneEmail }] });
-    let referralResult = null;
-
     if (!user) {
-      const username = `User_${mobile.slice(-4)}`;
-      const crimzoId = await generateCrimzoId();
-      user = await User.create({
-        crimzo_id: crimzoId,
-        email: phoneEmail,
-        phone: mobile,
-        password_hash: 'PHONE_AUTH_NO_PASSWORD',
-        username,
-        diamonds: 0,
-        beans: 0,
-        country: 'India',
-  
-      });
-      referralResult = await applyReferralIfPresent(user, req);
-      console.log('New phone user created, ID:', user.id);
-    } else {
-      console.log('Existing phone user found, ID:', user.id);
+      return res.status(404).json({ error: 'Number not registered. Please create an account first.' });
     }
 
     if (rejectIfBanned(user, res)) return;
@@ -248,7 +236,7 @@ exports.verifyOtp = async (req, res) => {
     res.json({
       success: true,
       token,
-      user: formatAuthUser(user, {}, referralResult),
+      user: formatAuthUser(user, {}),
     });
   } catch (error) {
     console.error('Verify OTP error:', error);

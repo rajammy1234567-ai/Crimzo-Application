@@ -123,7 +123,15 @@ export default function RegisterScreen() {
       const res = await apiPost<{ devOtp?: string }>('/api/auth/whatsapp/send-otp', { whatsapp });
       setShowWhatsappOtp(true);
       if (res && res.devOtp) {
-        appAlert('Test OTP', `Your OTP is: ${res.devOtp}`);
+        console.log('--- OTP (TEST) ---:', res.devOtp);
+        appAlert(
+          '💬 New Message',
+          `Crimzo: Your verification code is ${res.devOtp}. Do not share this with anyone.`,
+          [
+            { text: 'Auto-fill', onPress: () => setOtp(res.devOtp!) },
+            { text: 'Dismiss', style: 'cancel' }
+          ]
+        );
       } else {
         appAlert('OTP Sent', 'Check your WhatsApp/SMS for the verification code.');
       }

@@ -23,6 +23,7 @@ export default function LoginScreen() {
   const [showOtp, setShowOtp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   const { login, sendPhoneOtp, verifyPhoneOtp, user, loading: authLoading } = useAuth();
   const router = useRouter();
 
@@ -53,49 +54,68 @@ export default function LoginScreen() {
   const isValidEmail = (e: string) => /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(e);
 
   const handleEmailLogin = async () => {
+    setErrorMsg('');
     if (!email || !isValidEmail(email.trim())) {
-      return appAlert('Invalid Email', 'Please enter a valid email address.');
+      setErrorMsg('Please enter a valid email address.');
+      return;
     }
     if (!password || password.length < 6) {
-      return appAlert('Invalid Password', 'Password must be at least 6 characters.');
+      setErrorMsg('Password must be at least 6 characters.');
+      return;
     }
     setLoading(true);
     try {
       await login(email.trim().toLowerCase(), password);
       router.replace((await resolvePostAuthRoute()) as never);
     } catch (err: unknown) {
-      appAlert('Login Failed', err instanceof Error ? err.message : 'Please check your credentials.');
+      setErrorMsg(err instanceof Error ? err.message : 'Please check your credentials.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleSendPhoneOtp = async () => {
-    if (!phone || phone.length !== 10 || !/^\d{10}$/.test(phone)) return appAlert('Invalid Number', 'Please enter a valid 10-digit number.');
+    setErrorMsg('');
+    if (!phone || phone.length !== 10 || !/^\d{10}$/.test(phone)) {
+      setErrorMsg('Please enter a valid 10-digit number.');
+      return;
+    }
     setIsSendingOtp(true);
     try {
       const res = await sendPhoneOtp(phone);
       setShowOtp(true);
       if (res && res.devOtp) {
-        appAlert('Test OTP', `Your OTP is: ${res.devOtp}`);
+        console.log('--- OTP (TEST) ---:', res.devOtp);
+        appAlert(
+          '💬 New Message',
+          `Crimzo: Your verification code is ${res.devOtp}. Do not share this with anyone.`,
+          [
+            { text: 'Auto-fill', onPress: () => setOtp(res.devOtp!) },
+            { text: 'Dismiss', style: 'cancel' }
+          ]
+        );
       } else {
         appAlert('OTP Sent', 'Check your WhatsApp/SMS for the verification code.');
       }
     } catch (err: any) {
-      appAlert('Error', err.message || 'Failed to send OTP.');
+      setErrorMsg(err.message || 'Failed to send OTP.');
     } finally {
       setIsSendingOtp(false);
     }
   };
 
   const handlePhoneLogin = async () => {
-    if (!otp || otp.length < 4) return appAlert('Invalid OTP', 'Please enter a valid OTP.');
+    setErrorMsg('');
+    if (!otp || otp.length < 4) {
+      setErrorMsg('Please enter a valid OTP.');
+      return;
+    }
     setLoading(true);
     try {
       await verifyPhoneOtp(phone, otp);
       router.replace((await resolvePostAuthRoute()) as never);
     } catch (err: any) {
-      appAlert('Login Failed', err.message || 'Invalid OTP.');
+      setErrorMsg(err.message || 'Invalid OTP.');
     } finally {
       setLoading(false);
     }
@@ -155,7 +175,7 @@ export default function LoginScreen() {
                       placeholder="Email address"
                       placeholderTextColor="rgba(255,255,255,0.3)"
                       value={email}
-                      onChangeText={setEmail}
+                      onChangeText={(t) => { setEmail(t); setErrorMsg(''); }}
                       autoCapitalize="none"
                       keyboardType="email-address"
                       returnKeyType="next"
@@ -172,7 +192,7 @@ export default function LoginScreen() {
                       placeholder="Password"
                       placeholderTextColor="rgba(255,255,255,0.3)"
                       value={password}
-                      onChangeText={setPassword}
+                      onChangeText={(t) => { setPassword(t); setErrorMsg(''); }}
                       secureTextEntry={!showPassword}
                       returnKeyType="done"
                       onSubmitEditing={handleEmailLogin}
@@ -186,6 +206,10 @@ export default function LoginScreen() {
                   <TouchableOpacity onPress={() => router.push('/(auth)/forgot-password' as never)} style={{ alignItems: 'flex-end', marginBottom: 16, marginTop: -4 }}>
                     <Text style={{ color: '#FF2D55', fontSize: 13, fontWeight: '600' }}>Forgot Password?</Text>
                   </TouchableOpacity>
+
+                  {errorMsg ? (
+                    <Text style={{ color: '#FF2D55', fontSize: 13, marginBottom: 12, textAlign: 'center' }}>{errorMsg}</Text>
+                  ) : null}
 
                   <TouchableOpacity style={s.btnWrap} onPress={handleEmailLogin} disabled={loading} activeOpacity={0.8}>
                     <LinearGradient colors={['#FF2D55', '#FF4B6F']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.btnGradient}>
@@ -213,7 +237,7 @@ export default function LoginScreen() {
                       placeholder="Mobile Number"
                       placeholderTextColor="rgba(255,255,255,0.3)"
                       value={phone}
-                      onChangeText={(t) => { setPhone(t.replace(/[^0-9]/g, '').slice(0, 10)); setShowOtp(false); }}
+                      onChangeText={(t) => { setPhone(t.replace(/[^0-9]/g, '').slice(0, 10)); setShowOtp(false); setErrorMsg(''); }}
                       keyboardType="phone-pad"
                       maxLength={10}
                       selectionColor="#FF2D55"
@@ -225,6 +249,10 @@ export default function LoginScreen() {
                     )}
                   </View>
 
+                  {errorMsg ? (
+                    <Text style={{ color: '#FF2D55', fontSize: 13, marginBottom: 12, textAlign: 'center' }}>{errorMsg}</Text>
+                  ) : null}
+
                   {showOtp && (
                     <View style={s.inputWrap}>
                       <Ionicons name="keypad-outline" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
@@ -233,7 +261,7 @@ export default function LoginScreen() {
                         placeholder="Enter OTP"
                         placeholderTextColor="rgba(255,255,255,0.3)"
                         value={otp}
-                        onChangeText={setOtp}
+                        onChangeText={(t) => { setOtp(t); setErrorMsg(''); }}
                         keyboardType="number-pad"
                         selectionColor="#FF2D55"
                       />

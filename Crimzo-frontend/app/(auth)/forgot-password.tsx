@@ -44,7 +44,15 @@ export default function ForgotPasswordScreen() {
       const res = await apiPost<{ devOtp?: string }>('/api/auth/forgot-password/send-otp', { loginId });
       setStep('reset');
       if (res && res.devOtp) {
-        appAlert('Test OTP', `Your OTP is: ${res.devOtp}`);
+        console.log('--- OTP (TEST) ---:', res.devOtp);
+        appAlert(
+          '💬 New Message',
+          `Crimzo: Your verification code is ${res.devOtp}. Do not share this with anyone.`,
+          [
+            { text: 'Auto-fill', onPress: () => setOtp(res.devOtp!) },
+            { text: 'Dismiss', style: 'cancel' }
+          ]
+        );
       } else {
         appAlert('Code Sent', 'Please check your email or WhatsApp for the reset code.');
       }
