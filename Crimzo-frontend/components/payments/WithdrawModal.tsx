@@ -16,6 +16,8 @@ import { formatCount, formatInr } from '../../lib/diamondPackages';
 
 export type WithdrawInfo = {
   diamonds?: number;
+  earnedBeans?: number;
+  beansPerInr?: number;
   withdrawableInr?: number;
   minWithdraw?: number;
 };
@@ -41,21 +43,31 @@ export default function WithdrawModal({
   paymentMethod,
   onSetupPayment,
 }: Props) {
-  const [amount, setAmount] = useState('');
-
   const diamonds = withdrawInfo?.diamonds ?? 0;
-  const balance = withdrawInfo?.withdrawableInr ?? 0;
+  const earnedBeans = withdrawInfo?.earnedBeans ?? 0;
+  const beansPerInr = withdrawInfo?.beansPerInr ?? 50;
+  
+  const earnedInr = earnedBeans / beansPerInr;
+  const purchasedInr = diamonds / beansPerInr;
 
-  const parsed = Number(amount) || 0;
+  const [withdrawEarned, setWithdrawEarned] = useState(false);
+  const [withdrawPurchased, setWithdrawPurchased] = useState(false);
+
+  const [showEarnedMoney, setShowEarnedMoney] = useState(false);
+  const [showPurchasedMoney, setShowPurchasedMoney] = useState(false);
+
+  const subtotal = (withdrawEarned ? earnedInr : 0) + (withdrawPurchased ? purchasedInr : 0);
+  const tax = subtotal * 0.30;
+  const totalPayout = subtotal - tax;
+
   const canWithdraw =
     paymentMethod?.status === 'verified'
     && paymentMethod?.type === 'bank'
-    && balance >= minWithdraw;
+    && subtotal >= minWithdraw;
 
   const handleWithdraw = () => {
-    if (!canWithdraw || parsed < minWithdraw || parsed > balance) return;
-    onWithdraw(parsed);
-    setAmount('');
+    if (!canWithdraw || subtotal < minWithdraw) return;
+    onWithdraw(subtotal);
   };
 
   return (
@@ -70,18 +82,60 @@ export default function WithdrawModal({
           <View style={s.scheduleBanner}>
             <Ionicons name="calendar-outline" size={18} color="#4CD964" />
             <Text style={s.scheduleTxt}>
-              Withdrawal har mahine ki 6 date ko hoga.
+              Withdrawals will be processed on the 6th of every month.
             </Text>
           </View>
 
-          <View style={s.balanceRow}>
-            <View>
-              <Text style={s.balanceLabel}>Total Diamonds</Text>
-              <Text style={s.diamondsVal}>{formatCount(diamonds)}</Text>
+          <View style={s.checkboxContainer}>
+            <TouchableOpacity 
+              style={[s.checkRow, withdrawEarned && s.checkRowActive]} 
+              onPress={() => setWithdrawEarned(!withdrawEarned)}
+              activeOpacity={0.7}
+            >
+              <View style={s.checkLeft}>
+                <Ionicons name={withdrawEarned ? "checkbox" : "square-outline"} size={22} color={withdrawEarned ? "#FF2D55" : "rgba(255,255,255,0.3)"} />
+                <View>
+                  <Text style={s.checkTitle}>Earned Diamonds</Text>
+                  <Text style={s.checkSub}>{formatCount(earnedBeans)} (from calls, chats, etc.)</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setShowEarnedMoney(!showEarnedMoney)} style={s.toggleMoneyBtn}>
+                <Text style={s.toggleMoneyTxt}>{showEarnedMoney ? formatInr(earnedInr) : 'Show ₹'}</Text>
+              </TouchableOpacity>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[s.checkRow, withdrawPurchased && s.checkRowActive]} 
+              onPress={() => setWithdrawPurchased(!withdrawPurchased)}
+              activeOpacity={0.7}
+            >
+              <View style={s.checkLeft}>
+                <Ionicons name={withdrawPurchased ? "checkbox" : "square-outline"} size={22} color={withdrawPurchased ? "#00BFFF" : "rgba(255,255,255,0.3)"} />
+                <View>
+                  <Text style={s.checkTitle}>Other Diamonds</Text>
+                  <Text style={s.checkSub}>{formatCount(diamonds)} (purchased/other)</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setShowPurchasedMoney(!showPurchasedMoney)} style={s.toggleMoneyBtn}>
+                <Text style={s.toggleMoneyTxt}>{showPurchasedMoney ? formatInr(purchasedInr) : 'Show ₹'}</Text>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </View>
+
+          <View style={s.invoiceCard}>
+            <Text style={s.invoiceTitle}>Withdrawal Summary</Text>
+            <View style={s.invoiceRow}>
+              <Text style={s.invoiceLabel}>Subtotal</Text>
+              <Text style={s.invoiceVal}>{formatInr(subtotal)}</Text>
             </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={s.balanceLabel}>Withdrawable</Text>
-              <Text style={s.balanceVal}>{formatInr(balance)}</Text>
+            <View style={s.invoiceRow}>
+              <Text style={s.invoiceLabel}>Taxes & Fees (30%)</Text>
+              <Text style={[s.invoiceVal, { color: '#FF3B30' }]}>- {formatInr(tax)}</Text>
+            </View>
+            <View style={s.invoiceDivider} />
+            <View style={s.invoiceRow}>
+              <Text style={s.invoiceTotalLabel}>Total Payout</Text>
+              <Text style={s.invoiceTotalVal}>{formatInr(totalPayout)}</Text>
             </View>
           </View>
 
@@ -104,33 +158,9 @@ export default function WithdrawModal({
             </TouchableOpacity>
           )}
 
-          <Text style={s.inputLabel}>Amount (min {formatInr(minWithdraw)})</Text>
-          <View style={s.inputRow}>
-            <Text style={s.rupee}>₹</Text>
-            <TextInput
-              style={s.input}
-              placeholder={`e.g. ${minWithdraw}`}
-              placeholderTextColor="rgba(255,255,255,0.3)"
-              keyboardType="numeric"
-              value={amount}
-              onChangeText={(t) => setAmount(t.replace(/[^0-9]/g, ''))}
-            />
-          </View>
-
-          <View style={s.quickRow}>
-            {[minWithdraw, 1000, Math.floor(balance)]
-              .filter((v, i, a) => v >= minWithdraw && a.indexOf(v) === i)
-              .slice(0, 3)
-              .map((amt) => (
-                <TouchableOpacity key={amt} style={s.quickBtn} onPress={() => setAmount(String(amt))}>
-                  <Text style={s.quickText}>₹{amt.toLocaleString('en-IN')}</Text>
-                </TouchableOpacity>
-              ))}
-          </View>
-
           <TouchableOpacity
             onPress={paymentMethod?.status === 'verified' ? handleWithdraw : onSetupPayment}
-            disabled={busy || (paymentMethod?.status === 'verified' && (!parsed || parsed < minWithdraw || parsed > balance))}
+            disabled={busy || (paymentMethod?.status === 'verified' && subtotal < minWithdraw)}
           >
             <LinearGradient
               colors={busy ? ['#555', '#444'] : ['#FF9500', '#FF6B00']}
@@ -141,7 +171,7 @@ export default function WithdrawModal({
               ) : (
                 <Text style={s.btnText}>
                   {paymentMethod?.status === 'verified'
-                    ? `Confirm Withdraw ₹${(parsed || 0).toLocaleString('en-IN')}`
+                    ? `Confirm Withdraw ${formatInr(subtotal)}`
                     : 'Add Bank Details'}
                 </Text>
               )}
@@ -170,25 +200,27 @@ const s = StyleSheet.create({
     borderColor: 'rgba(76,217,100,0.2)',
   },
   scheduleTxt: { color: 'rgba(255,255,255,0.82)', fontSize: 12, fontWeight: '600', flex: 1, lineHeight: 17 },
-  balanceRow: {
-    flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16,
-    padding: 14, backgroundColor: 'rgba(255,149,0,0.1)', borderRadius: 14,
-  },
-  balanceLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 12 },
-  diamondsVal: { color: '#00BFFF', fontSize: 16, fontWeight: '800', marginTop: 2 },
-  balanceVal: { color: '#FF9500', fontSize: 20, fontWeight: '800', marginTop: 2 },
   bankRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16, padding: 12, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12 },
   bankVal: { color: '#FFF', fontSize: 14, fontWeight: '600' },
   bankHint: { color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: 2 },
   setupBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16, padding: 14, backgroundColor: 'rgba(255,45,85,0.1)', borderRadius: 14 },
   setupText: { color: '#FF2D55', fontSize: 14, fontWeight: '700', flex: 1 },
-  inputLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 8 },
-  inputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, paddingHorizontal: 16, marginBottom: 12 },
-  rupee: { color: '#FF9500', fontSize: 20, fontWeight: '800', marginRight: 8 },
-  input: { flex: 1, color: '#FFF', fontSize: 18, fontWeight: '700', paddingVertical: 14 },
-  quickRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
-  quickBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.08)' },
-  quickText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  checkboxContainer: { marginBottom: 16, gap: 10 },
+  checkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  checkRowActive: { borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.08)' },
+  checkLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  checkTitle: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  checkSub: { color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 2 },
+  toggleMoneyBtn: { backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  toggleMoneyTxt: { color: '#FFF', fontSize: 13, fontWeight: '600' },
+  invoiceCard: { backgroundColor: 'rgba(255,255,255,0.03)', padding: 16, borderRadius: 12, marginBottom: 16 },
+  invoiceTitle: { color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '700', marginBottom: 12, textTransform: 'uppercase' },
+  invoiceRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  invoiceLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 14 },
+  invoiceVal: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+  invoiceDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginVertical: 10 },
+  invoiceTotalLabel: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  invoiceTotalVal: { color: '#4CD964', fontSize: 16, fontWeight: '800' },
   btn: { paddingVertical: 16, borderRadius: 16, alignItems: 'center' },
   btnText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
 });

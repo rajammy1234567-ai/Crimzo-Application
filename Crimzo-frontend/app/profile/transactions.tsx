@@ -27,6 +27,8 @@ type Transaction = {
   type: string;
   direction: 'credit' | 'debit';
   amountInr: number;
+  netPayoutInr?: number;
+  taxInr?: number;
   title: string;
   subtitle: string;
   status: string;
@@ -176,7 +178,13 @@ export default function TransactionsScreen() {
               {isCredit ? '+' : '−'}{formatInr(item.amountInr)}
             </Text>
           </View>
-          <Text style={s.cardSub} numberOfLines={2}>{item.subtitle}</Text>
+          {item.category === 'withdraw' && item.netPayoutInr && item.taxInr ? (
+            <Text style={s.cardSub} numberOfLines={2}>
+              Net Payout: {formatInr(item.netPayoutInr)} (Taxes: -{formatInr(item.taxInr)}){"\n"}{item.subtitle}
+            </Text>
+          ) : (
+            <Text style={s.cardSub} numberOfLines={2}>{item.subtitle}</Text>
+          )}
           <Text style={s.cardDate}>{formatDateTime(item.createdAt)}</Text>
           <View style={s.cardFooter}>
             <View style={[s.statusPill, { backgroundColor: status.bg }]}>

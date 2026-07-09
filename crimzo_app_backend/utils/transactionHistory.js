@@ -78,6 +78,8 @@ function mapWithdrawalTransaction(row) {
     type: 'withdraw',
     direction: 'debit',
     amountInr: Number(row.amount_inr) || 0,
+    netPayoutInr: Number(row.net_payout_inr) || Number(row.amount_inr) || 0,
+    taxInr: Number(row.tax_inr) || 0,
     beans: row.beans_used || 0,
     title: 'Withdrawal',
     subtitle: row.payout_display || row.payout_method || 'Bank / UPI',

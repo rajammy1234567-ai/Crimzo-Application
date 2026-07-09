@@ -1016,9 +1016,14 @@ exports.requestWithdraw = async (req, res) => {
     const scheduledCreditDate = getScheduledCreditDate();
     const creditMessage = buildWithdrawCreditMessage(amountInr, scheduledCreditDate);
 
+    const taxInr = amountInr * 0.30;
+    const netPayoutInr = amountInr - taxInr;
+
     withdrawal = await WithdrawalRequest.create({
       user_id: userId,
       amount_inr: amountInr,
+      tax_inr: taxInr,
+      net_payout_inr: netPayoutInr,
       beans_used: beansNeeded,
       diamonds_deducted: Math.max(0, prevDiamonds - newDiamonds),
       beans_deducted: Math.max(0, (prevBeans - newBeans) + (prevPendingTaskBeans - newPendingTaskBeans)),

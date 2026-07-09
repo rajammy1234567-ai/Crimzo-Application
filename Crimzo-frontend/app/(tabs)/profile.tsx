@@ -561,8 +561,7 @@ export default function ProfileScreen() {
                 ) : (
                   <View style={s.streakCtaPill}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      <Text style={s.streakCtaText}>Start streak · +50</Text>
-                      <BeanIcon size={11} />
+                      <Text style={s.streakCtaText}>Start streak</Text>
                     </View>
                   </View>
                 )}

@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const withdrawalSchema = new mongoose.Schema({
   user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   amount_inr: { type: Number, required: true },
+  tax_inr: { type: Number, default: 0 },
+  net_payout_inr: { type: Number, default: 0 },
   beans_used: { type: Number, default: 0 },
   diamonds_deducted: { type: Number, default: 0 },
   beans_deducted: { type: Number, default: 0 },
