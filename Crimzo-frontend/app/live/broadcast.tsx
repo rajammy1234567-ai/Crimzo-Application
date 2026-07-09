@@ -695,7 +695,7 @@ export default function BroadcastScreen() {
       });
       appAlert(
         isVideo ? "Video Call Request" : "Voice Call Request",
-        `${data.requesterName || "A viewer"} wants a private ${isVideo ? "video" : "voice"} call.\n\nViewer pays ₹${rate}/min from wallet.\nYou earn ${beans} beans/min.`,
+        `${data.requesterName || "A viewer"} wants a private ${isVideo ? "video" : "voice"} call.\n\nViewer pays ₹${rate}/min from wallet.\nYou earn ${beans} diamonds/min.`,
         [
           {
             text: "Decline",
@@ -741,7 +741,7 @@ export default function BroadcastScreen() {
       });
       appAlert(
         "Talk Request",
-        `${data.requesterName || "A viewer"} wants to chat with you on live.\n\nViewer pays ₹${rate}/min from wallet.\nYou earn ${beans} beans/min.`,
+        `${data.requesterName || "A viewer"} wants to chat with you on live.\n\nViewer pays ₹${rate}/min from wallet.\nYou earn ${beans} diamonds/min.`,
         [
           {
             text: "Decline",
@@ -988,7 +988,7 @@ export default function BroadcastScreen() {
         if (typeof data?.beansEarned === "number" && data.beansEarned > 0) {
           appAlert(
             "Earnings Update",
-            `You earned ${data.beansEarned} beans from this chat session.`,
+            `You earned ${data.beansEarned} diamonds from this chat session.`,
             [{ text: "OK" }],
           );
         }
@@ -1549,12 +1549,7 @@ export default function BroadcastScreen() {
                   </Text>
                 </View>
               )}
-              {isLive && (
-                <View style={st.diamondPill}>
-                  <Ionicons name="diamond" size={12} color="#00BFFF" />
-                  <Text style={st.diamondText}>{user?.diamonds || 0}</Text>
-                </View>
-              )}
+
               {!isLive && (
                 <TouchableOpacity onPress={toggleCamera} activeOpacity={0.7}>
                   <View style={st.iconBtn}>
@@ -1596,10 +1591,10 @@ export default function BroadcastScreen() {
 
         {isLive && (hostChatBeansEarned > 0 || activeChatCount > 0) && (
           <View style={st.talkEarningsBanner}>
-            <Ionicons name="cafe" size={14} color="#FF9500" />
+            <Ionicons name="diamond" size={14} color="#20D5D2" />
             <Text style={st.talkEarningsText}>
               Chat earnings · +{hostChatBeansEarned.toLocaleString("en-IN")}{" "}
-              beans
+              diamonds
               {activeChatCount > 0 ? ` · ${activeChatCount} active` : ""}
             </Text>
           </View>
@@ -1612,7 +1607,7 @@ export default function BroadcastScreen() {
                 <Text style={st.talkRequestText}>
                   {req.requesterName || "A viewer"} wants to chat · ₹
                   {myRates.chatRatePerMin}/min · you earn{" "}
-                  {myRates.chatBeansPerMin} beans/min
+                  {myRates.chatBeansPerMin} diamonds/min
                 </Text>
                 <View style={st.talkRequestActions}>
                   <TouchableOpacity
@@ -1676,7 +1671,7 @@ export default function BroadcastScreen() {
                   >
                     {req.requesterName || "A viewer"} wants a{" "}
                     {isVideoReq ? "video" : "voice"} call · ₹{rate}/min · you
-                    earn {beans} beans/min
+                    earn {beans} diamonds/min
                   </Text>
                   <View style={st.talkRequestActions}>
                     <TouchableOpacity
