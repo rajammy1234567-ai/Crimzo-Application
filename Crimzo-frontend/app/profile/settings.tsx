@@ -15,8 +15,7 @@ import {
   DEFAULT_SETTINGS,
 } from '../../lib/appSettings';
 import { APP_VERSION, getBuildLabel } from '../../lib/buildInfo';
-import { inrToBeans } from '../../lib/diamondPackages';
-import { MIN_RATE_INR, MAX_RATE_INR, receiverBeansFromCallInr } from '../../lib/userRates';
+import { MIN_RATE_INR, MAX_RATE_INR } from '../../lib/userRates';
 const SUPPORT_EMAIL = 'support@crimzo.app';
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.crimzolive';
 
@@ -85,7 +84,7 @@ const LEGAL_CONTENT: Record<'privacy' | 'terms', { title: string; sections: { he
       },
       {
         heading: 'Virtual currency',
-        body: 'Diamonds and beans are in-app items with no real-world cash value unless stated otherwise by law.',
+        body: 'Diamonds are in-app items with no real-world cash value unless stated otherwise by law.',
       },
       {
         heading: 'Your content',
@@ -342,7 +341,7 @@ export default function SettingsScreen() {
       setRatesModalVisible(false);
       appAlert(
         'Rates Updated',
-        `Voice: ₹${voice}/min (you earn ${receiverBeansFromCallInr(voice)} beans/min)\nChat: ₹${chat}/min (${inrToBeans(chat)} beans/min)`,
+        `Voice: ₹${voice}/min\nChat: ₹${chat}/min`,
       );
     } catch {
       appAlert('Error', 'Could not save your rates. Try again.');
@@ -377,13 +376,13 @@ export default function SettingsScreen() {
         {
           icon: 'call-outline',
           label: 'Voice Call Rate',
-          value: `₹${voiceRate}/min · ${receiverBeansFromCallInr(Number(voiceRate) || 1)} beans`,
+          value: `₹${voiceRate}/min`,
           onPress: () => setRatesModalVisible(true),
         },
         {
           icon: 'chatbubbles-outline',
           label: 'Live Chat Rate',
-          value: `₹${chatRate}/min · ${inrToBeans(Number(chatRate) || 1)} beans`,
+          value: `₹${chatRate}/min`,
           onPress: () => setRatesModalVisible(true),
         },
       ],
@@ -579,7 +578,7 @@ export default function SettingsScreen() {
             automaticallyAdjustKeyboardInsets
           >
             <Text style={styles.ratesHint}>
-              Viewers pay from wallet (₹/min). Voice calls: you earn 70% in beans (platform keeps 30%). Live chat: you earn 100% beans.
+              Viewers pay from wallet (₹/min). You earn 70% in withdrawable balance (platform keeps 30%).
             </Text>
 
             <Text style={styles.ratesLabel}>Voice call — ₹/min</Text>
@@ -590,7 +589,7 @@ export default function SettingsScreen() {
               keyboardType="decimal-pad"
               placeholder={`${MIN_RATE_INR} - ${MAX_RATE_INR}`}
             />
-            <Text style={styles.ratesBeans}>You earn {receiverBeansFromCallInr(Number(voiceRate) || 0)} beans/min (70% share)</Text>
+            <Text style={styles.ratesBeans}>You earn 70% share</Text>
 
             <Text style={[styles.ratesLabel, { marginTop: 20 }]}>Live chat — ₹/min</Text>
             <TextInput
@@ -600,7 +599,7 @@ export default function SettingsScreen() {
               keyboardType="decimal-pad"
               placeholder={`${MIN_RATE_INR} - ${MAX_RATE_INR}`}
             />
-            <Text style={styles.ratesBeans}>You earn {inrToBeans(Number(chatRate) || 0)} beans/min</Text>
+            <Text style={styles.ratesBeans}>You earn 70% share</Text>
 
             <TouchableOpacity
               style={[styles.ratesSaveBtn, ratesSaving && { opacity: 0.6 }]}

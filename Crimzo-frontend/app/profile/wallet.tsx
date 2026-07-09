@@ -8,13 +8,11 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   DIAMOND_PACKAGES,
-  BEAN_PACKAGES,
   formatCount as fmt,
   formatInr as price,
-  beansToInr,
 } from '../../lib/diamondPackages';
-import { getDisplayBeans, getWithdrawableInr } from '../../lib/beanBalance';
-import { DIAMOND_COLOR, BEAN_COLOR } from '../../lib/currencyIcons';
+import { getWithdrawableInr } from '../../lib/beanBalance';
+import { DIAMOND_COLOR } from '../../lib/currencyIcons';
 import { useWallet } from '../../lib/useWallet';
 import RazorpayCheckout from '../../components/payments/RazorpayCheckout';
 import AddMoneyModal from '../../components/payments/AddMoneyModal';
@@ -95,7 +93,6 @@ export default function WalletScreen() {
   const [showWithdraw, setShowWithdraw] = useState(false);
   const walletBalance = user?.wallet_balance ?? 0;
   const userDiamonds = user?.diamonds ?? 0;
-  const displayBeans = getDisplayBeans(user);
   const withdrawableInr = withdrawInfo?.withdrawableInr ?? getWithdrawableInr(user);
   const handleWithdrawPress = async () => {
     await loadWithdrawInfo();
@@ -110,9 +107,7 @@ export default function WalletScreen() {
   const [selPkg, setSelPkg] = useState<number | null>(null);
 
   useEffect(() => {
-    if (params.tab === 'beans' || params.tab === 'diamonds') {
-      setCurTab('diamonds');
-    }
+    setCurTab('diamonds');
   }, [params.tab]);
 
   useFocusEffect(
@@ -149,15 +144,15 @@ export default function WalletScreen() {
   const rot = wobble.interpolate({ inputRange: [0, 1], outputRange: ['-8deg', '8deg'] });
   const sc = wobble.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.1, 1] });
 
-  const buyPkg = (pkg: { id: number; price: number; diamonds?: number; beans?: number }) => {
+  const buyPkg = (pkg: { id: number; price: number; diamonds?: number }) => {
     if (busy) return;
-    const isDia = curTab === 'diamonds';
-    const productType = isDia ? 'diamonds' : 'beans';
-    const amount = isDia ? pkg.diamonds! : pkg.beans!;
+    const isDia = true;
+    const productType = 'diamonds';
+    const amount = pkg.diamonds!;
     const canAfford = walletBalance >= pkg.price;
     setSelPkg(pkg.id);
     appAlert(
-      `Buy ${isDia ? 'Diamonds' : 'Beans'}`,
+      `Buy Diamonds`,
       `${fmt(amount)} for ${price(pkg.price)}\n\nPay directly via Razorpay (UPI/Card) or use wallet balance.`,
       [
         { text: 'Cancel', style: 'cancel', onPress: () => setSelPkg(null) },
@@ -231,16 +226,16 @@ export default function WalletScreen() {
           <View style={s.balRow}>
             <Animated.View style={{ transform: [{ rotate: rot }, { scale: sc }] }}>
               <Ionicons
-                name={curTab === 'diamonds' ? 'diamond' : 'cafe'}
+                name="diamond"
                 size={28}
-                color={curTab === 'diamonds' ? DIAMOND_COLOR : BEAN_COLOR}
+                color={DIAMOND_COLOR}
               />
             </Animated.View>
             <Text style={s.balVal}>
-              {fmt(curTab === 'diamonds' ? (user?.diamonds ?? 0) : displayBeans)}
+              {fmt(userDiamonds)}
             </Text>
           </View>
-          <Text style={s.balType}>{curTab === 'diamonds' ? 'Diamonds' : 'Beans'}</Text>
+          <Text style={s.balType}>Diamonds</Text>
         </View>
 
         {/* currency toggle */}
@@ -318,12 +313,12 @@ export default function WalletScreen() {
 
               {/* packages grid */}
               <View style={s.grid}>
-                {(curTab === 'diamonds' ? DIAMOND_PACKAGES : BEAN_PACKAGES).map((pkg: any) => {
-                  const isDia = curTab === 'diamonds';
-                  const amt = isDia ? pkg.diamonds : pkg.beans;
-                  const bonus = isDia ? pkg.bonus : null;
+                {DIAMOND_PACKAGES.map((pkg: any) => {
+                  const isDia = true;
+                  const amt = pkg.diamonds;
+                  const bonus = pkg.bonus;
                   const bonusPct = bonus ? Math.round(((amt - bonus) / bonus) * 100) : 0;
-                  const bgC = isDia ? tierBg(pkg.tier) : (['rgba(255,153,0,0.08)', 'rgba(255,153,0,0.02)'] as [string, string]);
+                  const bgC = tierBg(pkg.tier);
 
                   return (
                     <TouchableOpacity
@@ -335,8 +330,8 @@ export default function WalletScreen() {
                       <LinearGradient colors={bgC} style={s.cardIn}>
                         {/* icon */}
                         <View style={s.cardIcoW}>
-                          <Ionicons name={isDia ? 'diamond' : 'cafe'} size={30} color={isDia ? DIAMOND_COLOR : BEAN_COLOR} />
-                          {isDia && bonusPct > 0 && (
+                          <Ionicons name="diamond" size={30} color={DIAMOND_COLOR} />
+                          {bonusPct > 0 && (
                             <View style={s.bonusBdg}>
                               <Text style={s.bonusBdgTxt}>+{bonusPct}%</Text>
                             </View>
