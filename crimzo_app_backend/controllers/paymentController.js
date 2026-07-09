@@ -1016,7 +1016,7 @@ exports.requestWithdraw = async (req, res) => {
     const scheduledCreditDate = getScheduledCreditDate();
     const creditMessage = buildWithdrawCreditMessage(amountInr, scheduledCreditDate);
 
-    const taxInr = amountInr * 0.30;
+    const taxInr = amountInr * 0.23;
     const netPayoutInr = amountInr - taxInr;
 
     withdrawal = await WithdrawalRequest.create({

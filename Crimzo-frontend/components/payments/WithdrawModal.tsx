@@ -57,7 +57,7 @@ export default function WithdrawModal({
   const [showPurchasedMoney, setShowPurchasedMoney] = useState(false);
 
   const subtotal = (withdrawEarned ? earnedInr : 0) + (withdrawPurchased ? purchasedInr : 0);
-  const tax = subtotal * 0.30;
+  const tax = subtotal * 0.23;
   const totalPayout = subtotal - tax;
 
   const canWithdraw =
@@ -129,7 +129,7 @@ export default function WithdrawModal({
               <Text style={s.invoiceVal}>{formatInr(subtotal)}</Text>
             </View>
             <View style={s.invoiceRow}>
-              <Text style={s.invoiceLabel}>Taxes & Fees (30%)</Text>
+              <Text style={s.invoiceLabel}>Taxes & Fees</Text>
               <Text style={[s.invoiceVal, { color: '#FF3B30' }]}>- {formatInr(tax)}</Text>
             </View>
             <View style={s.invoiceDivider} />
