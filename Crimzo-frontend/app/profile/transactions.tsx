@@ -178,11 +178,15 @@ export default function TransactionsScreen() {
               {isCredit ? '+' : '−'}{formatInr(item.amountInr)}
             </Text>
           </View>
-          {item.category === 'withdraw' && item.netPayoutInr && item.taxInr ? (
-            <Text style={s.cardSub} numberOfLines={2}>
-              Net Payout: {formatInr(item.netPayoutInr)} (Taxes: -{formatInr(item.taxInr)}){"\n"}{item.subtitle}
-            </Text>
-          ) : (
+          {item.category === 'withdraw' ? (() => {
+            const tax = item.taxInr || (item.amountInr * 0.23);
+            const net = item.netPayoutInr && item.taxInr ? item.netPayoutInr : (item.amountInr - tax);
+            return (
+              <Text style={s.cardSub} numberOfLines={2}>
+                Net Payout: {formatInr(net)} (Taxes & Fees: -{formatInr(tax)}){"\n"}{item.subtitle}
+              </Text>
+            );
+          })() : (
             <Text style={s.cardSub} numberOfLines={2}>{item.subtitle}</Text>
           )}
           <Text style={s.cardDate}>{formatDateTime(item.createdAt)}</Text>
