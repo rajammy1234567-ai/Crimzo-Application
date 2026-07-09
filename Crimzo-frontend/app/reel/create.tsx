@@ -18,6 +18,7 @@ import { uploadReel, reelUploadErrorMessage } from '../../lib/reelUpload';
 import { resolveReelAudioUrl } from '../../lib/reelAudio';
 import { playReelMusic, stopReelMusic } from '../../lib/reelMusicPlayer';
 import type { ReelAudioSelection, ReelSound, ReelVideoAsset } from '../../lib/reelTypes';
+import { normalizeGalleryDurationMs } from '../../lib/reelVideoUtils';
 import ReelEditor from '../../components/reel/ReelEditor';
 import MusicPicker from '../../components/reel/MusicPicker';
 import ReelCaptureOverlay from '../../components/reel/ReelCaptureOverlay';
@@ -330,7 +331,7 @@ export default function ReelCreateScreen() {
       if (result.canceled || !result.assets?.length) return;
 
       const asset = result.assets[0];
-      const durationMs = asset.duration || 0;
+      const durationMs = normalizeGalleryDurationMs(asset.duration) || 0;
 
       if (durationMs > 0 && durationMs < REEL_MIN_DURATION_SEC * 1000) {
         appAlert(
