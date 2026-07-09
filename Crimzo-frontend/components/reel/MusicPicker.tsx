@@ -22,6 +22,7 @@ import { appAlert } from '../../lib/appAlert';
 import { playReelMusic, stopReelMusic } from '../../lib/reelMusicPlayer';
 import { importSoundFromGalleryVideo } from '../../lib/reelSoundImport';
 import type { ReelSound, SoundLanguage } from '../../lib/reelTypes';
+import AudioTrimmer from './AudioTrimmer';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
@@ -33,7 +34,7 @@ type Props = {
   selectedId?: string | null;
   musicFirstMode?: boolean;
   onClose: () => void;
-  onSelect: (sound: ReelSound | null) => void;
+  onSelect: (sound: ReelSound | null, startMs?: number) => void;
 };
 
 const FALLBACK_LANGUAGES: SoundLanguage[] = [
@@ -122,6 +123,7 @@ export default function MusicPicker({ visible, token, selectedId, musicFirstMode
   const [tab, setTab] = useState<TabId>('trending');
   const [language, setLanguage] = useState('all');
   const [previewId, setPreviewId] = useState<string | null>(null);
+  const [trimMs, setTrimMs] = useState(0);
   const [importing, setImporting] = useState(false);
   const requestIdRef = useRef(0);
 
@@ -189,19 +191,19 @@ export default function MusicPicker({ visible, token, selectedId, musicFirstMode
     return () => clearTimeout(timer);
   }, [query, tab, language, visible, fetchSounds]);
 
-  const playPreview = async (sound: ReelSound) => {
-    if (previewId === sound.id) { await stopPreview(); return; }
+  const playPreview = async (sound: ReelSound, startMs = 0) => {
+    if (previewId === sound.id && startMs === 0) { await stopPreview(); return; }
     await stopPreview();
     try {
       const url = await resolvePreviewUrl(sound, token);
       setPreviewId(sound.id);
-      await playReelMusic({ url, loop: false, volume: 0.95, onFinish: () => setPreviewId(null) });
+      await playReelMusic({ url, loop: false, volume: 0.95, positionMillis: startMs, onFinish: () => setPreviewId(null) });
     } catch { setPreviewId(null); }
   };
 
   const handleSelect = async (sound: ReelSound | null) => {
     await stopPreview();
-    onSelect(sound);
+    onSelect(sound, trimMs);
     onClose();
   };
 
@@ -241,11 +243,12 @@ export default function MusicPicker({ visible, token, selectedId, musicFirstMode
     const isPlaying = previewId === item.id;
 
     return (
-      <Pressable
-        style={[s.track, isSelected && s.trackSelected, isPlaying && s.trackPlaying]}
-        onPress={() => void handleSelect(item)}
-        android_ripple={{ color: 'rgba(255,45,85,0.12)' }}
-      >
+      <View style={{ marginHorizontal: 4 }}>
+        <Pressable
+          style={[s.track, isSelected && s.trackSelected, isPlaying && s.trackPlaying]}
+          onPress={() => void handleSelect(item)}
+          android_ripple={{ color: 'rgba(255,45,85,0.12)' }}
+        >
         {/* Cover art */}
         <View style={s.coverWrap}>
           {item.cover_url ? (
@@ -320,6 +323,14 @@ export default function MusicPicker({ visible, token, selectedId, musicFirstMode
           )}
         </View>
       </Pressable>
+      {isPlaying && (
+        <AudioTrimmer 
+          durationMs={item.duration_ms || 30000} 
+          onScrubStart={() => stopPreview()} 
+          onScrubEnd={(ms) => { setTrimMs(ms); void playPreview(item, ms); }} 
+        />
+      )}
+      </View>
     );
   };
 

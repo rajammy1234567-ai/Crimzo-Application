@@ -31,6 +31,7 @@ type Props = {
   asset: ReelVideoAsset | null;
   token?: string | null;
   initialSound?: ReelSound | null;
+  initialStartMs?: number;
   uploading: boolean;
   uploadProgress: number;
   uploadDone: boolean;
@@ -89,6 +90,7 @@ export default function ReelEditor({
   asset,
   token,
   initialSound,
+  initialStartMs = 0,
   uploading,
   uploadProgress,
   uploadDone,
@@ -98,6 +100,7 @@ export default function ReelEditor({
   const insets = useSafeAreaInsets();
   const [caption, setCaption] = useState('');
   const [selectedSound, setSelectedSound] = useState<ReelSound | null>(null);
+  const [audioStartMs, setAudioStartMs] = useState(0);
   const [muteOriginalAudio, setMuteOriginalAudio] = useState(false);
   const [showMusicPicker, setShowMusicPicker] = useState(false);
 
@@ -116,7 +119,7 @@ export default function ReelEditor({
         console.warn('Editor music: no stream URL for', sound.id);
         return;
       }
-      await playReelMusic({ url: streamUrl, loop: true, volume: 1 });
+      await playReelMusic({ url: streamUrl, loop: true, volume: 1, positionMillis: audioStartMs });
     } catch (e) {
       console.error('Editor music error:', e);
     }
@@ -134,9 +137,10 @@ export default function ReelEditor({
 
     if (initialSound) {
       setSelectedSound(initialSound);
+      setAudioStartMs(initialStartMs);
       setMuteOriginalAudio(true);
     }
-  }, [visible, initialSound?.id]);
+  }, [visible, initialSound?.id, initialStartMs]);
 
   useEffect(() => {
     if (!visible || showMusicPicker) {
@@ -144,14 +148,15 @@ export default function ReelEditor({
       return;
     }
     void syncMusicPlayback(selectedSound);
-  }, [visible, showMusicPicker, selectedSound?.id, syncMusicPlayback]);
+  }, [visible, showMusicPicker, selectedSound?.id, audioStartMs, syncMusicPlayback]);
 
   useEffect(() => {
     return () => { void stopReelMusic(); };
   }, []);
 
-  const handleSoundSelect = (sound: ReelSound | null) => {
+  const handleSoundSelect = (sound: ReelSound | null, startMs = 0) => {
     setSelectedSound(sound);
+    setAudioStartMs(startMs);
     if (sound) {
       setMuteOriginalAudio(true);
     }
@@ -185,7 +190,7 @@ export default function ReelEditor({
     if (!selectedSound) return null;
     return {
       sound: selectedSound,
-      startMs: 0,
+      startMs: audioStartMs,
       muteOriginalAudio,
     };
   };

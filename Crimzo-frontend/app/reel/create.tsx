@@ -51,6 +51,7 @@ export default function ReelCreateScreen() {
   const didInitModeRef = useRef(false);
 
   const [selectedSound, setSelectedSound] = useState<ReelSound | null>(null);
+  const [audioStartMs, setAudioStartMs] = useState(0);
   const [showMusicPicker, setShowMusicPicker] = useState(false);
 
   const [editorAsset, setEditorAsset] = useState<ReelVideoAsset | null>(null);
@@ -117,7 +118,7 @@ export default function ReelCreateScreen() {
         setMusicPlaying(false);
         return;
       }
-      await playReelMusic({ url: streamUrl, loop: true, volume: 1 });
+      await playReelMusic({ url: streamUrl, loop: true, volume: 1, positionMillis: audioStartMs });
       setMusicPlaying(true);
     } catch (e) {
       console.error('Camera music error:', e);
@@ -208,8 +209,9 @@ export default function ReelCreateScreen() {
     }
   };
 
-  const handleSoundSelect = (sound: ReelSound | null) => {
+  const handleSoundSelect = (sound: ReelSound | null, startMs = 0) => {
     setSelectedSound(sound);
+    setAudioStartMs(startMs);
     if (sound && creationMode === 'music_first') {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
@@ -488,6 +490,7 @@ export default function ReelCreateScreen() {
         asset={editorAsset}
         token={token}
         initialSound={selectedSound}
+        initialStartMs={audioStartMs}
         uploading={uploading}
         uploadProgress={uploadProgress}
         uploadDone={uploadDone}
