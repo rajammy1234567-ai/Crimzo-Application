@@ -519,9 +519,6 @@ export function useWallet() {
       }>('/api/payments/withdraw', { amount: amountInr }, token);
       if (res.success) {
         syncBalances({ diamonds: res.diamonds, beans: res.beans });
-        const convertedNote = res.diamondsConverted
-          ? `\n\n${res.diamondsConverted.toLocaleString()} diamonds converted to beans for withdrawal.`
-          : '';
         const payoutNote = res.payoutTo ? `\n\nAccount: ${res.payoutTo}` : '';
         const creditNote = res.creditMessage
           || (res.scheduledCreditLabel
@@ -529,7 +526,7 @@ export function useWallet() {
             : '');
         appAlert(
           '📋 Withdrawal Submitted',
-          `${creditNote}${payoutNote}\n\nSaved in admin panel for review.${convertedNote}`,
+          `${creditNote}${payoutNote}\n\nSaved in admin panel for review.`,
         );
         await loadWithdrawInfo();
         return true;

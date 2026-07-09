@@ -171,7 +171,7 @@ export default function WithdrawModal({
               ) : (
                 <Text style={s.btnText}>
                   {paymentMethod?.status === 'verified'
-                    ? `Confirm Withdraw ${formatInr(subtotal)}`
+                    ? `Confirm Withdraw ${formatInr(totalPayout)}`
                     : 'Add Bank Details'}
                 </Text>
               )}
