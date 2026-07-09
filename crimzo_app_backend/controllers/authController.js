@@ -146,13 +146,13 @@ exports.sendOtp = async (req, res) => {
     try {
       if (isTwilioConfigured()) {
         await sendWhatsAppOtp(mobile, otp);
-        return res.json({ success: true, message: `WhatsApp OTP sent to +91${mobile}` });
+        return res.json({ success: true, message: `WhatsApp OTP sent to +91${mobile}`, devOtp: otp });
       } else if (isFast2SmsConfigured()) {
         const result = await sendOtpSms(mobile, otp);
         const devHint = result.devMode && !isFast2SmsConfigured()
           ? ' (dev mode — check server logs for OTP)'
           : '';
-        return res.json({ success: true, message: `OTP sent to +91${mobile}${devHint}` });
+        return res.json({ success: true, message: `OTP sent to +91${mobile}${devHint}`, devOtp: otp });
       } else {
         throw new Error('No SMS/WhatsApp provider configured');
       }
@@ -163,7 +163,7 @@ exports.sendOtp = async (req, res) => {
         return res.status(500).json({ error: 'Failed to send OTP. Please try again.' });
       }
       console.log(`\n📱 [FALLBACK] WhatsApp OTP for +91${mobile}: ${otp}\n`);
-      return res.json({ success: true, message: 'OTP sent (dev fallback — check server logs)' });
+      return res.json({ success: true, message: 'OTP sent (dev fallback — check server logs)', devOtp: otp });
     }
   } catch (error) {
     console.error('Send OTP error:', error);
@@ -273,10 +273,10 @@ exports.sendWhatsappRegistrationOtp = async (req, res) => {
     try {
       if (isTwilioConfigured()) {
         await sendWhatsAppOtp(mobile, otp);
-        return res.json({ success: true, message: `WhatsApp OTP sent to +91${mobile}` });
+        return res.json({ success: true, message: `WhatsApp OTP sent to +91${mobile}`, devOtp: otp });
       } else {
         console.log(`\n📱 [FALLBACK] WhatsApp OTP for +91${mobile}: ${otp}\n`);
-        return res.json({ success: true, message: 'OTP sent (dev fallback — check server logs)' });
+        return res.json({ success: true, message: 'OTP sent (dev fallback — check server logs)', devOtp: otp });
       }
     } catch (err) {
       console.error('WhatsApp send error:', err);
@@ -558,7 +558,7 @@ exports.registerPhone = async (req, res) => {
       } catch (cloudErr) { console.error('Cloudinary avatar upload error:', cloudErr.message); }
     }
     const crimzoId = await generateCrimzoId();
-    const phoneEmail = \\@phone.crimzo.local\\;
+    const phoneEmail = `${mobile}@phone.crimzo.local`;
     const user = await User.create({ crimzo_id: crimzoId, email: phoneEmail, phone: mobile, password_hash: 'PHONE_AUTH_NO_PASSWORD', username: username.trim(), avatar: avatarUrl, diamonds: 0, beans: 0, country: 'India' });
     otpStore.delete(mobile); whatsappOtpStore.delete(mobile);
     const referralResult = await applyReferralIfPresent(user, req);
@@ -898,15 +898,15 @@ exports.sendForgotPasswordOtp = async (req, res) => {
           text: `Your password reset code is: ${otp}`
         });
       }
-      return res.json({ success: true, message: 'OTP sent to email', deliveryMethod });
+      return res.json({ success: true, message: 'OTP sent to email', deliveryMethod, devOtp: otp });
     } else {
       whatsappOtpStore.set(otpTarget, { otp, expiresAt: Date.now() + 10 * 60 * 1000 });
       if (isTwilioConfigured()) {
         await sendWhatsAppOtp(otpTarget, otp);
-        return res.json({ success: true, message: 'OTP sent to WhatsApp', deliveryMethod });
+        return res.json({ success: true, message: 'OTP sent to WhatsApp', deliveryMethod, devOtp: otp });
       } else {
         console.log(`\n📱 [FALLBACK] Forgot Pass WhatsApp OTP for +91${otpTarget}: ${otp}\n`);
-        return res.json({ success: true, message: 'OTP sent (dev fallback)', deliveryMethod });
+        return res.json({ success: true, message: 'OTP sent (dev fallback)', deliveryMethod, devOtp: otp });
       }
     }
   } catch (error) {

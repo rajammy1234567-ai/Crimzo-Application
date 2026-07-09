@@ -94,7 +94,7 @@ interface AuthContextType {
   registerPhone: (phone: string, otp: string, username: string, avatarUri?: string) => Promise<void>;
   guestLogin: () => Promise<void>;
   testLogin: () => Promise<void>;
-  sendPhoneOtp: (phone: string) => Promise<void>;
+  sendPhoneOtp: (phone: string) => Promise<{ devOtp?: string } | void>;
   verifyPhoneOtp: (phone: string, otp: string) => Promise<void>;
   sendEmailOtp: (email: string) => Promise<void>;
   verifyEmailOtp: (email: string, otp: string) => Promise<{ isNewUser: boolean }>;
@@ -384,8 +384,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const sendPhoneOtp = async (phone: string) => {
     try {
       console.log('Sending OTP to:', phone);
-      await apiPost('/api/auth/phone/send-otp', { phone }, null, 15000);
+      const res = await apiPost<{ devOtp?: string }>('/api/auth/phone/send-otp', { phone }, null, 15000);
       console.log('OTP sent successfully');
+      return res;
     } catch (error: unknown) {
       console.error('Send OTP error:', getApiErrorMessage(error) ?? error);
       throwAuthApiError(error, 'Failed to send OTP.');

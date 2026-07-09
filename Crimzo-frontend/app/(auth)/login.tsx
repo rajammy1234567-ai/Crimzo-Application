@@ -71,12 +71,16 @@ export default function LoginScreen() {
   };
 
   const handleSendPhoneOtp = async () => {
-    if (!phone || phone.length < 10) return appAlert('Invalid Number', 'Please enter a valid 10-digit number.');
+    if (!phone || phone.length !== 10 || !/^\d{10}$/.test(phone)) return appAlert('Invalid Number', 'Please enter a valid 10-digit number.');
     setIsSendingOtp(true);
     try {
-      await sendPhoneOtp(phone);
+      const res = await sendPhoneOtp(phone);
       setShowOtp(true);
-      appAlert('OTP Sent', 'Check your WhatsApp for the verification code.');
+      if (res && res.devOtp) {
+        appAlert('Test OTP', `Your OTP is: ${res.devOtp}`);
+      } else {
+        appAlert('OTP Sent', 'Check your WhatsApp/SMS for the verification code.');
+      }
     } catch (err: any) {
       appAlert('Error', err.message || 'Failed to send OTP.');
     } finally {
@@ -200,13 +204,18 @@ export default function LoginScreen() {
                 <>
                   <View style={s.inputWrap}>
                     <Ionicons name="call-outline" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 12 }}>
+                      <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 15, marginRight: 8, fontWeight: 'bold' }}>+91</Text>
+                      <View style={{ width: 1, height: 20, backgroundColor: 'rgba(255,255,255,0.2)' }} />
+                    </View>
                     <TextInput
                       style={s.input}
-                      placeholder="WhatsApp Number"
+                      placeholder="Mobile Number"
                       placeholderTextColor="rgba(255,255,255,0.3)"
                       value={phone}
-                      onChangeText={(t) => { setPhone(t); setShowOtp(false); }}
+                      onChangeText={(t) => { setPhone(t.replace(/[^0-9]/g, '').slice(0, 10)); setShowOtp(false); }}
                       keyboardType="phone-pad"
+                      maxLength={10}
                       selectionColor="#FF2D55"
                     />
                     {!showOtp && (

@@ -115,14 +115,18 @@ export default function RegisterScreen() {
   const isValidEmail = (e: string) => /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(e);
 
   const handleSendWhatsappOtp = async () => {
-    if (!whatsapp || whatsapp.length < 10) {
-      return appAlert('Invalid Number', 'Please enter a valid 10-digit WhatsApp number.');
+    if (!whatsapp || whatsapp.length !== 10 || !/^\d{10}$/.test(whatsapp)) {
+      return appAlert('Invalid Number', 'Please enter a valid 10-digit mobile number.');
     }
     setIsSendingOtp(true);
     try {
-      await apiPost('/api/auth/whatsapp/send-otp', { whatsapp });
+      const res = await apiPost<{ devOtp?: string }>('/api/auth/whatsapp/send-otp', { whatsapp });
       setShowWhatsappOtp(true);
-      appAlert('OTP Sent', 'Check your WhatsApp for the verification code.');
+      if (res && res.devOtp) {
+        appAlert('Test OTP', `Your OTP is: ${res.devOtp}`);
+      } else {
+        appAlert('OTP Sent', 'Check your WhatsApp/SMS for the verification code.');
+      }
     } catch (err: any) {
       appAlert('Failed to send OTP', err.message || 'Please try again.');
     } finally {
@@ -352,14 +356,19 @@ export default function RegisterScreen() {
                 <>
                   {/* WhatsApp Number */}
                   <View style={s.inputWrap}>
-                    <Ionicons name="logo-whatsapp" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
+                    <Ionicons name="call-outline" size={18} color="rgba(255,255,255,0.35)" style={s.inputIcon} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 12 }}>
+                      <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 15, marginRight: 8, fontWeight: 'bold' }}>+91</Text>
+                      <View style={{ width: 1, height: 20, backgroundColor: 'rgba(255,255,255,0.2)' }} />
+                    </View>
                     <TextInput
                       style={[s.input, isWhatsappVerified && { color: '#4CD964' }]}
-                      placeholder="WhatsApp Number"
+                      placeholder="Mobile Number"
                       placeholderTextColor="rgba(255,255,255,0.3)"
                       value={whatsapp}
-                      onChangeText={(t) => { setWhatsapp(t); setIsWhatsappVerified(false); setShowWhatsappOtp(false); }}
+                      onChangeText={(t) => { setWhatsapp(t.replace(/[^0-9]/g, '').slice(0, 10)); setIsWhatsappVerified(false); setShowWhatsappOtp(false); }}
                       keyboardType="phone-pad"
+                      maxLength={10}
                       editable={!isWhatsappVerified}
                       returnKeyType="next"
                       selectionColor="#FF2D55"
