@@ -326,7 +326,7 @@ export default function MusicPicker({ visible, token, selectedId, musicFirstMode
       {isPlaying && (
         <AudioTrimmer 
           durationMs={item.duration_ms || 30000} 
-          onScrubStart={() => stopPreview()} 
+          onScrubStart={() => { void stopReelMusic(); }} 
           onScrubEnd={(ms) => { setTrimMs(ms); void playPreview(item, ms); }} 
         />
       )}

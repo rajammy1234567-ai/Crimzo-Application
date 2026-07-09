@@ -18,23 +18,26 @@ type Props = {
 };
 
 export default function AudioTrimmer({ durationMs, onScrubStart, onScrubEnd }: Props) {
-  const [scrollX, setScrollX] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
+  const scrubTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Fake waveform data
   const waveform = useRef(Array.from({ length: NUM_BARS }, () => 10 + Math.random() * 30)).current;
   
-  const handleScroll = (e: any) => {
-    const x = e.nativeEvent.contentOffset.x;
-    setScrollX(Math.max(0, x));
+  const handleScrollBegin = () => {
+    if (scrubTimer.current) clearTimeout(scrubTimer.current);
+    onScrubStart();
   };
   
   const handleScrollEnd = (e: any) => {
     const x = Math.max(0, e.nativeEvent.contentOffset.x);
-    const progress = Math.min(1, x / (CONTENT_W - SLIDER_W / 2));
-    const maxStartMs = Math.max(0, durationMs - 15000); // Max start time is 15s before end
-    const startMs = Math.min(maxStartMs, progress * durationMs);
-    onScrubEnd(startMs);
+    if (scrubTimer.current) clearTimeout(scrubTimer.current);
+    scrubTimer.current = setTimeout(() => {
+      const progress = Math.min(1, x / (CONTENT_W - SLIDER_W / 2));
+      const maxStartMs = Math.max(0, durationMs - 15000); 
+      const startMs = Math.min(maxStartMs, progress * durationMs);
+      onScrubEnd(startMs);
+    }, 400); // 400ms debounce
   };
   
   return (
@@ -48,8 +51,7 @@ export default function AudioTrimmer({ durationMs, onScrubStart, onScrubEnd }: P
           ref={scrollRef}
           horizontal
           showsHorizontalScrollIndicator={false}
-          onScrollBeginDrag={onScrubStart}
-          onScroll={handleScroll}
+          onScrollBeginDrag={handleScrollBegin}
           onMomentumScrollEnd={handleScrollEnd}
           onScrollEndDrag={handleScrollEnd}
           scrollEventThrottle={16}
