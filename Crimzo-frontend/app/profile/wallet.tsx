@@ -272,7 +272,7 @@ export default function WalletScreen() {
                   <View style={[s.payIco, { backgroundColor: 'rgba(255,149,0,0.15)' }]}>
                     <Ionicons name="arrow-down-circle" size={18} color="#FF9500" />
                   </View>
-                  <View>
+                  <View style={{ flexShrink: 1 }}>
                     <Text style={s.payLbl}>Withdraw Earnings</Text>
                     <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>
                       Diamonds → real money · withdrawn on 6th of every month
@@ -298,7 +298,7 @@ export default function WalletScreen() {
                   <View style={[s.payIco, { backgroundColor: 'rgba(76,217,100,0.15)' }]}>
                     <Ionicons name="wallet" size={18} color="#4CD964" />
                   </View>
-                  <View>
+                  <View style={{ flexShrink: 1 }}>
                     <Text style={s.payLbl}>Add Money to Wallet</Text>
                     <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11 }}>
                       Razorpay — UPI / Card / Net Banking
@@ -565,11 +565,11 @@ const s = StyleSheet.create({
   pay: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
   payDisabled: { opacity: 0.55, backgroundColor: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.04)' },
   payLblDisabled: { color: 'rgba(255,255,255,0.45)' },
-  payL: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  payL: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   payIco: { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,45,85,0.1)', alignItems: 'center', justifyContent: 'center' },
   payLbl: { color: '#FFF', fontSize: 15, fontWeight: '700' },
   payR: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  payChg: { color: '#FF2D55', fontSize: 13, fontWeight: '700' },
+  payChg: { color: '#FF2D55', fontSize: 13, fontWeight: '700', flexShrink: 1 },
 
   // ── packages ──
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
