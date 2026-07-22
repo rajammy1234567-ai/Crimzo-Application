@@ -55,8 +55,11 @@ export function formatInr(n: number): string {
 /** 5000 beans = ₹100 (tier-1 package rate) */
 export const BEANS_PER_INR = BEAN_PACKAGES[0].beans / BEAN_PACKAGES[0].price;
 
+/** 1 diamond = 1 bean on withdrawal (must match backend beanConversion) */
+export const DIAMONDS_PER_BEAN = 1;
+
 export function diamondsToBeans(diamonds: number): number {
-  return Math.floor(Math.max(0, diamonds));
+  return Math.floor(Math.max(0, diamonds) / DIAMONDS_PER_BEAN);
 }
 
 export function beansToInr(beans: number): number {

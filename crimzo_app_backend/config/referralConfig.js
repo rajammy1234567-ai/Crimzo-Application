@@ -1,9 +1,11 @@
 /**
  * Referral rewards are credited as diamonds only (never wallet INR).
- * INR values below are used only to compute the diamond equivalent at tier-1 rate.
+ * Free platform diamonds are OFF by default — balance only via purchase / real earn.
+ * Set FREE_PLATFORM_GRANTS=true to re-enable referral free diamonds.
  */
-const REFERRAL_REWARD_INR = 100;
-const REFERRED_USER_REWARD_INR = 50;
+const FREE_ON = process.env.FREE_PLATFORM_GRANTS === 'true';
+const REFERRAL_REWARD_INR = FREE_ON ? 100 : 0;
+const REFERRED_USER_REWARD_INR = FREE_ON ? 50 : 0;
 
 /** Tier-1 diamond rate (₹272 → 13,800 diamonds) — same basis as PK unlock. */
 const DIAMOND_RATE = 13800 / 272;

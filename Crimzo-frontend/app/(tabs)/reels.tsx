@@ -109,7 +109,15 @@ function ReelVideoLayer({
 }) {
   const hasOverlayAudio = !!item.audio_url;
   const videoSource = resolveMediaUrl(item.video_url);
-  const player = useVideoPlayer(videoSource, (p) => {
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>(
+    videoSource ? 'loading' : 'error',
+  );
+  const [loadError, setLoadError] = useState<string | null>(
+    videoSource ? null : 'Missing video URL',
+  );
+  const [retryKey, setRetryKey] = useState(0);
+
+  const player = useVideoPlayer(videoSource || null, (p) => {
     p.loop = true;
     p.muted = hasOverlayAudio;
     p.volume = hasOverlayAudio ? 0 : 1;
@@ -132,12 +140,46 @@ function ReelVideoLayer({
   }, [player, onControlsReady]);
 
   useEffect(() => {
+    if (!videoSource) {
+      setLoadState('error');
+      setLoadError('Missing video URL');
+      return;
+    }
+
+    setLoadState('loading');
+    setLoadError(null);
+
+    const sub = player.addListener('statusChange', ({ status, error }: { status?: string; error?: { message?: string } | null }) => {
+      if (status === 'readyToPlay') {
+        setLoadState('ready');
+        setLoadError(null);
+        try {
+          player.play();
+        } catch {
+          // player may still be initializing
+        }
+      } else if (status === 'error') {
+        const msg = error?.message || 'Could not load video';
+        console.error('Reel video error:', msg, videoSource);
+        setLoadState('error');
+        setLoadError(msg);
+      } else if (status === 'loading') {
+        setLoadState((prev) => (prev === 'error' ? prev : 'loading'));
+      }
+    });
+
     try {
       player.play();
     } catch {
       // player may still be initializing
     }
+
     return () => {
+      try {
+        sub.remove();
+      } catch {
+        // ignore
+      }
       try {
         player.pause();
       } catch {
@@ -145,7 +187,7 @@ function ReelVideoLayer({
       }
       void stopReelMusic();
     };
-  }, [player]);
+  }, [player, videoSource, retryKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -179,13 +221,44 @@ function ReelVideoLayer({
   }, [hasOverlayAudio, item.audio_url, item.audio_start_ms, item.external_source, item.external_id, token]);
 
   return (
-    <VideoView
-      player={player}
-      style={StyleSheet.absoluteFill}
-      contentFit="cover"
-      nativeControls={false}
-      {...(Platform.OS === 'android' ? { surfaceType: 'textureView' as const } : {})}
-    />
+    <View style={StyleSheet.absoluteFill}>
+      {videoSource ? (
+        <VideoView
+          key={`reel-video-${retryKey}`}
+          player={player}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          nativeControls={false}
+          {...(Platform.OS === 'android' ? { surfaceType: 'textureView' as const } : {})}
+        />
+      ) : null}
+
+      {loadState === 'loading' ? (
+        <View style={styles.videoStatusOverlay} pointerEvents="none">
+          <ActivityIndicator size="large" color="#FF2D55" />
+        </View>
+      ) : null}
+
+      {loadState === 'error' ? (
+        <View style={styles.videoStatusOverlay}>
+          <Ionicons name="alert-circle-outline" size={42} color="#FF2D55" />
+          <Text style={styles.videoErrorTitle}>Video nahi chal rahi</Text>
+          <Text style={styles.videoErrorSub}>
+            {loadError?.toLowerCase().includes('401') || loadError?.toLowerCase().includes('unauthorized')
+              ? 'Media host blocked (Cloudinary account disabled/unauthorized).'
+              : 'Network/media error. Pull to refresh or retry.'}
+          </Text>
+          <TouchableOpacity
+            style={styles.videoRetryBtn}
+            onPress={() => setRetryKey((k) => k + 1)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="refresh" size={16} color="#FFF" />
+            <Text style={styles.videoRetryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -1280,6 +1353,41 @@ const styles = StyleSheet.create({
   },
   reelPoster: {
     backgroundColor: '#0a0a0a',
+  },
+  videoStatusOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    gap: 10,
+  },
+  videoErrorTitle: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  videoErrorSub: {
+    color: '#B0B0B0',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  videoRetryBtn: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FF2D55',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  videoRetryText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   bottomGradient: {
     position: 'absolute',

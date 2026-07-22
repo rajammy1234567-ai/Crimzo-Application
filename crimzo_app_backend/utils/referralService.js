@@ -68,14 +68,13 @@ async function processReferralSignup(newUser, referralCode) {
     return { applied: false, reason: 'already_referred' };
   }
 
+  // Track referral even when free diamond grants are off (0 diamonds)
+  const referrerInc = { referral_count: 1 };
+  if (REFERRAL_REWARD_DIAMONDS > 0) referrerInc.diamonds = REFERRAL_REWARD_DIAMONDS;
+
   const updatedReferrer = await User.findByIdAndUpdate(
     referrer.id,
-    {
-      $inc: {
-        diamonds: REFERRAL_REWARD_DIAMONDS,
-        referral_count: 1,
-      },
-    },
+    { $inc: referrerInc },
     { new: true },
   ).select('diamonds referral_count username');
 
@@ -83,12 +82,14 @@ async function processReferralSignup(newUser, referralCode) {
     return { applied: false, reason: 'referrer_update_failed' };
   }
 
+  const referredUpdate = { referred_by: referrer.id };
+  if (REFERRED_USER_REWARD_DIAMONDS > 0) {
+    referredUpdate.$inc = { diamonds: REFERRED_USER_REWARD_DIAMONDS };
+  }
+
   const updatedReferredUser = await User.findByIdAndUpdate(
     newUser.id,
-    {
-      referred_by: referrer.id,
-      $inc: { diamonds: REFERRED_USER_REWARD_DIAMONDS },
-    },
+    referredUpdate,
     { new: true },
   ).select('diamonds username');
 
@@ -105,26 +106,34 @@ async function processReferralSignup(newUser, referralCode) {
     status: 'completed',
   });
 
-  emitDiamondUpdate(referrer.id, updatedReferrer.diamonds);
-  emitDiamondUpdate(newUser.id, updatedReferredUser.diamonds);
+  if (REFERRAL_REWARD_DIAMONDS > 0) {
+    emitDiamondUpdate(referrer.id, updatedReferrer.diamonds);
+  }
+  if (REFERRED_USER_REWARD_DIAMONDS > 0) {
+    emitDiamondUpdate(newUser.id, updatedReferredUser.diamonds);
+  }
 
-  void pushNotification({
-    userId: referrer.id,
-    type: 'referral_reward',
-    title: 'Referral reward!',
-    body: `${newUser.username || 'A friend'} joined with your link. You earned ${REFERRAL_REWARD_DIAMONDS.toLocaleString('en-IN')} diamonds.`,
-    actor: { id: newUser.id, username: newUser.username, avatar: newUser.avatar },
-    referenceId: newUser.id,
-  }).catch(() => {});
+  if (REFERRAL_REWARD_DIAMONDS > 0) {
+    void pushNotification({
+      userId: referrer.id,
+      type: 'referral_reward',
+      title: 'Referral reward!',
+      body: `${newUser.username || 'A friend'} joined with your link. You earned ${REFERRAL_REWARD_DIAMONDS.toLocaleString('en-IN')} diamonds.`,
+      actor: { id: newUser.id, username: newUser.username, avatar: newUser.avatar },
+      referenceId: newUser.id,
+    }).catch(() => {});
+  }
 
-  void pushNotification({
-    userId: newUser.id,
-    type: 'referral_welcome',
-    title: 'Welcome bonus!',
-    body: `You joined with a referral link and earned ${REFERRED_USER_REWARD_DIAMONDS.toLocaleString('en-IN')} diamonds.`,
-    actor: { id: referrer.id, username: referrer.username, avatar: referrer.avatar },
-    referenceId: referrer.id,
-  }).catch(() => {});
+  if (REFERRED_USER_REWARD_DIAMONDS > 0) {
+    void pushNotification({
+      userId: newUser.id,
+      type: 'referral_welcome',
+      title: 'Welcome bonus!',
+      body: `You joined with a referral link and earned ${REFERRED_USER_REWARD_DIAMONDS.toLocaleString('en-IN')} diamonds.`,
+      actor: { id: referrer.id, username: referrer.username, avatar: referrer.avatar },
+      referenceId: referrer.id,
+    }).catch(() => {});
+  }
 
   void recordTaskAction(referrer.id, 'invite', 1).catch(() => {});
 

@@ -52,7 +52,16 @@ const uploadToCloudinary = async (buffer, folder = 'misc', resourceType = 'auto'
       if (publicId) options.public_id = publicId;
 
       const stream = cloudinary.uploader.upload_stream(options, (error, result) => {
-        if (error) return reject(error);
+        if (error) {
+          const msg = error?.message || error?.error?.message || String(error);
+          if (/disabled customer|401|Unauthorized/i.test(msg)) {
+            return reject(new Error(
+              'Cloudinary account is disabled/unauthorized (media host). ' +
+              'Re-enable the Cloudinary account or create a new free account and update CLOUDINARY_* env vars on the backend (local + Render).'
+            ));
+          }
+          return reject(error);
+        }
         resolve(result);
       });
       stream.end(buffer);

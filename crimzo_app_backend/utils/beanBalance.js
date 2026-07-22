@@ -4,7 +4,9 @@ const {
   diamondsToBeans,
   beansToInr,
   totalWithdrawableBeans,
+  DIAMONDS_PER_BEAN,
 } = require('./beanConversion');
+const { FREE_PLATFORM_GRANTS_ENABLED } = require('../config/balancePolicy');
 
 async function getBeanBalanceSummary(userOrId) {
   const user = userOrId?.beans != null && userOrId?.diamonds != null
@@ -28,7 +30,10 @@ async function getBeanBalanceSummary(userOrId) {
     .lean();
 
   const walletBeans = user.beans || 0;
-  const pendingTaskBeans = state?.pending_reward || 0;
+  // Free task pending must not inflate withdrawable balance when free grants are off
+  const pendingTaskBeans = FREE_PLATFORM_GRANTS_ENABLED
+    ? (state?.pending_reward || 0)
+    : 0;
   const diamonds = user.diamonds || 0;
   const diamondsAsBeans = diamondsToBeans(diamonds);
   const earnedBeans = walletBeans + pendingTaskBeans;
@@ -46,11 +51,13 @@ async function getBeanBalanceSummary(userOrId) {
   };
 }
 
-/** Deduct pending task beans first, then wallet beans, then diamonds */
+/** Deduct pending task beans first (only if free grants on), then wallet beans, then diamonds */
 function deductBeansForWithdrawFull(diamonds, walletBeans, pendingTaskBeans, beansNeeded) {
   const d = Math.max(0, Number(diamonds) || 0);
   const b = Math.max(0, Number(walletBeans) || 0);
-  const pending = Math.max(0, Number(pendingTaskBeans) || 0);
+  const pending = FREE_PLATFORM_GRANTS_ENABLED
+    ? Math.max(0, Number(pendingTaskBeans) || 0)
+    : 0;
   let need = Math.max(0, Number(beansNeeded) || 0);
 
   const fromPending = Math.min(pending, need);
@@ -59,10 +66,15 @@ function deductBeansForWithdrawFull(diamonds, walletBeans, pendingTaskBeans, bea
   const fromWallet = Math.min(b, need);
   need -= fromWallet;
 
+  const diamondsCost = need * DIAMONDS_PER_BEAN;
+
   return {
-    diamonds: d - need,
+    diamonds: Math.max(0, d - diamondsCost),
     beans: b - fromWallet,
-    pendingTaskBeans: pending - fromPending,
+    // Preserve unused free pending in DB state when grants off (not withdrawable)
+    pendingTaskBeans: FREE_PLATFORM_GRANTS_ENABLED
+      ? pending - fromPending
+      : Math.max(0, Number(pendingTaskBeans) || 0),
   };
 }
 

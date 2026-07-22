@@ -92,13 +92,19 @@ exports.guestLogin = async (req, res) => {
     const guestEmail = `guest_${guestId}@crimzo.guest`;
     const crimzoId = await generateCrimzoId();
 
+    const {
+      GUEST_STARTING_DIAMONDS,
+      GUEST_STARTING_BEANS,
+    } = require('../config/balancePolicy');
+
     const user = await User.create({
       crimzo_id: crimzoId,
       email: guestEmail,
       password_hash: 'GUEST_NO_PASSWORD',
       username: guestUsername,
-      diamonds: 100,
-      beans: 0,
+      diamonds: GUEST_STARTING_DIAMONDS,
+      beans: GUEST_STARTING_BEANS,
+      wallet_balance: 0,
       country: 'India',
 
     });
@@ -120,7 +126,9 @@ exports.guestLogin = async (req, res) => {
         avatar: null,
         bio: null,
         country: 'India',
-        diamonds: 100,
+        diamonds: GUEST_STARTING_DIAMONDS,
+        beans: GUEST_STARTING_BEANS,
+        wallet_balance: 0,
         is_guest: true,
       }),
     });

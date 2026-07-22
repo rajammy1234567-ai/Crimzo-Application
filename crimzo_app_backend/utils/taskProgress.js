@@ -5,6 +5,10 @@ const {
   STREAK_MILESTONE_DIAMONDS,
 } = require('../config/walletConfig');
 const {
+  FREE_PLATFORM_GRANTS_ENABLED,
+  DAILY_CHECKIN_BEANS,
+} = require('../config/balancePolicy');
+const {
   todayKey,
   yesterdayKey,
   shiftDateKey,
@@ -99,21 +103,23 @@ function applyCheckinStreak(state, today) {
   return { streak, longest, alreadyCheckedIn: false, streakReset };
 }
 
-/** Award owner/platform diamonds when user hits each 30-day streak block */
+/** Award platform diamonds when user hits each 30-day streak block (off unless free grants on) */
 function applyStreakMilestoneReward(state, streak) {
   const claimed = state.streak_milestones_claimed || 0;
   const earned = Math.floor(streak / STREAK_MILESTONE_DAYS);
   const newMilestones = earned - claimed;
-  if (newMilestones <= 0) {
+  const milestoneDiamonds = FREE_PLATFORM_GRANTS_ENABLED ? STREAK_MILESTONE_DIAMONDS : 0;
+  if (newMilestones <= 0 || milestoneDiamonds <= 0) {
+    if (newMilestones > 0) state.streak_milestones_claimed = earned;
     return {
       diamondsAwarded: 0,
-      milestonesClaimed: claimed,
+      milestonesClaimed: state.streak_milestones_claimed || claimed,
       milestoneDays: STREAK_MILESTONE_DAYS,
-      milestoneDiamonds: STREAK_MILESTONE_DIAMONDS,
+      milestoneDiamonds,
     };
   }
 
-  const diamondsAwarded = newMilestones * STREAK_MILESTONE_DIAMONDS;
+  const diamondsAwarded = newMilestones * milestoneDiamonds;
   state.streak_milestones_claimed = earned;
   state.pending_diamonds = (state.pending_diamonds || 0) + diamondsAwarded;
 
@@ -121,7 +127,7 @@ function applyStreakMilestoneReward(state, streak) {
     diamondsAwarded,
     milestonesClaimed: earned,
     milestoneDays: STREAK_MILESTONE_DAYS,
-    milestoneDiamonds: STREAK_MILESTONE_DIAMONDS,
+    milestoneDiamonds,
   };
 }
 
@@ -153,6 +159,8 @@ function setProgressEntry(state, key, entry) {
 }
 
 function addPendingReward(state, task, count) {
+  // Free task rewards disabled — balance only from purchase / real peer-paid earn
+  if (!FREE_PLATFORM_GRANTS_ENABLED) return;
   const amount = count * (task.reward_amount || 0);
   if (amount <= 0) return;
   if (task.reward_type === 'diamonds') {
@@ -197,7 +205,12 @@ async function performDailyCheckin(userId, options = {}) {
   state.last_checkin = today;
   state.checkin_streak = streakUpdate.streak;
   state.longest_streak = streakUpdate.longest;
-  state.pending_reward = (state.pending_reward || 0) + 50;
+
+  // Free check-in beans only when FREE_PLATFORM_GRANTS is explicitly enabled
+  const checkinBeans = Math.max(0, Number(DAILY_CHECKIN_BEANS) || 0);
+  if (checkinBeans > 0) {
+    state.pending_reward = (state.pending_reward || 0) + checkinBeans;
+  }
 
   const milestone = applyStreakMilestoneReward(state, streakUpdate.streak);
   state.updated_at = new Date();
@@ -205,8 +218,8 @@ async function performDailyCheckin(userId, options = {}) {
 
   return {
     success: true,
-    added: 50,
-    pendingReward: state.pending_reward,
+    added: checkinBeans,
+    pendingReward: state.pending_reward || 0,
     pendingDiamonds: state.pending_diamonds || 0,
     streakMilestoneReward: milestone.diamondsAwarded,
     streak: getStreakSnapshot(state),

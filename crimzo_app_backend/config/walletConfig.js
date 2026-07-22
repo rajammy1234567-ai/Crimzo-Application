@@ -13,11 +13,11 @@ const MIN_WITHDRAW_BEANS = MIN_WITHDRAW_INR * BEANS_PER_INR;
 /** Preset diamond gift amounts in chat */
 const CHAT_GIFT_PRESETS = [10, 50, 100, 500, 1000];
 
-/** Continuous daily check-in streak — platform owner reward */
+/** Continuous daily check-in streak — free diamond prize OFF (earn/purchase only) */
 const STREAK_MILESTONE_DAYS = 30;
-const STREAK_MILESTONE_DIAMONDS = 10000;
+const STREAK_MILESTONE_DIAMONDS = process.env.FREE_PLATFORM_GRANTS === 'true' ? 10000 : 0;
 
-/** PK monthly leaderboard — top player announced on this day (IST) */
+/** PK monthly leaderboard — top player prize (earned by ranking, not auto free money) */
 const PK_MONTHLY_REWARD_DAY = 3;
 const PK_MONTHLY_REWARD_DIAMONDS = 10000;
 const PK_LEADERBOARD_LIMIT = 50;

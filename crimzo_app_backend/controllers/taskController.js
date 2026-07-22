@@ -168,9 +168,30 @@ exports.checkIn = async (req, res) => {
 
 exports.claimReward = async (req, res) => {
   try {
+    const { FREE_PLATFORM_GRANTS_ENABLED } = require('../config/balancePolicy');
     const state = await getOrCreateState(req.user.id);
     const beansAmount = state.pending_reward || 0;
     const diamondsAmount = state.pending_diamonds || 0;
+
+    // Free platform rewards are off — clear any leftover pending free stockpile without crediting
+    if (!FREE_PLATFORM_GRANTS_ENABLED) {
+      if (beansAmount > 0 || diamondsAmount > 0) {
+        state.pending_reward = 0;
+        state.pending_diamonds = 0;
+        state.updated_at = new Date();
+        await state.save();
+      }
+      const user = await User.findById(req.user.id).select('beans diamonds').lean();
+      return res.json({
+        success: true,
+        claimed: 0,
+        claimedDiamonds: 0,
+        freeGrantsDisabled: true,
+        beans: user?.beans || 0,
+        diamonds: user?.diamonds || 0,
+      });
+    }
+
     if (beansAmount <= 0 && diamondsAmount <= 0) {
       const user = await User.findById(req.user.id).select('beans diamonds').lean();
       return res.json({
@@ -250,10 +271,14 @@ exports.completeTask = async (req, res) => {
       entry.current = def.max_count;
       entry.last_reset = 'once';
       setProgressEntry(state, taskKey, entry);
-      if (def.reward_type === 'diamonds') {
-        state.pending_diamonds = (state.pending_diamonds || 0) + def.reward_amount;
-      } else {
-        state.pending_reward = (state.pending_reward || 0) + def.reward_amount;
+      const { FREE_PLATFORM_GRANTS_ENABLED } = require('../config/balancePolicy');
+      const rewardAmt = FREE_PLATFORM_GRANTS_ENABLED ? (def.reward_amount || 0) : 0;
+      if (rewardAmt > 0) {
+        if (def.reward_type === 'diamonds') {
+          state.pending_diamonds = (state.pending_diamonds || 0) + rewardAmt;
+        } else {
+          state.pending_reward = (state.pending_reward || 0) + rewardAmt;
+        }
       }
       state.updated_at = new Date();
       await state.save();
@@ -262,7 +287,7 @@ exports.completeTask = async (req, res) => {
         taskKey,
         currentCount: entry.current,
         maxCount: def.max_count,
-        rewardAdded: def.reward_amount,
+        rewardAdded: rewardAmt,
         rewardType: def.reward_type,
         pendingReward: state.pending_reward,
         pendingDiamonds: state.pending_diamonds || 0,
@@ -278,10 +303,14 @@ exports.completeTask = async (req, res) => {
     entry.last_reset = reset === 'daily' ? todayKey() : monthKey();
     setProgressEntry(state, taskKey, entry);
 
-    if (def.reward_type === 'diamonds') {
-      state.pending_diamonds = (state.pending_diamonds || 0) + def.reward_amount;
-    } else {
-      state.pending_reward = (state.pending_reward || 0) + def.reward_amount;
+    const { FREE_PLATFORM_GRANTS_ENABLED } = require('../config/balancePolicy');
+    const rewardAmt = FREE_PLATFORM_GRANTS_ENABLED ? (def.reward_amount || 0) : 0;
+    if (rewardAmt > 0) {
+      if (def.reward_type === 'diamonds') {
+        state.pending_diamonds = (state.pending_diamonds || 0) + rewardAmt;
+      } else {
+        state.pending_reward = (state.pending_reward || 0) + rewardAmt;
+      }
     }
     state.updated_at = new Date();
     await state.save();
@@ -291,7 +320,7 @@ exports.completeTask = async (req, res) => {
       taskKey,
       currentCount: entry.current,
       maxCount: def.max_count,
-      rewardAdded: def.reward_amount,
+      rewardAdded: rewardAmt,
       rewardType: def.reward_type,
       pendingReward: state.pending_reward,
       pendingDiamonds: state.pending_diamonds || 0,

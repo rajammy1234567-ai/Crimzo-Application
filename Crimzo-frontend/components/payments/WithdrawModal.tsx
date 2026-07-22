@@ -12,7 +12,8 @@ import { KeyboardSheet } from '../KeyboardAware';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { PaymentMethodInfo } from './SetupPaymentModal';
-import { formatCount, formatInr } from '../../lib/diamondPackages';
+import { beansToInr, diamondsToBeans, formatCount, formatInr } from '../../lib/diamondPackages';
+import { appAlert } from '../../lib/appAlert';
 
 export type WithdrawInfo = {
   diamonds?: number;
@@ -33,6 +34,11 @@ type Props = {
   onSetupPayment?: () => void;
 };
 
+function isWithdrawableMethod(method?: PaymentMethodInfo | null): boolean {
+  if (!method || method.status !== 'verified') return false;
+  return method.type === 'bank' || method.type === 'upi';
+}
+
 export default function WithdrawModal({
   visible,
   onClose,
@@ -45,10 +51,14 @@ export default function WithdrawModal({
 }: Props) {
   const diamonds = withdrawInfo?.diamonds ?? 0;
   const earnedBeans = withdrawInfo?.earnedBeans ?? 0;
-  const beansPerInr = withdrawInfo?.beansPerInr ?? 50;
-  
-  const earnedInr = earnedBeans / beansPerInr;
-  const purchasedInr = diamonds / beansPerInr;
+
+  // Same conversion as backend: beans → ₹ via package rate; diamonds → beans 1:1 then ₹
+  const earnedInr = beansToInr(earnedBeans);
+  const purchasedInr = beansToInr(diamondsToBeans(diamonds));
+  const maxWithdrawableInr =
+    typeof withdrawInfo?.withdrawableInr === 'number'
+      ? withdrawInfo.withdrawableInr
+      : earnedInr + purchasedInr;
 
   const [withdrawEarned, setWithdrawEarned] = useState(false);
   const [withdrawPurchased, setWithdrawPurchased] = useState(false);
@@ -60,13 +70,26 @@ export default function WithdrawModal({
   const tax = subtotal * 0.23;
   const totalPayout = subtotal - tax;
 
-  const canWithdraw =
-    paymentMethod?.status === 'verified'
-    && paymentMethod?.type === 'bank'
-    && subtotal >= minWithdraw;
+  const hasPayoutMethod = isWithdrawableMethod(paymentMethod);
+  const meetsMinimum = subtotal >= minWithdraw;
+  const canWithdraw = hasPayoutMethod && meetsMinimum && subtotal > 0;
 
   const handleWithdraw = () => {
-    if (!canWithdraw || subtotal < minWithdraw) return;
+    if (!hasPayoutMethod) {
+      onSetupPayment?.();
+      return;
+    }
+    if (!withdrawEarned && !withdrawPurchased) {
+      appAlert('Select balance', 'Tick Earned and/or Other diamonds to withdraw.');
+      return;
+    }
+    if (!meetsMinimum) {
+      appAlert(
+        'Minimum not met',
+        `Minimum withdrawal is ${formatInr(minWithdraw)}.\nSelected: ${formatInr(subtotal)}\nAvailable total: ${formatInr(maxWithdrawableInr)}`,
+      );
+      return;
+    }
     onWithdraw(subtotal);
   };
 
@@ -139,40 +162,51 @@ export default function WithdrawModal({
             </View>
           </View>
 
-          {paymentMethod?.status === 'verified' ? (
+          {hasPayoutMethod ? (
             <View style={s.bankRow}>
               <Ionicons
-                name="business"
+                name={paymentMethod?.type === 'upi' ? 'phone-portrait-outline' : 'business'}
                 size={20}
                 color="#FF9500"
               />
               <View style={{ flex: 1 }}>
-                <Text style={s.bankVal}>{paymentMethod.display}</Text>
+                <Text style={s.bankVal}>{paymentMethod?.display}</Text>
                 <Text style={s.bankHint}>Payout destination — money goes here</Text>
               </View>
             </View>
           ) : (
             <TouchableOpacity style={s.setupBanner} onPress={onSetupPayment}>
               <Ionicons name="shield-outline" size={20} color="#FF2D55" />
-              <Text style={s.setupText}>Verify your Bank Account first to withdraw</Text>
+              <Text style={s.setupText}>Verify Bank Account or UPI first to withdraw</Text>
             </TouchableOpacity>
           )}
 
+          {hasPayoutMethod && maxWithdrawableInr < minWithdraw ? (
+            <View style={s.minBanner}>
+              <Ionicons name="information-circle-outline" size={18} color="#FF9500" />
+              <Text style={s.minBannerTxt}>
+                Available {formatInr(maxWithdrawableInr)} — need at least {formatInr(minWithdraw)} to withdraw.
+              </Text>
+            </View>
+          ) : null}
+
           <TouchableOpacity
-            onPress={paymentMethod?.status === 'verified' ? handleWithdraw : onSetupPayment}
-            disabled={busy || (paymentMethod?.status === 'verified' && subtotal < minWithdraw)}
+            onPress={hasPayoutMethod ? handleWithdraw : onSetupPayment}
+            disabled={busy}
           >
             <LinearGradient
-              colors={busy ? ['#555', '#444'] : ['#FF9500', '#FF6B00']}
+              colors={busy || (hasPayoutMethod && !canWithdraw) ? ['#555', '#444'] : ['#FF9500', '#FF6B00']}
               style={s.btn}
             >
               {busy ? (
                 <ActivityIndicator color="#FFF" />
               ) : (
                 <Text style={s.btnText}>
-                  {paymentMethod?.status === 'verified'
-                    ? `Confirm Withdraw ${formatInr(totalPayout)}`
-                    : 'Add Bank Details'}
+                  {!hasPayoutMethod
+                    ? 'Add Bank / UPI Details'
+                    : canWithdraw
+                      ? `Confirm Withdraw ${formatInr(totalPayout)}`
+                      : `Select balance (min ${formatInr(minWithdraw)})`}
                 </Text>
               )}
             </LinearGradient>
@@ -205,6 +239,18 @@ const s = StyleSheet.create({
   bankHint: { color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: 2 },
   setupBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16, padding: 14, backgroundColor: 'rgba(255,45,85,0.1)', borderRadius: 14 },
   setupText: { color: '#FF2D55', fontSize: 14, fontWeight: '700', flex: 1 },
+  minBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 14,
+    padding: 12,
+    backgroundColor: 'rgba(255,149,0,0.1)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,149,0,0.25)',
+  },
+  minBannerTxt: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '600', flex: 1, lineHeight: 17 },
   checkboxContainer: { marginBottom: 16, gap: 10 },
   checkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   checkRowActive: { borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.08)' },
